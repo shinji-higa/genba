@@ -22,6 +22,15 @@
   #splash img { width: 120px; height: 120px; border-radius: 24px; }
   #splash p { color: #bbbbbb; font: 600 14px -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Yu Gothic UI", Meiryo, sans-serif; margin: 0; }
   #splash.hide { opacity: 0; pointer-events: none; }
+  /* 通知の許可を求める確認画面 */
+  #askNotify { position: fixed; inset: 0; z-index: 5; display: none; align-items: center; justify-content: center; padding: 20px; background: rgba(17,17,17,.5); font-family: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Yu Gothic UI", Meiryo, sans-serif; }
+  #askNotify.show { display: flex; }
+  #askNotify .box { background: #fff; border-radius: 12px; width: 100%; max-width: 380px; padding: 22px 20px 18px; box-shadow: 0 10px 30px rgba(0,0,0,.3); }
+  #askNotify h2 { margin: 0 0 8px; font-size: 17px; }
+  #askNotify p { margin: 0 0 16px; font-size: 14px; line-height: 1.7; color: #444; }
+  #askNotify button { display: block; width: 100%; padding: 12px; border-radius: 6px; font-size: 15px; font-weight: 700; cursor: pointer; }
+  #askNotifyOk { background: #111; color: #fff; border: 1px solid #111; margin-bottom: 8px; }
+  #askNotifyNo { background: #fff; color: #666; border: 1px solid #dcdcdc; }
   #help { position: fixed; right: 10px; bottom: calc(10px + env(safe-area-inset-bottom, 0px)); z-index: 3; display: none; background: rgba(17,17,17,.85); color: #fff; font: 600 12px -apple-system, BlinkMacSystemFont, "Hiragino Sans", Meiryo, sans-serif; padding: 8px 12px; border-radius: 18px; text-decoration: none; }
 </style>
 </head>
@@ -29,6 +38,15 @@
   <div id="splash"><img src="apple-touch-icon.png" alt=""><p>読み込んでいます…</p></div>
   <iframe id="app" title="現場管理システム" allow="camera; microphone; geolocation; clipboard-write; fullscreen"></iframe>
   <a id="help" href="guide.html">ホーム画面に追加する方法</a>
+  <div id="askNotify">
+    <div class="box">
+      <h2>🔔 お知らせを通知で受け取りますか？</h2>
+      <p>報告・写真・資料・現場情報が追加／編集されたときに、この端末に音付きで通知します。<br>次に表示される確認で「許可」を選んでください。</p>
+      <button type="button" id="askNotifyOk">通知をオンにする</button>
+      <button type="button" id="askNotifyNo">あとで</button>
+    </div>
+  </div>
+<script src="firebase-config.js"></script>
 <script>
   // ▼ 現場管理システム（Apps Script Webアプリ）のURL
   var APP_URL = 'https://script.google.com/macros/s/AKfycbzVlXtdeBEba1Z1qhxOvSi9AOXs0LPfdSK_sXwBDf2eIhJKR6z7CdZ6yGIDiK9IIw7tAw/exec';
@@ -47,6 +65,124 @@
     help.style.display = 'block';
     setTimeout(function () { help.style.display = 'none'; }, 12000);
   }
+
+  /* =====================================================
+     端末への通知（音付き）
+     ・アプリ（中の画面）からの依頼を受けて、通知の許可・表示を行う
+     ・firebase-config.js に値が入っていれば、アプリを閉じていても届く通知（Firebase）も使う
+     ===================================================== */
+  var FB = (self.GENBA_FIREBASE && self.GENBA_FIREBASE.config && self.GENBA_FIREBASE.config.apiKey) ? self.GENBA_FIREBASE : null;
+  var FB_VER = '10.12.2';
+  var isIOS = /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  var supported = ('Notification' in window) && ('serviceWorker' in navigator);
+  var swReg = null, messaging = null, fcmToken = '';
+  var appWin = null, appOrigin = '';
+  var OFF_KEY = 'genbaNotifyOff';   // 「この端末の通知を止める」を押した印
+
+  function isOff() { try { return localStorage.getItem(OFF_KEY) === '1'; } catch (e) { return false; } }
+  function setOff(on) { try { if (on) localStorage.setItem(OFF_KEY, '1'); else localStorage.removeItem(OFF_KEY); } catch (e) {} }
+
+  function deviceLabel() {
+    var ua = navigator.userAgent;
+    var dev = isIOS ? 'iPhone/iPad' : (/Android/.test(ua) ? 'Android' : (/Windows/.test(ua) ? 'Windows PC' : (/Mac/.test(ua) ? 'Mac' : 'PC')));
+    var br = /Edg\//.test(ua) ? 'Edge' : (/Electron/.test(ua) ? 'アプリ' : (/Chrome\//.test(ua) ? 'Chrome' : (/Safari\//.test(ua) ? 'Safari' : '')));
+    return (dev + ' ' + br).trim();
+  }
+
+  function loadScript(src) {
+    return new Promise(function (resolve, reject) {
+      var s = document.createElement('script');
+      s.src = src; s.onload = resolve; s.onerror = function () { reject(new Error('読み込み失敗: ' + src)); };
+      document.head.appendChild(s);
+    });
+  }
+
+  function refreshToken() {
+    if (!messaging || !swReg || Notification.permission !== 'granted' || isOff()) { fcmToken = ''; return Promise.resolve(''); }
+    return messaging.getToken({ vapidKey: FB.vapidKey, serviceWorkerRegistration: swReg })
+      .then(function (t) { fcmToken = t || ''; return fcmToken; })
+      .catch(function (e) { console.warn('通知の登録に失敗:', e); fcmToken = ''; return ''; });
+  }
+
+  function showLocal(title, body, tag) {
+    if (!supported || Notification.permission !== 'granted' || isOff()) return;
+    var opt = { body: body || '', icon: 'icon-192.png', badge: 'icon-192.png', tag: tag || undefined, renotify: !!tag };
+    if (swReg && swReg.showNotification) {
+      swReg.showNotification(title || '現場管理システム', opt).catch(function () {});
+    } else {
+      try { new Notification(title || '現場管理システム', opt); } catch (e) {}
+    }
+  }
+
+  // 準備（サービスワーカーの登録 → Firebase の読み込み）
+  var ready = !supported ? Promise.resolve() : navigator.serviceWorker.register('firebase-messaging-sw.js')
+    .then(function (reg) { swReg = reg; return navigator.serviceWorker.ready; })
+    .then(function () {
+      if (!FB) return;
+      return loadScript('https://www.gstatic.com/firebasejs/' + FB_VER + '/firebase-app-compat.js')
+        .then(function () { return loadScript('https://www.gstatic.com/firebasejs/' + FB_VER + '/firebase-messaging-compat.js'); })
+        .then(function () {
+          firebase.initializeApp(FB.config);
+          messaging = firebase.messaging();
+          // アプリを開いている最中に届いた分は、自分で通知を出す
+          messaging.onMessage(function (payload) {
+            var n = (payload && payload.notification) || {};
+            showLocal(n.title, n.body, (payload && payload.data && payload.data.noticeId) ? 'genba-' + payload.data.noticeId : '');
+          });
+          return refreshToken();
+        });
+    })
+    .catch(function (e) { console.warn('通知の準備に失敗:', e); });
+
+  function sendStatus() {
+    if (!appWin) return;
+    var perm = !supported ? 'unsupported' : (isOff() && Notification.permission === 'granted' ? 'default' : Notification.permission);
+    try {
+      appWin.postMessage({
+        genbaHost: true, type: 'status', supported: supported, permission: perm,
+        token: (perm === 'granted') ? fcmToken : '', firebase: !!FB,
+        ios: isIOS, standalone: fromHome, label: deviceLabel()
+      }, appOrigin);
+    } catch (e) {}
+  }
+
+  var ask = document.getElementById('askNotify');
+  document.getElementById('askNotifyNo').addEventListener('click', function () { ask.classList.remove('show'); });
+  document.getElementById('askNotifyOk').addEventListener('click', function () {
+    ask.classList.remove('show');
+    setOff(false);
+    // ボタンを押した直後でないと、端末（特に iPhone）は許可の確認を出してくれない
+    var p;
+    try { p = Notification.requestPermission(); } catch (e) { p = null; }
+    Promise.resolve(p).then(function () { return refreshToken(); }).then(sendStatus, sendStatus);
+  });
+
+  window.addEventListener('message', function (e) {
+    // アプリ本体（Apps Script の画面）からの連絡だけを受け付ける
+    if (!/^https:\/\/[a-z0-9-]+\.googleusercontent\.com$/.test(e.origin)) return;
+    var d = e.data;
+    if (!d || d.genbaApp !== true) return;
+    appWin = e.source; appOrigin = e.origin;
+
+    if (d.cmd === 'status') {
+      ready.then(sendStatus);
+    } else if (d.cmd === 'enable') {
+      if (!supported) { sendStatus(); return; }
+      if (Notification.permission === 'denied') { sendStatus(); return; }
+      ask.classList.add('show');
+    } else if (d.cmd === 'disable') {
+      setOff(true);
+      var done = function () { fcmToken = ''; sendStatus(); };
+      if (messaging) messaging.deleteToken().then(done, done); else done();
+    } else if (d.cmd === 'notify') {
+      showLocal(String(d.title || ''), String(d.body || ''), String(d.tag || ''));
+    } else if (d.cmd === 'badge') {
+      try {
+        if (d.count > 0 && navigator.setAppBadge) navigator.setAppBadge(d.count);
+        else if (navigator.clearAppBadge) navigator.clearAppBadge();
+      } catch (err) {}
+    }
+  });
 </script>
 </body>
 </html>
