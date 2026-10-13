@@ -4,12 +4,12 @@
 //   ※ このファイルの値は公開されても問題ないものです（秘密鍵はここには書きません）。
 self.GENBA_FIREBASE = {
   config: {
-    apiKey: '',
-    authDomain: '',
-    projectId: '',
-    storageBucket: '',
-    messagingSenderId: '',
-    appId: ''
+    apiKey: 'AIzaSyA7XXnxdomqRL4BrAT_LaIf4C3Jnb9w3Wk',
+    authDomain: 'genba-kanri-1d1df.firebaseapp.com',
+    projectId: 'genba-kanri-1d1df',
+    storageBucket: 'genba-kanri-1d1df.firebasestorage.app',
+    messagingSenderId: '49202695720',
+    appId: '1:49202695720:web:cfe735029ceaaa29656f1d'
   },
   // 【4】ウェブプッシュ証明書の「鍵ペア」
   vapidKey: ''
