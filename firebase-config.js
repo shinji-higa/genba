@@ -12,5 +12,5 @@ self.GENBA_FIREBASE = {
     appId: '1:49202695720:web:cfe735029ceaaa29656f1d'
   },
   // 【4】ウェブプッシュ証明書の「鍵ペア」
-  vapidKey: ''
+  vapidKey: 'BPPWyDgVh_Q4Hqdj5Y7PUinC4dczbghgBPrXP0kRXVRJct90caV-vHZSoJ9UTL-wLTe9sQUbgRY5fowvjh0fgBA'
 };
