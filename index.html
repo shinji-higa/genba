@@ -78,6 +78,7 @@
   var swReg = null, messaging = null, fcmToken = '';
   var appWin = null, appOrigin = '';
   var OFF_KEY = 'genbaNotifyOff';   // 「この端末の通知を止める」を押した印
+  var SESSION_KEY = 'genbaSession'; // 「この端末でログインしたままにする」の保存場所
 
   function isOff() { try { return localStorage.getItem(OFF_KEY) === '1'; } catch (e) { return false; } }
   function setOff(on) { try { if (on) localStorage.setItem(OFF_KEY, '1'); else localStorage.removeItem(OFF_KEY); } catch (e) {} }
@@ -114,9 +115,16 @@
     }
   }
 
-  // 準備（サービスワーカーの登録 → Firebase の読み込み）
+  // アプリ本体の表示を優先し、通知用の部品（Firebase）はその後で読み込む（スマホの回線で取り合いにならないように）
+  var frameLoaded = new Promise(function (resolve) {
+    frame.addEventListener('load', resolve);
+    setTimeout(resolve, 6000);
+  });
+
+  // 準備（サービスワーカーの登録 → アプリ本体の表示を待つ → Firebase の読み込み）
   var ready = !supported ? Promise.resolve() : navigator.serviceWorker.register('firebase-messaging-sw.js')
     .then(function (reg) { swReg = reg; return navigator.serviceWorker.ready; })
+    .then(function () { return frameLoaded; })
     .then(function () {
       if (!FB) return;
       return loadScript('https://www.gstatic.com/firebasejs/' + FB_VER + '/firebase-app-compat.js')
@@ -128,6 +136,8 @@
           messaging.onMessage(function (payload) {
             var n = (payload && payload.notification) || {};
             showLocal(n.title, n.body, (payload && payload.data && payload.data.noticeId) ? 'genba-' + payload.data.noticeId : '');
+            // アプリにも知らせて、お知らせ一覧と未読の数をすぐ更新させる
+            try { if (appWin) appWin.postMessage({ genbaHost: true, type: 'push' }, appOrigin); } catch (e) {}
           });
           return refreshToken();
         });
@@ -176,6 +186,23 @@
       if (messaging) messaging.deleteToken().then(done, done); else done();
     } else if (d.cmd === 'notify') {
       showLocal(String(d.title || ''), String(d.body || ''), String(d.tag || ''));
+    } else if (d.cmd === 'session-get') {
+      // 「この端末でログインしたままにする」の情報（パスワードではなく、サーバーが発行した合鍵）
+      var saved = null;
+      try { saved = JSON.parse(localStorage.getItem(SESSION_KEY) || 'null'); } catch (err) {}
+      try { appWin.postMessage({ genbaHost: true, type: 'session', user: saved }, appOrigin); } catch (err) {}
+    } else if (d.cmd === 'session-save') {
+      try {
+        var u = d.user || {};
+        if (u.email && u.token) {
+          localStorage.setItem(SESSION_KEY, JSON.stringify({
+            email: String(u.email), token: String(u.token), userName: String(u.userName || ''),
+            isMaster: !!u.isMaster, canAddSite: !!u.canAddSite, canDaily: !!u.canDaily
+          }));
+        }
+      } catch (err) {}
+    } else if (d.cmd === 'session-clear') {
+      try { localStorage.removeItem(SESSION_KEY); } catch (err) {}
     } else if (d.cmd === 'badge') {
       try {
         if (d.count > 0 && navigator.setAppBadge) navigator.setAppBadge(d.count);

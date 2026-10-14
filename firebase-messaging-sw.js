@@ -11,6 +11,33 @@ if (FB) {
   firebase.messaging();
 }
 
+// 入口ページ自体（このサイトのファイル）を端末に保存しておき、次回からはすぐ表示する。
+// 保存してあるものを先に返し、裏で新しいものを取りに行って保存し直す（更新は次に開いたときに反映される）。
+// アプリ本体（Google 側）や Firebase の通信には手を出さない。
+var SHELL_CACHE = 'genba-shell-v1';
+self.addEventListener('fetch', function (event) {
+  var req = event.request;
+  if (req.method !== 'GET') return;
+  var url = new URL(req.url);
+  if (url.origin !== self.location.origin) return;
+  if (url.pathname.indexOf(new URL(self.registration.scope).pathname) !== 0) return;
+  event.respondWith(
+    caches.open(SHELL_CACHE).then(function (cache) {
+      return cache.match(req).then(function (hit) {
+        var fresh = fetch(req).then(function (res) {
+          if (res && res.ok) cache.put(req, res.clone());
+          return res;
+        }).catch(function (err) {
+          if (hit) return hit;
+          throw err;
+        });
+        if (hit) { event.waitUntil(fresh.catch(function () {})); return hit; }
+        return fresh;
+      });
+    })
+  );
+});
+
 self.addEventListener('install', function () { self.skipWaiting(); });
 self.addEventListener('activate', function (event) { event.waitUntil(self.clients.claim()); });
 
