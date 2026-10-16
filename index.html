@@ -31,6 +31,22 @@
   #askNotify button { display: block; width: 100%; padding: 12px; border-radius: 6px; font-size: 15px; font-weight: 700; cursor: pointer; }
   #askNotifyOk { background: #111; color: #fff; border: 1px solid #111; margin-bottom: 8px; }
   #askNotifyNo { background: #fff; color: #666; border: 1px solid #dcdcdc; }
+  /* 初めて開いたときの「ホーム画面に追加」案内 */
+  #guide { position: fixed; inset: 0; z-index: 6; display: none; align-items: flex-end; justify-content: center; background: rgba(17,17,17,.55); font-family: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Yu Gothic UI", Meiryo, sans-serif; }
+  #guide.show { display: flex; }
+  #guide .box { background: #fff; width: 100%; max-width: 440px; border-radius: 16px 16px 0 0; padding: 20px 18px calc(16px + env(safe-area-inset-bottom, 0px)); box-shadow: 0 -6px 24px rgba(0,0,0,.25); max-height: 92vh; overflow-y: auto; }
+  #guide .head { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
+  #guide .head img { width: 52px; height: 52px; border-radius: 12px; }
+  #guide h2 { margin: 0; font-size: 17px; }
+  #guide .sub { margin: 2px 0 0; font-size: 12.5px; color: #666; }
+  #guide ol { margin: 0 0 12px; padding: 12px 12px 12px 32px; background: #f5f7fa; border-radius: 10px; font-size: 15px; line-height: 1.9; }
+  #guide ol b { font-weight: 800; }
+  #guide .warn { background: #fff4e5; border: 1.5px solid #ffb74d; border-radius: 10px; padding: 10px 12px; font-size: 14px; line-height: 1.7; margin-bottom: 12px; }
+  #guide button { display: block; width: 100%; padding: 13px; border-radius: 8px; font-size: 15px; font-weight: 700; cursor: pointer; margin-top: 8px; }
+  #guideInstall { background: #111; color: #fff; border: 2px solid #111; }
+  #guideCopy { background: #fff; color: #111; border: 2px solid #111; }
+  #guideClose { background: #fff; color: #111; border: 1.5px solid #bdbdbd; }
+  #guideNever { background: none; border: none; color: #666; font-weight: 600; font-size: 13px; padding: 8px; }
   #help { position: fixed; right: 10px; bottom: calc(10px + env(safe-area-inset-bottom, 0px)); z-index: 3; display: none; background: rgba(17,17,17,.85); color: #fff; font: 600 12px -apple-system, BlinkMacSystemFont, "Hiragino Sans", Meiryo, sans-serif; padding: 8px 12px; border-radius: 18px; text-decoration: none; }
 </style>
 </head>
@@ -38,6 +54,26 @@
   <div id="splash"><img src="apple-touch-icon.png" alt=""><p>読み込んでいます…</p></div>
   <iframe id="app" title="現場管理システム" allow="camera; microphone; geolocation; clipboard-write; fullscreen"></iframe>
   <a id="help" href="guide.html">ホーム画面に追加する方法</a>
+  <div id="guide" role="dialog" aria-modal="true">
+    <div class="box">
+      <div class="head"><img src="apple-touch-icon.png" alt=""><div><h2>ホーム画面に追加してください</h2><p class="sub">追加すると、次からはアイコンを押すだけで開けます</p></div></div>
+      <div id="guideInApp" class="warn" style="display:none;">いま開いているのは <b>LINEなどのアプリの中の画面</b>です。ここではホーム画面に追加できません。<br>右上（または右下）のメニューから <b>「ブラウザで開く」</b>を選んでください（iPhoneは <b>Safari</b>、Androidは <b>Chrome</b>）。</div>
+      <ol id="guideIOS" style="display:none;">
+        <li>画面下（または上）の <b>共有ボタン</b>（□に↑のマーク）を押す</li>
+        <li>下にスクロールして <b>「ホーム画面に追加」</b>を押す</li>
+        <li>右上の <b>「追加」</b>を押す</li>
+      </ol>
+      <ol id="guideAndroid" style="display:none;">
+        <li>右上の <b>︙（メニュー）</b>を押す</li>
+        <li><b>「ホーム画面に追加」</b>または<b>「アプリをインストール」</b>を押す</li>
+        <li><b>「追加」</b>（または「インストール」）を押す</li>
+      </ol>
+      <button type="button" id="guideInstall" style="display:none;">ホーム画面に追加する</button>
+      <button type="button" id="guideCopy" style="display:none;">このページのURLをコピー</button>
+      <button type="button" id="guideClose">閉じる（あとで追加する）</button>
+      <button type="button" id="guideNever">次から表示しない</button>
+    </div>
+  </div>
   <div id="askNotify">
     <div class="box">
       <h2>🔔 お知らせを通知で受け取りますか？</h2>
@@ -57,14 +93,58 @@
   setTimeout(function () { splash.classList.add('hide'); }, 15000);
   frame.src = APP_URL;
 
-  // ホーム画面から開いていないときだけ、追加方法の案内ボタンを数秒表示
+  // ホーム画面から開いていないとき：初めて（「次から表示しない」を押すまで）は追加方法の案内を大きく出す。
+  // 案内を閉じたあとは、右下の小さな案内ボタンを数秒出す
   var fromHome = (window.navigator.standalone === true) ||
                  (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches);
-  if (!fromHome && /iPhone|iPad|iPod|Android/.test(navigator.userAgent)) {
+  var uaStr = navigator.userAgent;
+  var onPhone = /iPhone|iPad|iPod|Android/.test(uaStr) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  var inApp = /Line\/|FBAN|FBAV|Instagram|Twitter|MicroMessenger|; wv\)/i.test(uaStr);
+  var GUIDE_KEY = 'genbaGuideDone';
+  var installEvent = null;
+  window.addEventListener('beforeinstallprompt', function (e) {   // Android の Chrome：ボタン1つで追加できる
+    e.preventDefault();
+    installEvent = e;
+    var b = document.getElementById('guideInstall');
+    if (b) b.style.display = 'block';
+  });
+  function showHelpPill() {
     var help = document.getElementById('help');
     help.style.display = 'block';
     setTimeout(function () { help.style.display = 'none'; }, 12000);
   }
+  function closeGuide(never) {
+    document.getElementById('guide').classList.remove('show');
+    if (never) { try { localStorage.setItem(GUIDE_KEY, '1'); } catch (e) {} }
+    showHelpPill();
+  }
+  if (!fromHome && onPhone) {
+    var done = false;
+    try { done = localStorage.getItem(GUIDE_KEY) === '1'; } catch (e) {}
+    if (done) {
+      showHelpPill();
+    } else {
+      var isiOS = /iPhone|iPad|iPod/.test(uaStr) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+      document.getElementById(isiOS ? 'guideIOS' : 'guideAndroid').style.display = 'block';
+      if (inApp) {
+        document.getElementById('guideInApp').style.display = 'block';
+        if (navigator.clipboard) document.getElementById('guideCopy').style.display = 'block';
+      }
+      document.getElementById('guide').classList.add('show');
+    }
+  }
+  document.getElementById('guideClose').onclick = function () { closeGuide(false); };
+  document.getElementById('guideNever').onclick = function () { closeGuide(true); };
+  document.getElementById('guideInstall').onclick = function () {
+    if (!installEvent) return;
+    installEvent.prompt();
+    installEvent.userChoice.then(function (c) { if (c && c.outcome === 'accepted') closeGuide(true); installEvent = null; });
+  };
+  document.getElementById('guideCopy').onclick = function () {
+    var btn = this;
+    navigator.clipboard.writeText(location.href).then(function () { btn.textContent = 'コピーしました。Safari／Chrome に貼り付けて開いてください'; });
+  };
+  window.addEventListener('appinstalled', function () { try { localStorage.setItem(GUIDE_KEY, '1'); } catch (e) {} });
 
   /* =====================================================
      端末への通知（音付き）
