@@ -13,6 +13,13 @@
    ===================================================== */
 (function () {
   var API_URL = 'https://script.google.com/macros/s/AKfycbxmdHzLOVkPWdaOqJeeh4HI6rU7oNIOKIMocslD4_P9Pahip-XBjzHSk603hc-7YMOJww/exec';
+  // 画面の版（build.js が「Ver.年月日-その日の何回目」を入れる）。右上のログアウトの横に出す
+  var APP_VER = 'Ver.20261028-01';
+  window.GENBA_VER = APP_VER;
+  document.addEventListener('DOMContentLoaded', function () {
+    var el = document.getElementById('appVer');
+    if (el) el.textContent = APP_VER;
+  });
   var READ_TIMEOUT = 10000;   // 電波が弱くて返事が来ないとき、この時間で前の内容に切り替える
 
   // 電波がなくても受け付けて、あとで送る操作。prep：貯める前に引数を直す
@@ -208,7 +215,8 @@
       h += '<div style="display:flex;gap:8px;">' +
         (list.length ? '<button type="button" data-a="send" style="flex:1;padding:11px;border-radius:6px;border:1px solid #111;background:#111;color:#fff;font-weight:700;">今すぐ送る</button>' : '') +
         (failures.length ? '<button type="button" data-a="clear" style="flex:1;padding:11px;border-radius:6px;border:1px solid #bbb;background:#fff;font-weight:700;">確認した</button>' : '') +
-        '<button type="button" data-a="close" style="flex:1;padding:11px;border-radius:6px;border:1px solid #bbb;background:#fff;font-weight:700;">閉じる</button></div></div>';
+        '<button type="button" data-a="close" style="flex:1;padding:11px;border-radius:6px;border:1px solid #bbb;background:#fff;font-weight:700;">閉じる</button></div>' +
+        '<p style="margin:10px 0 0;font-size:11px;color:#888;text-align:right;">' + esc(APP_VER) + '</p></div>';
       bg.innerHTML = h;
       bg.onclick = function (e) {
         var a = e.target.getAttribute && e.target.getAttribute('data-a');
@@ -1078,6 +1086,7 @@
           <div>
             <span id="txtUserEmail" class="header-user-email"></span><br>
             <a href="javascript:void(0)" onclick="doLogout()" style="color: #888; text-decoration: underline;">ログアウト</a>
+            <span id="appVer" style="color: #888; font-size: 0.68rem; margin-left: 6px;"></span>   <!-- 画面の版（入口ページに置いた版だけ表示） -->
           </div>
           <!-- 設定画面へ移動するボタン（設定画面は今後追加） -->
           <button type="button" id="btnHeaderSettings" class="header-gear-btn" onclick="openSettingsPanel()" title="設定" aria-label="設定">
