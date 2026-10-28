@@ -29,7 +29,9 @@
   var QUEUED_MSG = '電波がないため、この端末に保存しました。電波が戻ったら自動で送ります。';
   var OFFLINE_MSG = '電波がないため、この操作はできません。電波のある所でもう一度やってください。';
 
-  function isRead(fn) { return /^(get|list|resume|translate)/.test(fn); }
+  // 角ダクト注文は電波がないと使わない（ユーザー指示 2026-10-28：電波無しで入力はできないに）。前の内容も出さない
+  var NO_CACHE = { getDenpyoApp: 1, listDenpyo: 1, getDenpyo: 1, getDuctSpecs: 1, getDenpyoPhotos: 1, getDenpyoFolders: 1 };
+  function isRead(fn) { return !NO_CACHE[fn] && /^(get|list|resume|translate)/.test(fn); }
   function newId() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 10); }
 
   /* ---------- 端末の中の保存場所（IndexedDB） ---------- */
@@ -165,6 +167,8 @@
     addComment: 'コメント', uploadSitePhotoToFolder: '写真', uploadSiteDocToFolder: '資料'
   };
   function setOffline(on) { if (offline !== on) { offline = on; render(); } }
+  // 画面から「今、電波がないか」を確かめる（角ダクト注文を開く前など）
+  window.genbaNetOffline = function () { return navigator.onLine === false || offline; };
   function refreshBadge() { qAll().then(function (l) { pending = l.length; render(); }); }
   function render() {
     if (!document.body) { document.addEventListener('DOMContentLoaded', render); return; }
@@ -2467,6 +2471,8 @@
     function openDenpyo() {
       var site = detailSiteName;
       if (!site || !currentUser) return;
+      // 電波がないときは開かない（入力しても保存できないため。ユーザー指示 2026-10-28）
+      if (window.genbaNetOffline && window.genbaNetOffline()) { uiAlert('電波がないため、角ダクト注文は使えません。電波のある所で開いてください。'); return; }
       var ov = document.getElementById('denpyoOverlay');
       if (!ov) { ov = document.createElement('div'); ov.id = 'denpyoOverlay'; document.body.appendChild(ov); }
       ov.innerHTML = '<div class="denpyo-loading">角ダクト注文を読み込んでいます…</div>';
