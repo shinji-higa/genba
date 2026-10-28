@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>現場管理テスト</title>
+<!-- ホーム画面アイコン（iPhone / Android） -->
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
+<link rel="icon" type="image/png" sizes="64x64" href="favicon.png">
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="現場管理テスト">
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
+<meta name="theme-color" content="#111111">
+<style>
+  html, body { margin: 0; padding: 0; height: 100%; background: #ffffff; overflow: hidden; }
+  /* アプリをこのページの中に全画面で表示（Googleの注意書きの帯が出ない） */
+  #app { position: fixed; left: 0; right: 0; bottom: 0; top: env(safe-area-inset-top, 0px); width: 100%; height: calc(100% - env(safe-area-inset-top, 0px)); border: 0; display: block; background: #ffffff; }
+  #splash { position: fixed; inset: 0; background: #000000; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 18px; z-index: 2; transition: opacity .3s; }
+  #splash img { width: 120px; height: 120px; border-radius: 24px; }
+  #splash p { color: #bbbbbb; font: 600 14px -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Yu Gothic UI", Meiryo, sans-serif; margin: 0; }
+  #splash.hide { opacity: 0; pointer-events: none; }
+  /* 通知の許可を求める確認画面 */
+  #askNotify { position: fixed; inset: 0; z-index: 5; display: none; align-items: center; justify-content: center; padding: 20px; background: rgba(17,17,17,.5); font-family: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Yu Gothic UI", Meiryo, sans-serif; }
+  #askNotify.show { display: flex; }
+  #askNotify .box { background: #fff; border-radius: 12px; width: 100%; max-width: 380px; padding: 22px 20px 18px; box-shadow: 0 10px 30px rgba(0,0,0,.3); }
+  #askNotify h2 { margin: 0 0 8px; font-size: 17px; }
+  #askNotify p { margin: 0 0 16px; font-size: 14px; line-height: 1.7; color: #444; }
+  #askNotify button { display: block; width: 100%; padding: 12px; border-radius: 6px; font-size: 15px; font-weight: 700; cursor: pointer; }
+  #askNotifyOk { background: #111; color: #fff; border: 1px solid #111; margin-bottom: 8px; }
+  #askNotifyNo { background: #fff; color: #666; border: 1px solid #dcdcdc; }
+  /* 初めて開いたときの「ホーム画面に追加」案内 */
+  #guide { position: fixed; inset: 0; z-index: 6; display: none; align-items: flex-end; justify-content: center; background: rgba(17,17,17,.55); font-family: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Yu Gothic UI", Meiryo, sans-serif; }
+  #guide.show { display: flex; }
+  #guide .box { background: #fff; width: 100%; max-width: 440px; border-radius: 16px 16px 0 0; padding: 20px 18px calc(16px + env(safe-area-inset-bottom, 0px)); box-shadow: 0 -6px 24px rgba(0,0,0,.25); max-height: 92vh; overflow-y: auto; }
+  #guide .head { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
+  #guide .head img { width: 52px; height: 52px; border-radius: 12px; }
+  #guide h2 { margin: 0; font-size: 17px; }
+  #guide .sub { margin: 2px 0 0; font-size: 12.5px; color: #666; }
+  #guide ol { margin: 0 0 12px; padding: 12px 12px 12px 32px; background: #f5f7fa; border-radius: 10px; font-size: 15px; line-height: 1.9; }
+  #guide ol b { font-weight: 800; }
+  #guide .warn { background: #fff4e5; border: 1.5px solid #ffb74d; border-radius: 10px; padding: 10px 12px; font-size: 14px; line-height: 1.7; margin-bottom: 12px; }
+  #guide button { display: block; width: 100%; padding: 13px; border-radius: 8px; font-size: 15px; font-weight: 700; cursor: pointer; margin-top: 8px; }
+  #guideInstall { background: #111; color: #fff; border: 2px solid #111; }
+  #guideCopy { background: #fff; color: #111; border: 2px solid #111; }
+  #guideClose { background: #fff; color: #111; border: 1.5px solid #bdbdbd; }
+  #guideNever { background: none; border: none; color: #666; font-weight: 600; font-size: 13px; padding: 8px; }
+  #help { position: fixed; right: 10px; bottom: calc(10px + env(safe-area-inset-bottom, 0px)); z-index: 3; display: none; background: rgba(17,17,17,.85); color: #fff; font: 600 12px -apple-system, BlinkMacSystemFont, "Hiragino Sans", Meiryo, sans-serif; padding: 8px 12px; border-radius: 18px; text-decoration: none; }
+</style>
+</head>
+<body>
+  <div id="splash"><img src="apple-touch-icon.png" alt=""><p>読み込んでいます…</p></div>
+  <iframe id="app" title="現場管理システム" allow="camera; microphone; geolocation; clipboard-write; fullscreen; web-share"></iframe>
+  <a id="help" href="guide.html">ホーム画面に追加する方法</a>
+  <div id="guide" role="dialog" aria-modal="true">
+    <div class="box">
+      <div class="head"><img src="apple-touch-icon.png" alt=""><div><h2>ホーム画面に追加してください</h2><p class="sub">追加すると、次からはアイコンを押すだけで開けます</p></div></div>
+      <div id="guideInApp" class="warn" style="display:none;">いま開いているのは <b>LINEなどのアプリの中の画面</b>です。ここではホーム画面に追加できません。<br>右上（または右下）のメニューから <b>「ブラウザで開く」</b>を選んでください（iPhoneは <b>Safari</b>、Androidは <b>Chrome</b>）。</div>
+      <ol id="guideIOS" style="display:none;">
+        <li>画面下（または上）の <b>共有ボタン</b>（□に↑のマーク）を押す</li>
+        <li>下にスクロールして <b>「ホーム画面に追加」</b>を押す</li>
+        <li>右上の <b>「追加」</b>を押す</li>
+      </ol>
+      <ol id="guideAndroid" style="display:none;">
+        <li>右上の <b>︙（メニュー）</b>を押す</li>
+        <li><b>「ホーム画面に追加」</b>または<b>「アプリをインストール」</b>を押す</li>
+        <li><b>「追加」</b>（または「インストール」）を押す</li>
+      </ol>
+      <button type="button" id="guideInstall" style="display:none;">ホーム画面に追加する</button>
+      <button type="button" id="guideCopy" style="display:none;">このページのURLをコピー</button>
+      <button type="button" id="guideClose">閉じる（あとで追加する）</button>
+      <button type="button" id="guideNever">次から表示しない</button>
+    </div>
+  </div>
+  <div id="askNotify">
+    <div class="box">
+      <h2>🔔 お知らせを通知で受け取りますか？</h2>
+      <p>報告・写真・資料・現場情報が追加／編集されたときに、この端末に音付きで通知します。<br>次に表示される確認で「許可」を選んでください。</p>
+      <button type="button" id="askNotifyOk">通知をオンにする</button>
+      <button type="button" id="askNotifyNo">あとで</button>
+    </div>
+  </div>
+<script src="firebase-config.js"></script>
+<script>
+  // ▼ 現場管理システム（Apps Script Webアプリ）のURL
+  var APP_URL = 'https://script.google.com/macros/s/AKfycbzVlXtdeBEba1Z1qhxOvSi9AOXs0LPfdSK_sXwBDf2eIhJKR6z7CdZ6yGIDiK9IIw7tAw/exec';
+
+  var frame = document.getElementById('app');
+  var splash = document.getElementById('splash');
+  frame.addEventListener('load', function () { splash.classList.add('hide'); });
+  setTimeout(function () { splash.classList.add('hide'); }, 15000);
+  frame.src = 'app.html';
+
+  // ホーム画面から開いていないとき：初めて（「次から表示しない」を押すまで）は追加方法の案内を大きく出す。
+  // 案内を閉じたあとは、右下の小さな案内ボタンを数秒出す
+  var fromHome = (window.navigator.standalone === true) ||
+                 (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches);
+  var uaStr = navigator.userAgent;
+  var onPhone = /iPhone|iPad|iPod|Android/.test(uaStr) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  var inApp = /Line\/|FBAN|FBAV|Instagram|Twitter|MicroMessenger|; wv\)/i.test(uaStr);
+  var GUIDE_KEY = 'genbaGuideDone';
+  var installEvent = null;
+  window.addEventListener('beforeinstallprompt', function (e) {   // Android の Chrome：ボタン1つで追加できる
+    e.preventDefault();
+    installEvent = e;
+    var b = document.getElementById('guideInstall');
+    if (b) b.style.display = 'block';
+  });
+  function showHelpPill() {
+    var help = document.getElementById('help');
+    help.style.display = 'block';
+    setTimeout(function () { help.style.display = 'none'; }, 12000);
+  }
+  function closeGuide(never) {
+    document.getElementById('guide').classList.remove('show');
+    if (never) { try { localStorage.setItem(GUIDE_KEY, '1'); } catch (e) {} }
+    showHelpPill();
+  }
+  if (!fromHome && onPhone) {
+    var done = false;
+    try { done = localStorage.getItem(GUIDE_KEY) === '1'; } catch (e) {}
+    if (done) {
+      showHelpPill();
+    } else {
+      var isiOS = /iPhone|iPad|iPod/.test(uaStr) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+      document.getElementById(isiOS ? 'guideIOS' : 'guideAndroid').style.display = 'block';
+      if (inApp) {
+        document.getElementById('guideInApp').style.display = 'block';
+        if (navigator.clipboard) document.getElementById('guideCopy').style.display = 'block';
+      }
+      document.getElementById('guide').classList.add('show');
+    }
+  }
+  document.getElementById('guideClose').onclick = function () { closeGuide(false); };
+  document.getElementById('guideNever').onclick = function () { closeGuide(true); };
+  document.getElementById('guideInstall').onclick = function () {
+    if (!installEvent) return;
+    installEvent.prompt();
+    installEvent.userChoice.then(function (c) { if (c && c.outcome === 'accepted') closeGuide(true); installEvent = null; });
+  };
+  document.getElementById('guideCopy').onclick = function () {
+    var btn = this;
+    navigator.clipboard.writeText(location.href).then(function () { btn.textContent = 'コピーしました。Safari／Chrome に貼り付けて開いてください'; });
+  };
+  window.addEventListener('appinstalled', function () { try { localStorage.setItem(GUIDE_KEY, '1'); } catch (e) {} });
+
+  /* =====================================================
+     端末への通知（音付き）
+     ・アプリ（中の画面）からの依頼を受けて、通知の許可・表示を行う
+     ・firebase-config.js に値が入っていれば、アプリを閉じていても届く通知（Firebase）も使う
+     ===================================================== */
+  var FB = (self.GENBA_FIREBASE && self.GENBA_FIREBASE.config && self.GENBA_FIREBASE.config.apiKey) ? self.GENBA_FIREBASE : null;
+  var FB_VER = '10.12.2';
+  var isIOS = /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  var supported = ('Notification' in window) && ('serviceWorker' in navigator);
+  var swReg = null, messaging = null, fcmToken = '';
+  var appWin = null, appOrigin = '';
+  var OFF_KEY = 'genbaNotifyOff';   // 「この端末の通知を止める」を押した印
+  var SESSION_KEY = 'genbaSession'; // 「この端末でログインしたままにする」の保存場所
+
+  function isOff() { try { return localStorage.getItem(OFF_KEY) === '1'; } catch (e) { return false; } }
+  function setOff(on) { try { if (on) localStorage.setItem(OFF_KEY, '1'); else localStorage.removeItem(OFF_KEY); } catch (e) {} }
+
+  function deviceLabel() {
+    var ua = navigator.userAgent;
+    var dev = isIOS ? 'iPhone/iPad' : (/Android/.test(ua) ? 'Android' : (/Windows/.test(ua) ? 'Windows PC' : (/Mac/.test(ua) ? 'Mac' : 'PC')));
+    var br = /Edg\//.test(ua) ? 'Edge' : (/Electron/.test(ua) ? 'アプリ' : (/Chrome\//.test(ua) ? 'Chrome' : (/Safari\//.test(ua) ? 'Safari' : '')));
+    return (dev + ' ' + br).trim();
+  }
+
+  function loadScript(src) {
+    return new Promise(function (resolve, reject) {
+      var s = document.createElement('script');
+      s.src = src; s.onload = resolve; s.onerror = function () { reject(new Error('読み込み失敗: ' + src)); };
+      document.head.appendChild(s);
+    });
+  }
+
+  function refreshToken() {
+    if (!messaging || !swReg || Notification.permission !== 'granted' || isOff()) { fcmToken = ''; return Promise.resolve(''); }
+    return messaging.getToken({ vapidKey: FB.vapidKey, serviceWorkerRegistration: swReg })
+      .then(function (t) { fcmToken = t || ''; return fcmToken; })
+      .catch(function (e) { console.warn('通知の登録に失敗:', e); fcmToken = ''; return ''; });
+  }
+
+  function showLocal(title, body, tag) {
+    if (!supported || Notification.permission !== 'granted' || isOff()) return;
+    var opt = { body: body || '', icon: 'icon-192.png', badge: 'icon-192.png', tag: tag || undefined, renotify: !!tag };
+    if (swReg && swReg.showNotification) {
+      swReg.showNotification(title || '現場管理システム', opt).catch(function () {});
+    } else {
+      try { new Notification(title || '現場管理システム', opt); } catch (e) {}
+    }
+  }
+
+  // アプリ本体の表示を優先し、通知用の部品（Firebase）はその後で読み込む（スマホの回線で取り合いにならないように）
+  var frameLoaded = new Promise(function (resolve) {
+    frame.addEventListener('load', resolve);
+    setTimeout(resolve, 6000);
+  });
+
+  // 準備（サービスワーカーの登録 → アプリ本体の表示を待つ → Firebase の読み込み）
+  var ready = !supported ? Promise.resolve() : navigator.serviceWorker.register('firebase-messaging-sw.js')
+    .then(function (reg) { swReg = reg; return navigator.serviceWorker.ready; })
+    .then(function () { return frameLoaded; })
+    .then(function () {
+      if (!FB) return;
+      return loadScript('https://www.gstatic.com/firebasejs/' + FB_VER + '/firebase-app-compat.js')
+        .then(function () { return loadScript('https://www.gstatic.com/firebasejs/' + FB_VER + '/firebase-messaging-compat.js'); })
+        .then(function () {
+          firebase.initializeApp(FB.config);
+          messaging = firebase.messaging();
+          // アプリを開いている最中に届いた分は、自分で通知を出す
+          messaging.onMessage(function (payload) {
+            var n = (payload && payload.notification) || {};
+            showLocal(n.title, n.body, (payload && payload.data && payload.data.noticeId) ? 'genba-' + payload.data.noticeId : '');
+            // アプリにも知らせて、お知らせ一覧と未読の数をすぐ更新させる
+            try { if (appWin) appWin.postMessage({ genbaHost: true, type: 'push' }, appOrigin); } catch (e) {}
+          });
+          return refreshToken();
+        });
+    })
+    .catch(function (e) { console.warn('通知の準備に失敗:', e); });
+
+  function sendStatus() {
+    if (!appWin) return;
+    var perm = !supported ? 'unsupported' : (isOff() && Notification.permission === 'granted' ? 'default' : Notification.permission);
+    try {
+      appWin.postMessage({
+        genbaHost: true, type: 'status', supported: supported, permission: perm,
+        token: (perm === 'granted') ? fcmToken : '', firebase: !!FB,
+        ios: isIOS, standalone: fromHome, label: deviceLabel()
+      }, appOrigin);
+    } catch (e) {}
+  }
+
+  var ask = document.getElementById('askNotify');
+  document.getElementById('askNotifyNo').addEventListener('click', function () { ask.classList.remove('show'); });
+  document.getElementById('askNotifyOk').addEventListener('click', function () {
+    ask.classList.remove('show');
+    setOff(false);
+    // ボタンを押した直後でないと、端末（特に iPhone）は許可の確認を出してくれない
+    var p;
+    try { p = Notification.requestPermission(); } catch (e) { p = null; }
+    Promise.resolve(p).then(function () { return refreshToken(); }).then(sendStatus, sendStatus);
+  });
+
+  window.addEventListener('message', function (e) {
+    // アプリ本体（Apps Script の画面）からの連絡だけを受け付ける
+    if (e.origin !== location.origin) return;
+    var d = e.data;
+    if (!d || d.genbaApp !== true) return;
+    appWin = e.source; appOrigin = e.origin;
+
+    if (d.cmd === 'status') {
+      ready.then(sendStatus);
+    } else if (d.cmd === 'enable') {
+      if (!supported) { sendStatus(); return; }
+      if (Notification.permission === 'denied') { sendStatus(); return; }
+      ask.classList.add('show');
+    } else if (d.cmd === 'disable') {
+      setOff(true);
+      var done = function () { fcmToken = ''; sendStatus(); };
+      if (messaging) messaging.deleteToken().then(done, done); else done();
+    } else if (d.cmd === 'notify') {
+      showLocal(String(d.title || ''), String(d.body || ''), String(d.tag || ''));
+    } else if (d.cmd === 'session-get') {
+      // 「この端末でログインしたままにする」の情報（パスワードではなく、サーバーが発行した合鍵）
+      var saved = null;
+      try { saved = JSON.parse(localStorage.getItem(SESSION_KEY) || 'null'); } catch (err) {}
+      try { appWin.postMessage({ genbaHost: true, type: 'session', user: saved }, appOrigin); } catch (err) {}
+    } else if (d.cmd === 'session-save') {
+      try {
+        var u = d.user || {};
+        if (u.email && u.token) {
+          localStorage.setItem(SESSION_KEY, JSON.stringify({
+            email: String(u.email), token: String(u.token), userName: String(u.userName || ''),
+            isMaster: !!u.isMaster, canAddSite: !!u.canAddSite, canDaily: !!u.canDaily
+          }));
+        }
+      } catch (err) {}
+    } else if (d.cmd === 'session-clear') {
+      try { localStorage.removeItem(SESSION_KEY); } catch (err) {}
+    } else if (d.cmd === 'badge') {
+      try {
+        if (d.count > 0 && navigator.setAppBadge) navigator.setAppBadge(d.count);
+        else if (navigator.clearAppBadge) navigator.clearAppBadge();
+      } catch (err) {}
+    }
+  });
+</script>
+</body>
+</html>
