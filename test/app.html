@@ -14,7 +14,7 @@
 (function () {
   var API_URL = 'https://script.google.com/macros/s/AKfycbxmdHzLOVkPWdaOqJeeh4HI6rU7oNIOKIMocslD4_P9Pahip-XBjzHSk603hc-7YMOJww/exec';
   // 画面の版（build.js が「Ver.年月日-その日の何回目」を入れる）。右上のログアウトの横に出す
-  var APP_VER = 'Ver.20261028-06';
+  var APP_VER = 'Ver.20261028-07';
   window.GENBA_VER = APP_VER;
   document.addEventListener('DOMContentLoaded', function () {
     var el = document.getElementById('appVer');
@@ -1137,6 +1137,11 @@
     .photo-card-name { font-size: 0.76rem; }
     .photo-card-actions { border-top: 1px solid #b5b5b5; background: #f1f2f4; }
     .btn-reload-icon { color: #222; }
+    /* 日報の「保存」：入力欄が画面に出ている間は、お知らせのボタンの上にいつも見えるように（ユーザー指示 2026-10-28） */
+    .daily-save-row { position: sticky; bottom: calc(64px + env(safe-area-inset-bottom, 0px)); z-index: 5; background: #ffffff; padding: 8px 0; margin-bottom: -8px; }
+    body.is-typing .daily-save-row { bottom: 0; }
+    /* タブ（現場詳細・報告…）：上の帯の高さ（文字の大きさで変わる）にぴったり合わせて止める（ユーザー指示 2026-10-28：下にずらすとタブが少し隠れる） */
+    .nav-tabs { top: var(--hdrH, 76px) !important; }
     /* 写真の枠の日付・名前は1行に（入りきらない分は「…」） */
     .photo-card > div:not(.photo-card-img-wrap):not(.photo-card-actions):not(.photo-card-check-wrap) { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-left: 3px; padding-right: 3px; }
     /* スマホの「文字のみ」一覧：名前が細切れに折り返さないよう、名前を1行目・ボタンを2行目に */
@@ -1696,7 +1701,7 @@
           <datalist id="dailySiteList"></datalist>
         </div>
         <div class="form-group"><label for="dailyMemo">メモ</label><textarea id="dailyMemo" class="auto-expand" placeholder="作業内容など（任意）"></textarea></div>
-        <div style="display: flex; gap: 8px;">
+        <div class="daily-save-row" style="display: flex; gap: 8px;">
           <button type="button" id="btnDailySave" class="btn btn-dark" style="flex: 1;" onclick="saveDaily()">この内容で保存</button>
           <button type="button" id="btnDailyDelete" class="btn btn-sub" style="display: none;" onclick="deleteDaily()">削除</button>
         </div>
@@ -7009,6 +7014,21 @@
       });
     }
     window.addEventListener('resize', function() { if (VW) viewerApplyScale(); });
+
+    // 上の帯（header）の高さを測って、タブが止まる位置（--hdrH）にする。帯の高さが変わるたびに合わせ直す
+    (function() {
+      var set = function() {
+        var h = document.querySelector('header');
+        if (h && h.offsetHeight) document.documentElement.style.setProperty('--hdrH', h.offsetHeight + 'px');
+      };
+      var start = function() {
+        set();
+        var h = document.querySelector('header');
+        if (h && window.ResizeObserver) new ResizeObserver(set).observe(h);
+        else window.addEventListener('resize', set);
+      };
+      if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start); else start();
+    })();
 
     /* 自分の現場の資料（PDF）を、電波のあるうちに端末へ取り込む（ユーザー指示 2026-10-28：自動で取り込む）
        ・入口ページに画面を置いた版だけ（window.genbaDocs がある）。開いてから少し待ち、裏で1件ずつ
