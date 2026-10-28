@@ -85,6 +85,21 @@ self.addEventListener('fetch', function (event) {
   );
 });
 
+// 画面から「最新の版にする」を頼まれたとき：入口ページと画面を取り直して保存し直してから返事をする（版の番号を押したとき）
+self.addEventListener('message', function (event) {
+  if (!event.data || !event.data.genbaRefresh) return;
+  var scope = self.registration.scope;
+  event.waitUntil(caches.open(SHELL_CACHE).then(function (cache) {
+    return Promise.all(['', 'index.html', 'app.html'].map(function (p) {
+      return fetch(scope + p, { cache: 'no-cache', credentials: 'same-origin' })
+        .then(function (res) { if (res.ok) return cache.put(scope + p, res); })
+        .catch(function () {});
+    }));
+  }).then(function () {
+    if (event.source) event.source.postMessage({ genbaRefreshed: true });
+  }));
+});
+
 function notifyUpdate() {
   self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(function (list) {
     list.forEach(function (c) { c.postMessage({ genbaUpdate: true }); });

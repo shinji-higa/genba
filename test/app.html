@@ -14,12 +14,30 @@
 (function () {
   var API_URL = 'https://script.google.com/macros/s/AKfycbxmdHzLOVkPWdaOqJeeh4HI6rU7oNIOKIMocslD4_P9Pahip-XBjzHSk603hc-7YMOJww/exec';
   // 画面の版（build.js が「Ver.年月日-その日の何回目」を入れる）。右上のログアウトの横に出す
-  var APP_VER = 'Ver.20261028-07';
+  var APP_VER = 'Ver.20261028-08';
   window.GENBA_VER = APP_VER;
   document.addEventListener('DOMContentLoaded', function () {
     var el = document.getElementById('appVer');
-    if (el) el.textContent = APP_VER;
+    if (!el) return;
+    el.textContent = APP_VER;
+    // 版の番号を押すと、最新の版を取り直して開き直す（ホーム画面から開くと再読み込みができないため。2026-10-28）
+    el.style.cursor = 'pointer';
+    el.style.textDecoration = 'underline';
+    el.title = '押すと最新の版にします';
+    el.onclick = refreshApp;
   });
+  function refreshApp() {
+    var el = document.getElementById('appVer');
+    if (el) el.textContent = '最新の版にしています…';
+    var reload = function () { try { window.top.location.reload(); } catch (e) { location.reload(); } };
+    var sw = navigator.serviceWorker && navigator.serviceWorker.controller;
+    if (!sw || navigator.onLine === false) { reload(); return; }
+    var t = setTimeout(reload, 8000);   // 返事が来なくても開き直す
+    navigator.serviceWorker.addEventListener('message', function (e) {
+      if (e.data && e.data.genbaRefreshed) { clearTimeout(t); reload(); }
+    });
+    sw.postMessage({ genbaRefresh: true });
+  }
   var READ_TIMEOUT = 10000;   // 電波が弱くて返事が来ないとき、この時間で前の内容に切り替える
 
   // 電波がなくても受け付けて、あとで送る操作。prep：貯める前に引数を直す
