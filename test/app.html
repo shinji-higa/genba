@@ -5,30 +5,217 @@
 /* =====================================================
    現場管理：Google（Apps Script）とのやり取りの窓口（2026-10-28）
    ・画面を端末に保存して開くときは google.script.run が無いので、同じ書き方で呼べる代わりを用意する
-   ・中身は Apps Script の doPost（Code.gs）を呼ぶだけ。呼び方・返ってくる形は google.script.run と同じ
+   ・中身は Apps Script の doPost（Code.gs）を呼ぶ。呼び方・返ってくる形は google.script.run と同じ
+   ・電波がないとき
+       見る操作（get・list など）：前に受け取った内容を返す
+       送る操作のうち QUEUE にあるもの：端末に貯めて、電波が戻ったら自動で送る（画面には { success:true, queued:true } を返す）
+       それ以外：「電波がないため、この操作はできません」で失敗にする
    ===================================================== */
 (function () {
   var API_URL = 'https://script.google.com/macros/s/AKfycbxmdHzLOVkPWdaOqJeeh4HI6rU7oNIOKIMocslD4_P9Pahip-XBjzHSk603hc-7YMOJww/exec';
+  var READ_TIMEOUT = 10000;   // 電波が弱くて返事が来ないとき、この時間で前の内容に切り替える
 
-  function call(fn, args, ok, ng, uo) {
-    fetch(API_URL, {
+  // 電波がなくても受け付けて、あとで送る操作。prep：貯める前に引数を直す
+  var QUEUE = {
+    addSiteReport: {},
+    saveHealthCheck: {},
+    saveDailyReport: {},
+    savePatrolDraft: {},
+    addComment: {},
+    // 写真・資料は、まとめての履歴記録・お知らせ（notifyFilesAdded）が送られないので、1件ずつサーバーで記録してもらう
+    uploadSitePhotoToFolder: { prep: function (a) { a[5] = false; } },
+    uploadSiteDocToFolder: { prep: function (a) { a[4] = false; } }
+  };
+  var QUEUED_MSG = '電波がないため、この端末に保存しました。電波が戻ったら自動で送ります。';
+  var OFFLINE_MSG = '電波がないため、この操作はできません。電波のある所でもう一度やってください。';
+
+  function isRead(fn) { return /^(get|list|resume|translate)/.test(fn); }
+  function newId() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 10); }
+
+  /* ---------- 端末の中の保存場所（IndexedDB） ---------- */
+  var dbp = null;
+  function db() {
+    if (dbp) return dbp;
+    dbp = new Promise(function (resolve, reject) {
+      var rq = indexedDB.open('genba-offline', 1);
+      rq.onupgradeneeded = function () {
+        var d = rq.result;
+        if (!d.objectStoreNames.contains('cache')) d.createObjectStore('cache');
+        if (!d.objectStoreNames.contains('queue')) d.createObjectStore('queue', { keyPath: 'qid' });
+      };
+      rq.onsuccess = function () { resolve(rq.result); };
+      rq.onerror = function () { reject(rq.error); };
+    });
+    return dbp;
+  }
+  function tx(store, mode, fn) {
+    return db().then(function (d) {
+      return new Promise(function (resolve, reject) {
+        var t = d.transaction(store, mode), s = t.objectStore(store), out;
+        var r = fn(s);
+        if (r) r.onsuccess = function () { out = r.result; };
+        t.oncomplete = function () { resolve(out); };
+        t.onerror = function () { reject(t.error); };
+      });
+    });
+  }
+  function cacheGet(k) { return tx('cache', 'readonly', function (s) { return s.get(k); }).catch(function () { return undefined; }); }
+  function cachePut(k, v) { return tx('cache', 'readwrite', function (s) { return s.put({ v: v, t: Date.now() }, k); }).catch(function () {}); }
+  function qAll() { return tx('queue', 'readonly', function (s) { return s.getAll(); }).then(function (a) { return (a || []).sort(function (x, y) { return x.t - y.t; }); }).catch(function () { return []; }); }
+  function qPut(item) { return tx('queue', 'readwrite', function (s) { return s.put(item); }); }
+  function qDel(qid) { return tx('queue', 'readwrite', function (s) { return s.delete(qid); }).catch(function () {}); }
+
+  /* ---------- Google への送信 ---------- */
+  function OfflineError() { var e = new Error(OFFLINE_MSG); e.offline = true; return e; }
+  function post(fn, args, qid) {
+    if (navigator.onLine === false) return Promise.reject(OfflineError());
+    var body = { fn: fn, args: args };
+    if (qid) body.qid = qid;   // 同じ送信を2回受け取っても、サーバーは1回分だけ処理する
+    return fetch(API_URL, {
       method: 'POST',
       // text/plain にすると、事前の問い合わせ（余分な往復）なしで送れる
       headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-      body: JSON.stringify({ fn: fn, args: args })
-    })
-      .then(function (r) {
-        if (!r.ok) throw new Error('通信エラー（' + r.status + '）');
-        return r.json();
-      })
-      .then(function (d) {
-        if (d && d.ok) { if (ok) ok(d.v, uo); return; }
-        if (ng) ng(new Error((d && d.m) || 'サーバーでエラーが発生しました。'), uo);
-      })
-      .catch(function (e) {
-        if (ng) ng(e instanceof Error ? e : new Error(String(e)), uo);
-      });
+      body: JSON.stringify(body)
+    }).then(function (r) {
+      if (!r.ok) throw new Error('通信エラー（' + r.status + '）');
+      return r.json();
+    }, function () { throw OfflineError(); }).then(function (d) {
+      if (d && d.ok) return d.v;
+      throw new Error((d && d.m) || 'サーバーでエラーが発生しました。');
+    });
   }
+
+  function call(fn, args, ok, ng, uo) {
+    var done = false;
+    function succeed(v) { if (done) return; done = true; if (ok) ok(v, uo); }
+    function fail(e) { if (done) return; done = true; if (ng) ng(e instanceof Error ? e : new Error(String(e)), uo); }
+
+    if (isRead(fn)) {
+      var key = fn + '|' + JSON.stringify(args);
+      var timer = setTimeout(function () {
+        cacheGet(key).then(function (c) { if (c) { setOffline(true); succeed(c.v); } });
+      }, READ_TIMEOUT);
+      post(fn, args).then(function (v) {
+        clearTimeout(timer); setOffline(false);
+        if (v && v.success !== false) cachePut(key, v);
+        succeed(v);
+      }, function (e) {
+        clearTimeout(timer);
+        if (!e.offline) { fail(e); return; }
+        setOffline(true);
+        cacheGet(key).then(function (c) { if (c) succeed(c.v); else fail(e); });
+      });
+      return;
+    }
+
+    var q = QUEUE[fn];
+    if (!q) {
+      post(fn, args).then(function (v) { setOffline(false); succeed(v); }, function (e) { if (e.offline) setOffline(true); fail(e); });
+      return;
+    }
+    var qid = newId();
+    var enqueue = function () {
+      var a = args.slice();
+      if (q.prep) q.prep(a);
+      return qPut({ qid: qid, fn: fn, args: a, t: Date.now() }).then(function () {
+        setOffline(true); refreshBadge();
+        succeed({ success: true, queued: true, message: QUEUED_MSG });
+      }, function () { fail(new Error('この端末に保存できませんでした。電波のある所でもう一度やってください。')); });
+    };
+    if (navigator.onLine === false) { enqueue(); return; }
+    post(fn, args, qid).then(function (v) { setOffline(false); succeed(v); }, function (e) { if (e.offline) enqueue(); else fail(e); });
+  }
+
+  /* ---------- 貯めた分を送る ---------- */
+  // 送れなかったものは、開き直しても消えないよう端末に残す（「確認した」で消える）
+  var FAIL_KEY = 'genbaQueueFailures';
+  var flushing = false, failures = [];
+  try { failures = JSON.parse(localStorage.getItem(FAIL_KEY) || '[]') || []; } catch (e) { failures = []; }
+  function saveFailures() { try { localStorage.setItem(FAIL_KEY, JSON.stringify(failures)); } catch (e) {} }
+  function flush() {
+    if (flushing || navigator.onLine === false) return;
+    flushing = true;
+    qAll().then(function (list) {
+      var i = 0;
+      var next = function () {
+        if (i >= list.length) { flushing = false; refreshBadge(); return; }
+        var it = list[i++];
+        post(it.fn, it.args, it.qid).then(function (v) {
+          setOffline(false);
+          if (v && v.success === false) { failures.push({ fn: it.fn, t: it.t, message: v.message || '送れませんでした' }); saveFailures(); }
+          else if (v && v.notifyToken) post('sendQueuedNotification', [v.notifyToken]).catch(function () {});
+          return qDel(it.qid).then(next);
+        }, function (e) {
+          if (e.offline) { setOffline(true); flushing = false; refreshBadge(); return; }   // また電波がない：あとでやり直す
+          failures.push({ fn: it.fn, t: it.t, message: e.message }); saveFailures();
+          qDel(it.qid).then(next);
+        });
+      };
+      next();
+    });
+  }
+  window.addEventListener('online', function () { setOffline(false); flush(); });
+  setInterval(function () { flush(); }, 30000);
+  setTimeout(flush, 3000);
+
+  /* ---------- 画面の表示（電波なし・未送信の件数） ---------- */
+  var offline = false, badge = null, pending = 0;
+  var FN_LABEL = {
+    addSiteReport: '報告', saveHealthCheck: '体調チェック', saveDailyReport: '日報', savePatrolDraft: 'パトロール（下書き）',
+    addComment: 'コメント', uploadSitePhotoToFolder: '写真', uploadSiteDocToFolder: '資料'
+  };
+  function setOffline(on) { if (offline !== on) { offline = on; render(); } }
+  function refreshBadge() { qAll().then(function (l) { pending = l.length; render(); }); }
+  function render() {
+    if (!document.body) { document.addEventListener('DOMContentLoaded', render); return; }
+    if (!badge) {
+      badge = document.createElement('button');
+      badge.type = 'button';
+      badge.id = 'offlineBadge';
+      badge.style.cssText = 'position:fixed;left:50%;transform:translateX(-50%);bottom:calc(64px + env(safe-area-inset-bottom,0px));z-index:3500;' +
+        'border:0;border-radius:18px;padding:8px 14px;font:700 13px -apple-system,BlinkMacSystemFont,"Hiragino Sans",Meiryo,sans-serif;' +
+        'color:#fff;box-shadow:0 2px 8px rgba(0,0,0,.3);display:none;max-width:92vw;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;';
+      badge.onclick = showList;
+      document.body.appendChild(badge);
+    }
+    var txt = [];
+    if (offline) txt.push('電波なし');
+    if (pending) txt.push('未送信 ' + pending + '件');
+    if (failures.length) txt.push('送れなかったもの ' + failures.length + '件');
+    badge.style.display = txt.length ? 'block' : 'none';
+    badge.style.background = failures.length ? '#c62828' : (pending ? '#b35c00' : '#444');
+    badge.textContent = txt.join('・') + (txt.length ? '（押すと詳しく）' : '');
+  }
+  function fmt(t) { var d = new Date(t); return (d.getMonth() + 1) + '/' + d.getDate() + ' ' + d.getHours() + ':' + ('0' + d.getMinutes()).slice(-2); }
+  function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
+  function showList() {
+    qAll().then(function (list) {
+      var bg = document.createElement('div');
+      bg.style.cssText = 'position:fixed;inset:0;z-index:3600;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;padding:16px;';
+      var h = '<div style="background:#fff;border-radius:10px;max-width:420px;width:100%;max-height:80vh;overflow:auto;padding:18px;font:14px/1.7 -apple-system,BlinkMacSystemFont,\'Hiragino Sans\',Meiryo,sans-serif;">';
+      if (offline) h += '<p style="margin:0 0 10px;"><b>電波がありません。</b><br>前に見た内容を表示しています。最新ではないことがあります。</p>';
+      h += '<p style="margin:0 0 6px;font-weight:700;">未送信（電波が戻ったら自動で送ります）：' + list.length + '件</p>';
+      h += list.length ? '<ul style="margin:0 0 10px 18px;padding:0;">' + list.map(function (x) { return '<li>' + esc(FN_LABEL[x.fn] || x.fn) + '（' + fmt(x.t) + '）</li>'; }).join('') + '</ul>' : '<p style="margin:0 0 10px;color:#555;">ありません</p>';
+      if (failures.length) {
+        h += '<p style="margin:0 0 6px;font-weight:700;color:#c62828;">送れなかったもの：' + failures.length + '件</p><ul style="margin:0 0 10px 18px;padding:0;color:#c62828;">' +
+          failures.map(function (x) { return '<li>' + esc(FN_LABEL[x.fn] || x.fn) + '（' + fmt(x.t) + '）：' + esc(x.message) + '</li>'; }).join('') + '</ul>' +
+          '<p style="margin:0 0 10px;font-size:12px;color:#555;">送れなかったものは、内容を確かめてもう一度入力してください。</p>';
+      }
+      h += '<div style="display:flex;gap:8px;">' +
+        (list.length ? '<button type="button" data-a="send" style="flex:1;padding:11px;border-radius:6px;border:1px solid #111;background:#111;color:#fff;font-weight:700;">今すぐ送る</button>' : '') +
+        (failures.length ? '<button type="button" data-a="clear" style="flex:1;padding:11px;border-radius:6px;border:1px solid #bbb;background:#fff;font-weight:700;">確認した</button>' : '') +
+        '<button type="button" data-a="close" style="flex:1;padding:11px;border-radius:6px;border:1px solid #bbb;background:#fff;font-weight:700;">閉じる</button></div></div>';
+      bg.innerHTML = h;
+      bg.onclick = function (e) {
+        var a = e.target.getAttribute && e.target.getAttribute('data-a');
+        if (e.target === bg || a === 'close') bg.remove();
+        else if (a === 'send') { bg.remove(); flush(); }
+        else if (a === 'clear') { failures = []; saveFailures(); bg.remove(); render(); }
+      };
+      document.body.appendChild(bg);
+    });
+  }
+  refreshBadge();
 
   // google.script.run と同じく、withSuccessHandler などをつないでから関数名で呼ぶ
   function runner(ok, ng, uo) {
@@ -3571,6 +3758,8 @@
           btn.disabled = false;
           btn.textContent = '報告を送信する';
           hideBanner('detailMsg');
+          // 電波がなく端末に貯めたとき（入口ページに画面を置いた版だけ）：電波が戻ったら自動で送られる
+          if (res.queued) { toggleReportForm(false); toast(res.message); return; }
           if (res.success) {
             sendNotify(res);
             toggleReportForm(false);
@@ -4108,6 +4297,7 @@
           btn.disabled = false;
           btn.textContent = T('この内容で保存');
           if (!res || !res.success) { alert((res && res.message) || '保存できませんでした。'); return; }
+          if (res.queued) { toast(res.message); return; }   // 電波がなく端末に貯めた（電波が戻ったら自動で送る）
           LS.set(dailyKey(res.year, res.month), res);
           if (daily.y === res.year && daily.m === res.month) { daily.data = res; renderDaily(); }
           // 通知は出さず、ボタンに少しだけ「保存しました」と出す
@@ -4522,6 +4712,8 @@
         btn.disabled = false;
         btn.textContent = label;
         if (!res || !res.success) { alert((res && res.message) || '保存できませんでした。'); return; }
+        // 電波がなく端末に貯めたとき：入力はそのまま残し、送られるのを待つ
+        if (res.queued) { health.dirty = false; toast(res.message); return; }
         sendNotify(res);
         health.editing = false;
         health.dirty = false;
@@ -6640,7 +6832,7 @@
         var site = currentDetailSite.siteName;
         var email = currentUser ? currentUser.email : '';
         var label = doc ? '資料' : '写真', unit = doc ? '件' : '枚';
-        var total = files.length, next = 0, active = 0, done = 0, ok = 0;
+        var total = files.length, next = 0, active = 0, done = 0, ok = 0, queued = 0;
         var errors = [], added = [];
 
         var progress = function() {
@@ -6655,9 +6847,11 @@
               .notifyFilesAdded(site, kind, folderName, added, cred(), comment);
             if (detailSiteName === site) expSaveCache(kind);
           }
-          var msg = (total === 1 && ok === 1)
+          var msg = (total === 1 && ok === 1 && added.length)
             ? label + '「' + added[0].name + '」を追加しました。'
-            : ok + unit + 'の' + label + 'を「' + folderName + '」へ追加しました。';
+            : (ok - queued) + unit + 'の' + label + 'を「' + folderName + '」へ追加しました。';
+          // 電波がなく端末に貯めた分（電波が戻ったら自動で送られる）
+          if (queued) msg = (ok - queued ? msg + '\n' : '') + queued + unit + 'の' + label + 'は電波がないため端末に保存しました。電波が戻ったら自動で送ります。';
           if (skipped) msg += '\n\n写真データ ' + skipped + ' 件は追加していません（「写真」タブから追加してください）。';
           if (errors.length) msg += '\n\n追加できなかった' + label + '（' + errors.length + unit + '）:\n' + errors.join('\n');
           if (skipped || errors.length) alert(msg); else toast(msg);
@@ -6666,6 +6860,7 @@
         var settle = function(file, res, errMsg, thumb) {
           if (res && res.success) {
             ok++;
+            if (res.queued) queued++;
             if (res.file) added.push(res.file);
             if (res.item) expInsertLocal(kind, site, folderId, res.item, thumb);
           } else {
@@ -8029,6 +8224,7 @@
         .withSuccessHandler(function(res) {
           btn.disabled = false;
           if (!res || !res.success) { alert('送信できませんでした: ' + ((res && res.message) || '')); return; }
+          if (res.queued) { ta.value = ''; autoGrowCm(ta); toast(res.message); return; }   // 電波がなく端末に貯めた
           sendNotify(res);
           ta.value = '';
           autoGrowCm(ta);
