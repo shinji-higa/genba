@@ -14,7 +14,7 @@
 (function () {
   var API_URL = 'https://script.google.com/macros/s/AKfycbxmdHzLOVkPWdaOqJeeh4HI6rU7oNIOKIMocslD4_P9Pahip-XBjzHSk603hc-7YMOJww/exec';
   // 画面の版（build.js が「Ver.年月日-その日の何回目」を入れる）。右上のログアウトの横に出す
-  var APP_VER = 'Ver.20261028-05';
+  var APP_VER = 'Ver.20261028-06';
   window.GENBA_VER = APP_VER;
   document.addEventListener('DOMContentLoaded', function () {
     var el = document.getElementById('appVer');
@@ -1137,11 +1137,13 @@
     .photo-card-name { font-size: 0.76rem; }
     .photo-card-actions { border-top: 1px solid #b5b5b5; background: #f1f2f4; }
     .btn-reload-icon { color: #222; }
+    /* 写真の枠の日付・名前は1行に（入りきらない分は「…」） */
+    .photo-card > div:not(.photo-card-img-wrap):not(.photo-card-actions):not(.photo-card-check-wrap) { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-left: 3px; padding-right: 3px; }
     /* スマホの「文字のみ」一覧：名前が細切れに折り返さないよう、名前を1行目・ボタンを2行目に */
     @media (max-width: 600px) {
       .photo-list-row { flex-wrap: wrap; row-gap: 6px; }
-      .photo-list-row > div:nth-last-child(2) { flex: 1 1 calc(100% - 32px); padding-right: 0 !important; }
-      .photo-list-row > div:last-child { flex: 1 1 100%; justify-content: flex-end; }
+      .photo-list-row > div:nth-last-child(2) { flex: 1 1 calc(100% - 32px) !important; padding-right: 0 !important; }   /* 元の書き方（flex:1）より優先 */
+      .photo-list-row > div:last-child { flex: 1 1 100% !important; justify-content: flex-end; }
     }
   </style>
 </head>
