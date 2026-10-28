@@ -47,6 +47,9 @@
   #guideCopy { background: #fff; color: #111; border: 2px solid #111; }
   #guideClose { background: #fff; color: #111; border: 1.5px solid #bdbdbd; }
   #guideNever { background: none; border: none; color: #666; font-weight: 600; font-size: 13px; padding: 8px; }
+  /* 新しい版が届いたときの案内（押すと入れ替え。2026-10-28） */
+  #updBar { position: fixed; left: 50%; transform: translateX(-50%); top: calc(8px + env(safe-area-inset-top, 0px)); z-index: 7; display: none; border: 0; border-radius: 20px; background: #111; color: #fff; font: 700 14px -apple-system, BlinkMacSystemFont, "Hiragino Sans", Meiryo, sans-serif; padding: 10px 18px; box-shadow: 0 3px 12px rgba(0,0,0,.35); cursor: pointer; white-space: nowrap; }
+  #updBar.show { display: block; }
   #help { position: fixed; right: 10px; bottom: calc(10px + env(safe-area-inset-bottom, 0px)); z-index: 3; display: none; background: rgba(17,17,17,.85); color: #fff; font: 600 12px -apple-system, BlinkMacSystemFont, "Hiragino Sans", Meiryo, sans-serif; padding: 8px 12px; border-radius: 18px; text-decoration: none; }
 </style>
 </head>
@@ -54,6 +57,7 @@
   <div id="splash"><img src="apple-touch-icon.png" alt=""><p>読み込んでいます…</p></div>
   <iframe id="app" title="現場管理システム" allow="camera; microphone; geolocation; clipboard-write; fullscreen; web-share"></iframe>
   <a id="help" href="guide.html">ホーム画面に追加する方法</a>
+  <button type="button" id="updBar" onclick="location.reload()">新しいVerがあります（押すと入れ替え）</button>
   <div id="guide" role="dialog" aria-modal="true">
     <div class="box">
       <div class="head"><img src="apple-touch-icon.png" alt=""><div><h2>ホーム画面に追加してください</h2><p class="sub">追加すると、次からはアイコンを押すだけで開けます</p></div></div>
@@ -91,7 +95,7 @@
   var splash = document.getElementById('splash');
   frame.addEventListener('load', function () { splash.classList.add('hide'); });
   setTimeout(function () { splash.classList.add('hide'); }, 15000);
-  frame.src = APP_URL;
+  frame.src = 'app.html';
 
   // ホーム画面から開いていないとき：初めて（「次から表示しない」を押すまで）は追加方法の案内を大きく出す。
   // 案内を閉じたあとは、右下の小さな案内ボタンを数秒出す
@@ -202,6 +206,13 @@
   });
 
   // 準備（サービスワーカーの登録 → アプリ本体の表示を待つ → Firebase の読み込み）
+  // 新しい版の画面が届いた（サービスワーカーから連絡が来る）：上に案内を出す
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.addEventListener('message', function (e) {
+      if (e.data && e.data.genbaUpdate) document.getElementById('updBar').classList.add('show');
+    });
+  }
+
   var ready = !supported ? Promise.resolve() : navigator.serviceWorker.register('firebase-messaging-sw.js')
     .then(function (reg) { swReg = reg; return navigator.serviceWorker.ready; })
     .then(function () { return frameLoaded; })
@@ -249,7 +260,7 @@
 
   window.addEventListener('message', function (e) {
     // アプリ本体（Apps Script の画面）からの連絡だけを受け付ける
-    if (!/^https:\/\/[a-z0-9-]+\.googleusercontent\.com$/.test(e.origin)) return;
+    if (e.origin !== location.origin) return;
     var d = e.data;
     if (!d || d.genbaApp !== true) return;
     appWin = e.source; appOrigin = e.origin;
