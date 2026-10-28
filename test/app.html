@@ -14,7 +14,7 @@
 (function () {
   var API_URL = 'https://script.google.com/macros/s/AKfycbxmdHzLOVkPWdaOqJeeh4HI6rU7oNIOKIMocslD4_P9Pahip-XBjzHSk603hc-7YMOJww/exec';
   // 画面の版（build.js が「Ver.年月日-その日の何回目」を入れる）。右上のログアウトの横に出す
-  var APP_VER = 'Ver.20261028-01';
+  var APP_VER = 'Ver.20261028-02';
   window.GENBA_VER = APP_VER;
   document.addEventListener('DOMContentLoaded', function () {
     var el = document.getElementById('appVer');
@@ -37,7 +37,8 @@
   var OFFLINE_MSG = '電波がないため、この操作はできません。電波のある所でもう一度やってください。';
 
   // 角ダクト注文は電波がないと使わない（ユーザー指示 2026-10-28：電波無しで入力はできないに）。前の内容も出さない
-  var NO_CACHE = { getDenpyoApp: 1, listDenpyo: 1, getDenpyo: 1, getDuctSpecs: 1, getDenpyoPhotos: 1, getDenpyoFolders: 1 };
+  // getDocFile は大きいので、ここではなく下の genbaDocs（資料の取り込み）に入れる
+  var NO_CACHE = { getDenpyoApp: 1, listDenpyo: 1, getDenpyo: 1, getDuctSpecs: 1, getDenpyoPhotos: 1, getDenpyoFolders: 1, getDocFile: 1 };
   function isRead(fn) { return !NO_CACHE[fn] && /^(get|list|resume|translate)/.test(fn); }
   function newId() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 10); }
 
@@ -46,11 +47,12 @@
   function db() {
     if (dbp) return dbp;
     dbp = new Promise(function (resolve, reject) {
-      var rq = indexedDB.open('genba-offline', 1);
+      var rq = indexedDB.open('genba-offline', 2);
       rq.onupgradeneeded = function () {
         var d = rq.result;
         if (!d.objectStoreNames.contains('cache')) d.createObjectStore('cache');
         if (!d.objectStoreNames.contains('queue')) d.createObjectStore('queue', { keyPath: 'qid' });
+        if (!d.objectStoreNames.contains('docs')) d.createObjectStore('docs', { keyPath: 'id' });   // 取り込んだ資料（PDF）
       };
       rq.onsuccess = function () { resolve(rq.result); };
       rq.onerror = function () { reject(rq.error); };
@@ -73,6 +75,28 @@
   function qAll() { return tx('queue', 'readonly', function (s) { return s.getAll(); }).then(function (a) { return (a || []).sort(function (x, y) { return x.t - y.t; }); }).catch(function () { return []; }); }
   function qPut(item) { return tx('queue', 'readwrite', function (s) { return s.put(item); }); }
   function qDel(qid) { return tx('queue', 'readwrite', function (s) { return s.delete(qid); }).catch(function () {}); }
+
+  // 取り込んだ資料の保存場所（画面から使う）。{ id, site, name, modified, size, data(base64), t }
+  window.genbaDocs = {
+    get: function (id) { return tx('docs', 'readonly', function (s) { return s.get(id); }); },
+    put: function (rec) { return tx('docs', 'readwrite', function (s) { return s.put(rec); }); },
+    del: function (id) { return tx('docs', 'readwrite', function (s) { return s.delete(id); }); },
+    // 中身（data）を除いた一覧
+    list: function () {
+      return db().then(function (d) {
+        return new Promise(function (resolve, reject) {
+          var out = [], rq = d.transaction('docs', 'readonly').objectStore('docs').openCursor();
+          rq.onsuccess = function () {
+            var c = rq.result;
+            if (!c) { resolve(out); return; }
+            var v = c.value; out.push({ id: v.id, site: v.site, name: v.name, modified: v.modified, size: v.size, t: v.t });
+            c.continue();
+          };
+          rq.onerror = function () { reject(rq.error); };
+        });
+      });
+    }
+  };
 
   /* ---------- Google への送信 ---------- */
   function OfflineError() { var e = new Error(OFFLINE_MSG); e.offline = true; return e; }
@@ -677,6 +701,26 @@
     .order-btn:disabled { background: #e4e4e6; border-color: #c4c4c8; color: #9a9a9e; cursor: not-allowed; }
     .order-btn:disabled .order-ic { filter: grayscale(1); opacity: 0.5; }
     .order-btn:disabled .order-s { color: #9a9a9e; }
+    /* 写真・資料を現場管理の中で開く画面（2026-10-28） */
+    #fileViewer { position: fixed; inset: 0; z-index: 3000; background: #111; color: #fff; display: none; flex-direction: column; }
+    #fileViewer.open { display: flex; }
+    .fv-bar { display: flex; align-items: center; gap: 8px; padding: 8px 10px; padding-top: calc(8px + env(safe-area-inset-top, 0px)); background: #000; flex-shrink: 0; }
+    .fv-btn { background: #3a3a3a; color: #fff; border: 0; border-radius: 6px; padding: 9px 13px; font-size: 0.9rem; font-weight: 700; text-decoration: none; cursor: pointer; flex-shrink: 0; }
+    .fv-title { flex: 1; min-width: 0; font-size: 0.85rem; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .fv-count { font-size: 0.78rem; color: #ccc; flex-shrink: 0; }
+    .fv-body { flex: 1; overflow: auto; -webkit-overflow-scrolling: touch; position: relative; }
+    .fv-wrap { display: flex; align-items: center; justify-content: center; }
+    .fv-wrap img { display: block; max-width: none; user-select: none; -webkit-user-drag: none; }
+    .fv-pages { padding: 8px 0; }
+    .fv-pages canvas { display: block; margin: 0 auto 8px; background: #fff; }
+    .fv-body iframe { width: 100%; height: 100%; border: 0; background: #fff; display: block; }
+    .fv-nav { position: absolute; top: 50%; transform: translateY(-50%); width: 44px; height: 64px; border: 0; border-radius: 8px; background: rgba(0,0,0,.5); color: #fff; font-size: 2rem; line-height: 1; cursor: pointer; z-index: 2; }
+    .fv-prev { left: 6px; }
+    .fv-next { right: 6px; }
+    .fv-zoom { position: absolute; right: 10px; bottom: calc(12px + env(safe-area-inset-bottom, 0px)); display: flex; gap: 8px; z-index: 2; }
+    .fv-zoom button { width: 48px; height: 44px; border: 0; border-radius: 8px; background: rgba(0,0,0,.65); color: #fff; font-size: 1.3rem; font-weight: 700; cursor: pointer; }
+    .fv-info { position: absolute; left: 10px; right: 130px; bottom: calc(12px + env(safe-area-inset-bottom, 0px)); font-size: 0.8rem; line-height: 1.5; color: #eee; text-shadow: 0 1px 3px #000; z-index: 2; pointer-events: none; }
+    .fv-msg { padding: 48px 20px; text-align: center; color: #ddd; line-height: 1.8; font-size: 0.9rem; }
     #denpyoOverlay { position: fixed; inset: 0; z-index: 2900; background: #ffffff; display: none; }
     #denpyoOverlay.open { display: block; }
     #denpyoOverlay .denpyo-frame { width: 100%; height: 100%; border: 0; display: block; }
@@ -2939,6 +2983,7 @@
       healthPortalStatus();
       if (res.patrols) setPatrolTasks(res.patrols);
       renderPortalSites();
+      docPrefetchStart();
     }
 
     // 前回のデータをすぐ表示し、裏で最新に更新（20秒以内に取得済みなら通信しない）
@@ -3287,7 +3332,7 @@
         var img = document.createElement('img');
         img.decoding = 'async';
         img.src = thumbUrl(url, 800);
-        img.onclick = function() { window.open(url, '_blank'); };
+        img.onclick = function() { viewerOpenUrl(url, label); };
         box.appendChild(img);
       } else {
         box.innerHTML = '<span style="font-size:0.78rem; color:var(--muted); font-weight:600;">' + label + ' なし</span>';
@@ -3624,7 +3669,7 @@
             var thumb = thumbUrl(r.imageLink, 800);
             imgHtml = '<div style="margin-top:10px;">' +
               '<div style="font-size:0.75rem; font-weight:700; color:var(--muted); margin-bottom:4px;">📷 添付写真</div>' +
-              '<img src="' + esc(thumb) + '" loading="lazy" decoding="async" style="max-width:100%; max-height:220px; object-fit:cover; border-radius:4px; border:1px solid var(--border); cursor:pointer; display:block;" onclick="window.open(\'' + esc(r.imageLink) + '\', \'_blank\')" title="タップで元の写真を開く">' +
+              '<img src="' + esc(thumb) + '" loading="lazy" decoding="async" style="max-width:100%; max-height:220px; object-fit:cover; border-radius:4px; border:1px solid var(--border); cursor:pointer; display:block;" onclick="viewerOpenUrl(\'' + esc(r.imageLink) + '\')" title="タップで写真を大きく表示">' +
               '</div>';
           }
         }
@@ -6555,7 +6600,7 @@
         el.innerHTML =
           (sel ? '<input type="checkbox" class="bulk-checkbox" ' + (checked ? 'checked' : '') + ' onchange="expToggleSelect(' + K + ', event)">' : '') +
           '<div style="overflow:hidden; text-overflow:ellipsis; flex:1; padding-right:8px; cursor:' + (sel ? 'pointer' : 'default') + ';"' + (sel ? ' onclick="expToggleSelect(' + K + ')"' : '') + '>' +
-            '<a href="' + esc(it.viewUrl) + '" target="_blank" rel="noopener noreferrer" style="color:var(--link-blue); text-decoration:underline;"' + (sel ? ' onclick="event.stopPropagation()"' : '') + '>' + (doc ? '📄 ' : '📷 ') + esc(it.name) + '</a>' +
+            '<a href="' + esc(it.viewUrl) + '" target="_blank" rel="noopener noreferrer" style="color:var(--link-blue); text-decoration:underline;"' + (sel ? ' onclick="event.stopPropagation()"' : ' onclick="expOpen(' + K + '); return false;"') + '>' + (doc ? '📄 ' : '📷 ') + esc(it.name) + '</a>' +
             '<span style="font-size:0.72rem; color:var(--muted); margin-left:8px;">' + esc(it.dateStr) + '</span>' +
             (it.author ? '<span style="font-size:0.72rem; color:var(--muted); margin-left:6px;">👤 ' + esc(it.author) + '</span>' : '') +
             ((!doc && it.comment) ? '<div class="ph-cm" style="font-size:0.75rem; color:var(--muted); margin-top:2px;">💬 ' + esc(it.comment) + '</div>' : '') +
@@ -6626,9 +6671,365 @@
     function renderCurrentFolderPhotos() { expRender('photo'); }
     function renderCurrentFolderDocs() { expRender('doc'); }
 
+    /* =====================================================
+       写真・資料を現場管理の中で開く（ユーザー指示 2026-10-28：Google ドライブの画面に移らない）
+       ・写真：大きく表示。指2本・＋－で拡大、拡大していないときは左右にずらすと前後の写真、✕で戻る
+       ・資料：PDF はこの画面の中に出す（pdf.js）。端末に取り込んだ資料（window.genbaDocs）があれば電波がなくても開ける
+               PDF 以外は Google ドライブの表示画面を中に出す（電波が必要）
+       ===================================================== */
+    var VW = null;   // 開いているもの { kind, list, index, scale, pdf }
+    var PDFJS_URL = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js';
+    var PDFJS_WORKER = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
     function expOpen(kind, id) {
       var f = expFind(kind, id);
-      if (f && f.item.viewUrl) window.open(f.item.viewUrl, '_blank');
+      if (!f) return;
+      var c = expCfg(kind);
+      var list = f.list.slice().sort(function(a, b) { return c.sortOrder === 'newest' ? (b.updated - a.updated) : (a.updated - b.updated); });
+      viewerOpen(kind, list, list.indexOf(f.item));
+    }
+    // 報告・現場情報の画像など、一覧に無い写真を1枚だけ開く
+    function viewerOpenUrl(url, label) {
+      viewerOpen('photo', [{ id: driveIdOf(url), name: label || '写真', viewUrl: url, thumbUrl: thumbUrl(url, 800) }], 0);
+    }
+    function driveIdOf(link) {
+      var m = String(link || '').match(/\/d\/([a-zA-Z0-9_-]+)/) || String(link || '').match(/id=([a-zA-Z0-9_-]+)/);
+      return m ? m[1] : '';
+    }
+    function viewerIsOffline() { return !!(window.genbaNetOffline && window.genbaNetOffline()); }
+
+    function viewerOpen(kind, list, index) {
+      if (!list.length) return;
+      var v = document.getElementById('fileViewer');
+      if (!v) {
+        v = document.createElement('div');
+        v.id = 'fileViewer';
+        v.innerHTML =
+          '<div class="fv-bar"><button type="button" class="fv-btn" onclick="viewerClose()" aria-label="閉じる">✕</button>' +
+          '<div class="fv-title" id="fvTitle"></div><span class="fv-count" id="fvCount"></span>' +
+          '<a class="fv-btn" id="fvExt" target="_blank" rel="noopener noreferrer">ドライブで開く</a></div>' +
+          '<div class="fv-body" id="fvBody"></div>' +
+          '<button type="button" class="fv-nav fv-prev" id="fvPrev" onclick="viewerStep(-1)" aria-label="前へ">‹</button>' +
+          '<button type="button" class="fv-nav fv-next" id="fvNext" onclick="viewerStep(1)" aria-label="次へ">›</button>' +
+          '<div class="fv-zoom"><button type="button" onclick="viewerZoomBy(1 / 1.5)" aria-label="縮小">－</button><button type="button" onclick="viewerZoomBy(1.5)" aria-label="拡大">＋</button></div>' +
+          '<div class="fv-info" id="fvInfo"></div>';
+        document.body.appendChild(v);
+        viewerTouch(document.getElementById('fvBody'));
+      }
+      VW = { kind: kind, list: list, index: Math.max(0, index), scale: 1 };
+      v.classList.add('open');
+      document.body.style.overflow = 'hidden';
+      viewerShow();
+    }
+    function viewerClose() {
+      var v = document.getElementById('fileViewer');
+      if (v) { v.classList.remove('open'); document.getElementById('fvBody').innerHTML = ''; }
+      document.body.style.overflow = '';
+      if (VW && VW.pdf) { try { VW.pdf.destroy(); } catch (e) {} }
+      VW = null;
+    }
+    function viewerStep(d) {
+      if (!VW) return;
+      var i = VW.index + d;
+      if (i < 0 || i >= VW.list.length) return;
+      if (VW.pdf) { try { VW.pdf.destroy(); } catch (e) {} VW.pdf = null; }
+      VW.index = i; VW.scale = 1;
+      viewerShow();
+    }
+    function viewerShow() {
+      var it = VW.list[VW.index], n = VW.list.length;
+      document.getElementById('fvTitle').textContent = it.name || '';
+      document.getElementById('fvCount').textContent = n > 1 ? (VW.index + 1) + ' / ' + n : '';
+      document.getElementById('fvPrev').style.display = (n > 1 && VW.index > 0) ? '' : 'none';
+      document.getElementById('fvNext').style.display = (n > 1 && VW.index < n - 1) ? '' : 'none';
+      var ext = document.getElementById('fvExt');
+      ext.href = it.viewUrl || '#';
+      ext.style.display = (it.viewUrl && !viewerIsOffline()) ? '' : 'none';
+      var info = [];
+      if (it.dateStr) info.push(it.dateStr);
+      if (it.author) info.push('👤 ' + it.author);
+      var infoEl = document.getElementById('fvInfo');
+      infoEl.textContent = info.join('　') + (it.comment ? '\n💬 ' + it.comment : '');
+      infoEl.style.whiteSpace = 'pre-line';
+      if (VW.kind === 'doc') viewerShowDoc(it); else viewerShowPhoto(it);
+    }
+
+    // ---- 写真 ----
+    function viewerShowPhoto(it) {
+      var body = document.getElementById('fvBody');
+      body.innerHTML = '<div class="fv-wrap" id="fvWrap"><img id="fvImg" alt=""></div>';
+      var img = document.getElementById('fvImg');
+      // 大きい画像 → 電波がないときは一覧で表示した小さい画像（端末に残っている）
+      var id = it.id || driveIdOf(it.viewUrl);
+      var tries = [];
+      if (id) tries.push('https://drive.google.com/thumbnail?id=' + id + '&sz=w2000');
+      if (it.thumbUrl) tries.push(photoThumbSrc(it, (expCfg('photo') || {}).viewMode), it.thumbUrl);
+      var k = 0;
+      img.onerror = function() {
+        k++;
+        if (k < tries.length) { img.src = tries[k]; return; }
+        body.innerHTML = '<div class="fv-msg">' + (viewerIsOffline() ? '電波がないため、この写真は表示できません。<br>電波のある所で一度開くと、次からは電波がなくても見られます。' : '写真を表示できませんでした。') + '</div>';
+      };
+      img.onload = function() { VW.natW = img.naturalWidth; VW.natH = img.naturalHeight; viewerApplyScale(); };
+      img.src = tries[0] || '';
+    }
+
+    // ---- 資料 ----
+    function viewerShowDoc(it) {
+      var body = document.getElementById('fvBody');
+      var isPdf = docIsPdf(it);
+      var id = it.id || driveIdOf(it.viewUrl);
+      if (!isPdf) {
+        if (viewerIsOffline()) { body.innerHTML = '<div class="fv-msg">電波がないため、この資料は開けません。<br>（電波がなくても開けるのは PDF の資料だけです）</div>'; return; }
+        body.innerHTML = '<iframe src="https://drive.google.com/file/d/' + encodeURIComponent(id) + '/preview" allow="autoplay"></iframe>';
+        return;
+      }
+      body.innerHTML = '<div class="fv-msg">資料を読み込んでいます…</div>';
+      var cur = VW;
+      docBytes(it, detailSiteName).then(function(b64) {
+        if (VW !== cur) return;
+        return pdfOpen(b64).then(function(pdf) {
+          if (VW !== cur) { pdf.destroy(); return; }
+          VW.pdf = pdf;
+          pdfDraw();
+        });
+      }).catch(function(e) {
+        if (VW !== cur) return;
+        body.innerHTML = '<div class="fv-msg">' + esc((e && e.message) || '資料を開けませんでした。') + '</div>';
+      });
+    }
+    // PDF として開ける資料（PDF と、Google のドキュメント・スプレッドシート・スライド。後の3つはサーバーで PDF にして受け取る）
+    function docIsPdf(it) {
+      var m = String(it.mime || '');
+      return /pdf/i.test(m) || /\.pdf$/i.test(it.name || '') || /^application\/vnd\.google-apps\.(document|spreadsheet|presentation)$/.test(m);
+    }
+    // 資料の中身（base64）。端末に取り込んだものが最新ならそれを使い、古ければ取り直す。電波がなければ古くても使う
+    function docBytes(it, site) {
+      var st = window.genbaDocs;
+      return (st ? st.get(it.id).catch(function() { return null; }) : Promise.resolve(null)).then(function(rec) {
+        if (rec && (viewerIsOffline() || (rec.modified || 0) >= (it.updated || 0))) return rec.data;
+        return new Promise(function(resolve, reject) {
+          google.script.run
+            .withSuccessHandler(function(r) {
+              if (!r || !r.success) { if (rec) resolve(rec.data); else reject(new Error((r && r.message) || '資料を開けませんでした。')); return; }
+              if (st) st.put({ id: it.id, site: site, name: r.name, modified: r.modified, size: r.size, data: r.data, t: Date.now() }).catch(function() {});
+              resolve(r.data);
+            })
+            .withFailureHandler(function(e) {
+              if (rec) resolve(rec.data);
+              else reject(new Error(viewerIsOffline() ? '電波がないため、この資料は開けません。電波のある所で一度開くか、自動の取り込みが終わると、電波がなくても開けます。' : '資料を開けませんでした：' + e.message));
+            })
+            .getDocFile(site, it.id, cred());
+        });
+      });
+    }
+    var pdfjsP = null;
+    function loadPdfJs() {
+      if (pdfjsP) return pdfjsP;
+      pdfjsP = new Promise(function(resolve, reject) {
+        var s = document.createElement('script');
+        s.src = PDFJS_URL;
+        s.onload = function() { resolve(window.pdfjsLib); };
+        s.onerror = function() { reject(new Error('PDFを表示する部品を読み込めませんでした。電波のある所で一度開いてください。')); };
+        document.head.appendChild(s);
+      }).then(function(lib) {
+        // 作業用の部品は自分で受け取って渡す（端末に残した分を使えるので、電波がなくても動く）
+        return fetch(PDFJS_WORKER).then(function(r) { return r.text(); }).then(function(t) {
+          lib.GlobalWorkerOptions.workerSrc = URL.createObjectURL(new Blob([t], { type: 'text/javascript' }));
+          return lib;
+        });
+      });
+      pdfjsP.catch(function() { pdfjsP = null; });
+      return pdfjsP;
+    }
+    function pdfOpen(b64) {
+      return loadPdfJs().then(function(lib) {
+        var bin = atob(b64), bytes = new Uint8Array(bin.length);
+        for (var i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+        return lib.getDocument({ data: bytes }).promise;
+      });
+    }
+    // 全ページを並べて描く。拡大したときは描き直して文字をくっきりさせる
+    function pdfDraw() {
+      var body = document.getElementById('fvBody');
+      var wrap = document.createElement('div');
+      wrap.className = 'fv-pages';
+      wrap.id = 'fvPages';
+      body.innerHTML = '';
+      body.appendChild(wrap);
+      var pdf = VW.pdf, chain = Promise.resolve();
+      VW.pageW = [];
+      for (var p = 1; p <= pdf.numPages; p++) {
+        (function(no) {
+          chain = chain.then(function() {
+            if (!VW || VW.pdf !== pdf) return;
+            return pdf.getPage(no).then(function(page) {
+              var c = document.createElement('canvas');
+              c.setAttribute('data-p', no);
+              VW.pageW[no] = page.getViewport({ scale: 1 }).width;
+              wrap.appendChild(c);
+              return pdfPaint(page, c);
+            });
+          });
+        })(p);
+      }
+    }
+    function pdfFitW() { return Math.max(100, document.getElementById('fvBody').clientWidth - 16); }
+    function pdfPaint(page, c) {
+      var cssW = pdfFitW() * VW.scale;
+      var vp1 = page.getViewport({ scale: 1 });
+      var dpr = Math.min(window.devicePixelRatio || 1, 2);
+      var res = Math.min(cssW * dpr, 4000) / vp1.width;   // 大きすぎる絵は作らない（スマホのメモリ）
+      var vp = page.getViewport({ scale: res });
+      c.width = Math.round(vp.width); c.height = Math.round(vp.height);
+      c.style.width = cssW + 'px';
+      c.style.height = (cssW * vp1.height / vp1.width) + 'px';
+      return page.render({ canvasContext: c.getContext('2d'), viewport: vp }).promise;
+    }
+    var pdfRepaintTimer = null;
+    function pdfRepaint() {
+      clearTimeout(pdfRepaintTimer);
+      pdfRepaintTimer = setTimeout(function() {
+        if (!VW || !VW.pdf) return;
+        var pdf = VW.pdf, cs = document.querySelectorAll('#fvPages canvas'), chain = Promise.resolve();
+        Array.prototype.forEach.call(cs, function(c) {
+          chain = chain.then(function() { if (VW && VW.pdf === pdf) return pdf.getPage(+c.getAttribute('data-p')).then(function(pg) { return pdfPaint(pg, c); }); });
+        });
+      }, 350);
+    }
+
+    // ---- 拡大・縮小・前後の移動（指の操作） ----
+    function viewerApplyScale() {
+      if (!VW) return;
+      var body = document.getElementById('fvBody');
+      if (VW.kind === 'photo') {
+        var img = document.getElementById('fvImg'), wrap = document.getElementById('fvWrap');
+        if (!img || !VW.natW) return;
+        var fit = Math.min(body.clientWidth / VW.natW, body.clientHeight / VW.natH);
+        var w = VW.natW * fit * VW.scale, h = VW.natH * fit * VW.scale;
+        img.style.width = w + 'px'; img.style.height = h + 'px';
+        wrap.style.width = Math.max(w, body.clientWidth) + 'px';
+        wrap.style.height = Math.max(h, body.clientHeight) + 'px';
+      } else if (VW.pdf) {
+        var cssW = pdfFitW() * VW.scale;
+        Array.prototype.forEach.call(document.querySelectorAll('#fvPages canvas'), function(c) {
+          var r = c.height / c.width;
+          c.style.width = cssW + 'px'; c.style.height = (cssW * r) + 'px';
+        });
+        pdfRepaint();
+      }
+    }
+    // cx, cy：拡大の中心（画面上の位置）。そこが動かないように見る位置を合わせる
+    function viewerSetScale(s, cx, cy) {
+      if (!VW) return;
+      var body = document.getElementById('fvBody');
+      s = Math.max(1, Math.min(6, s));
+      var old = VW.scale;
+      if (cx == null) { cx = body.clientWidth / 2; cy = body.clientHeight / 2; }
+      var px = (body.scrollLeft + cx) / old, py = (body.scrollTop + cy) / old;
+      VW.scale = s;
+      viewerApplyScale();
+      body.scrollLeft = px * s - cx;
+      body.scrollTop = py * s - cy;
+    }
+    function viewerZoomBy(f) { if (VW) viewerSetScale(VW.scale * f); }
+    function viewerTouch(body) {
+      var t0 = null, pinch = null, lastTap = 0;
+      body.addEventListener('touchstart', function(e) {
+        if (!VW) return;
+        if (e.touches.length === 2) {
+          var a = e.touches[0], b = e.touches[1], r = body.getBoundingClientRect();
+          pinch = { d: Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY), s: VW.scale, cx: (a.clientX + b.clientX) / 2 - r.left, cy: (a.clientY + b.clientY) / 2 - r.top };
+          t0 = null;
+        } else if (e.touches.length === 1) {
+          t0 = { x: e.touches[0].clientX, y: e.touches[0].clientY, t: Date.now() };
+        }
+      }, { passive: true });
+      body.addEventListener('touchmove', function(e) {
+        if (!pinch || e.touches.length !== 2) return;
+        e.preventDefault();
+        var a = e.touches[0], b = e.touches[1];
+        viewerSetScale(pinch.s * Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY) / pinch.d, pinch.cx, pinch.cy);
+      }, { passive: false });
+      body.addEventListener('touchend', function(e) {
+        if (pinch) { if (e.touches.length < 2) pinch = null; return; }
+        if (!t0 || !VW) return;
+        var p = e.changedTouches[0], dx = p.clientX - t0.x, dy = p.clientY - t0.y;
+        // 拡大していない写真：左右にずらすと前後の写真へ
+        if (VW.kind === 'photo' && VW.scale === 1 && Math.abs(dx) > 60 && Math.abs(dy) < 60) { viewerStep(dx < 0 ? 1 : -1); t0 = null; return; }
+        // 写真をすばやく2回たたくと拡大・元に戻す
+        if (VW.kind === 'photo' && Math.abs(dx) < 10 && Math.abs(dy) < 10) {
+          var now = Date.now();
+          if (now - lastTap < 300) {
+            var r = body.getBoundingClientRect();
+            viewerSetScale(VW.scale > 1 ? 1 : 2.5, p.clientX - r.left, p.clientY - r.top);
+            lastTap = 0;
+          } else lastTap = now;
+        }
+        t0 = null;
+      });
+    }
+    window.addEventListener('resize', function() { if (VW) viewerApplyScale(); });
+
+    /* 自分の現場の資料（PDF）を、電波のあるうちに端末へ取り込む（ユーザー指示 2026-10-28：自動で取り込む）
+       ・入口ページに画面を置いた版だけ（window.genbaDocs がある）。開いてから少し待ち、裏で1件ずつ
+       ・対象は完了していない現場。新しくなった資料だけ取り直し、一覧から無くなった資料は端末から消す */
+    var DOC_PREFETCH_FLOWS = ['作業前', '進行中', '完了調整中'];
+    var DOC_PREFETCH_MAX = 300;   // 1回に取り込む件数の上限（開くたびに続きを取り込む）
+    var docPrefetchStarted = false;
+    function docPrefetchStart() {
+      if (docPrefetchStarted || !window.genbaDocs || !currentUser) return;
+      docPrefetchStarted = true;
+      setTimeout(docPrefetchRun, 20000);
+    }
+    function docPrefetchRun() {
+      var st = window.genbaDocs;
+      if (!currentUser || viewerIsOffline()) { docPrefetchStarted = false; return; }
+      var sites = allSites.filter(function(s) { return DOC_PREFETCH_FLOWS.indexOf(s.flow || '作業前') !== -1; }).map(function(s) { return s.siteName; });
+      loadPdfJs().catch(function() {});   // PDF を描く部品も、電波のあるうちに端末へ
+      var got = 0, keep = {}, complete = true, si = 0;
+      st.list().then(function(have) {
+        var haveMap = {};
+        have.forEach(function(h) { haveMap[h.id] = h; });
+        var stop = function() { docPrefetchStarted = false; };   // 電波が切れた：次に現場一覧を出したときに続きから
+        var cleanup = function() {
+          if (!complete) return;
+          // 取り込み対象の現場の一覧に無くなった資料（削除・完了した現場）は端末から消して容量を空ける
+          have.forEach(function(h) { if (!keep[h.id]) st.del(h.id).catch(function() {}); });
+        };
+        var nextSite = function() {
+          if (si >= sites.length || !currentUser) { cleanup(); return; }
+          if (viewerIsOffline()) { stop(); return; }
+          var site = sites[si++];
+          google.script.run
+            .withSuccessHandler(function(res) {
+              if (!res || !res.success) { complete = false; nextSite(); return; }
+              var items = [];
+              Object.keys(res.foldersMap || {}).forEach(function(fid) {
+                (res.foldersMap[fid].docs || []).forEach(function(d) { if (docIsPdf(d)) { items.push(d); keep[d.id] = true; } });
+              });
+              var i = 0;
+              var nextDoc = function() {
+                if (i >= items.length) { nextSite(); return; }
+                if (got >= DOC_PREFETCH_MAX) { complete = false; return; }
+                var d = items[i++], h = haveMap[d.id];
+                if (h && (h.modified || 0) >= (d.updated || 0)) { nextDoc(); return; }
+                got++;
+                google.script.run
+                  .withSuccessHandler(function(r) {
+                    if (r && r.success) st.put({ id: d.id, site: site, name: r.name, modified: r.modified, size: r.size, data: r.data, t: Date.now() }).then(nextDoc, nextDoc);
+                    else nextDoc();   // 大きすぎる資料など：取り込まない（開くときは電波が必要）
+                  })
+                  .withFailureHandler(function() { if (viewerIsOffline()) stop(); else nextDoc(); })
+                  .getDocFile(site, d.id, cred());
+              };
+              nextDoc();
+            })
+            .withFailureHandler(function() { complete = false; if (viewerIsOffline()) stop(); else nextSite(); })
+            .getSiteDocExplorerData(site, cred());
+        };
+        nextSite();
+      }).catch(function() { docPrefetchStarted = false; });
     }
 
     // 選択のチェック：一覧を作り直さず、その1件の見た目だけ変える
