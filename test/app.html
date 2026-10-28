@@ -14,7 +14,7 @@
 (function () {
   var API_URL = 'https://script.google.com/macros/s/AKfycbxmdHzLOVkPWdaOqJeeh4HI6rU7oNIOKIMocslD4_P9Pahip-XBjzHSk603hc-7YMOJww/exec';
   // 画面の版（build.js が「Ver.年月日-その日の何回目」を入れる）。右上のログアウトの横に出す
-  var APP_VER = 'Ver.20261028-02';
+  var APP_VER = 'Ver.20261028-03';
   window.GENBA_VER = APP_VER;
   document.addEventListener('DOMContentLoaded', function () {
     var el = document.getElementById('appVer');
@@ -6828,6 +6828,7 @@
       if (pdfjsP) return pdfjsP;
       pdfjsP = new Promise(function(resolve, reject) {
         var s = document.createElement('script');
+        s.crossOrigin = 'anonymous';   // 中身を確かめられる形で受け取る（端末に残せるように）
         s.src = PDFJS_URL;
         s.onload = function() { resolve(window.pdfjsLib); };
         s.onerror = function() { reject(new Error('PDFを表示する部品を読み込めませんでした。電波のある所で一度開いてください。')); };
