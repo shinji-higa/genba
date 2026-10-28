@@ -65,7 +65,8 @@ self.addEventListener('fetch', function (event) {
   event.respondWith(
     caches.open(SHELL_CACHE).then(function (cache) {
       return cache.match(req).then(function (hit) {
-        var fresh = fetch(req).then(function (res) {
+        // ブラウザが前に受け取った分（置き場所の都合で最大10分使い回される）ではなく、毎回置き場所に新しいかを確かめる
+        var fresh = fetch(req.url, { cache: 'no-cache', credentials: 'same-origin' }).then(function (res) {
           if (res && res.ok) cache.put(req, res.clone());
           return res;
         }).catch(function (err) {
