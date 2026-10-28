@@ -13,22 +13,19 @@
    ===================================================== */
 (function () {
   var API_URL = 'https://script.google.com/macros/s/AKfycbxmdHzLOVkPWdaOqJeeh4HI6rU7oNIOKIMocslD4_P9Pahip-XBjzHSk603hc-7YMOJww/exec';
-  // 画面の版（build.js が「Ver.年月日-その日の何回目」を入れる）。右上のログアウトの横に出す
-  var APP_VER = 'Ver.20261028-08';
+  // 画面の版（build.js が「Ver.年月日-その日の何回目」を入れる）。設定画面のいちばん上に出す（ユーザー指示 2026-10-28）
+  var APP_VER = 'Ver.20261028-09';
   window.GENBA_VER = APP_VER;
   document.addEventListener('DOMContentLoaded', function () {
-    var el = document.getElementById('appVer');
-    if (!el) return;
-    el.textContent = APP_VER;
-    // 版の番号を押すと、最新の版を取り直して開き直す（ホーム画面から開くと再読み込みができないため。2026-10-28）
-    el.style.cursor = 'pointer';
-    el.style.textDecoration = 'underline';
-    el.title = '押すと最新の版にします';
-    el.onclick = refreshApp;
+    var el = document.getElementById('appVer'), card = document.getElementById('appVerCard'), btn = document.getElementById('btnAppRefresh');
+    if (el) el.textContent = APP_VER;
+    if (card) card.style.display = '';
+    // 「最新の版にする」：最新の版を取り直して開き直す（ホーム画面から開くと再読み込みができないため）
+    if (btn) btn.onclick = refreshApp;
   });
   function refreshApp() {
-    var el = document.getElementById('appVer');
-    if (el) el.textContent = '最新の版にしています…';
+    var btn = document.getElementById('btnAppRefresh');
+    if (btn) { btn.disabled = true; btn.textContent = '最新の版にしています…'; }
     var reload = function () { try { window.top.location.reload(); } catch (e) { location.reload(); } };
     var sw = navigator.serviceWorker && navigator.serviceWorker.controller;
     if (!sw || navigator.onLine === false) { reload(); return; }
@@ -1181,9 +1178,7 @@
         <div id="userDispHeader" class="header-user-box" style="display: none;">
           <div>
             <span id="txtUserEmail" class="header-user-email"></span><br>
-            <a href="javascript:void(0)" onclick="doLogout()" style="color: #333; text-decoration: underline;">ログアウト</a>
-            <span id="appVer" style="color: #555; font-size: 0.74rem; margin-left: 6px;"></span>   <!-- 画面の版（入口ページに置いた版だけ表示） -->
-          </div>
+            <a href="javascript:void(0)" onclick="doLogout()" style="color: #333; text-decoration: underline;">ログアウト</a>          </div>
           <!-- 設定画面へ移動するボタン（設定画面は今後追加） -->
           <button type="button" id="btnHeaderSettings" class="header-gear-btn" onclick="openSettingsPanel()" title="設定" aria-label="設定">
             <svg viewBox="0 0 24 24"><path d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58a.49.49 0 0 0 .12-.61l-1.92-3.32a.488.488 0 0 0-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54a.484.484 0 0 0-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58a.49.49 0 0 0-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/></svg>
@@ -1886,6 +1881,14 @@
     <!-- 画面6: 設定 -->
     <div id="panelSettings" class="view-panel">
       <div id="settingsMsg" class="msg-banner"></div>
+
+      <!-- アプリの版（入口ページに画面を置いた版だけ表示。ユーザー指示 2026-10-28：設定画面のいちばん上に） -->
+      <div id="appVerCard" class="info-card" style="display: none;">
+        <div class="card-header-row"><span style="font-weight: 700;">📱 アプリの版</span></div>
+        <div style="font-size: 0.95rem; margin-bottom: 10px;">今の版：<b id="appVer"></b></div>
+        <button type="button" id="btnAppRefresh" class="btn btn-dark">最新の版にする</button>
+        <div style="font-size: 0.8rem; color: var(--muted); margin-top: 8px;">新しい版が出ているときは、押すと入れ替わります。</div>
+      </div>
 
       <!-- 表示言語 -->
       <div class="info-card">
