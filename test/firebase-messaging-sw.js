@@ -67,7 +67,12 @@ self.addEventListener('fetch', function (event) {
       return cache.match(req).then(function (hit) {
         // ブラウザが前に受け取った分（置き場所の都合で最大10分使い回される）ではなく、毎回置き場所に新しいかを確かめる
         var fresh = fetch(req.url, { cache: 'no-cache', credentials: 'same-origin' }).then(function (res) {
-          if (res && res.ok) cache.put(req, res.clone());
+          if (res && res.ok) {
+            // 画面（app.html）が新しくなっていたら、開いている画面に「新しい版があります」を出してもらう
+            var et = res.headers.get('etag'), old = hit && hit.headers.get('etag');
+            if (old && et && old !== et && /\/app\.html$/.test(url.pathname)) notifyUpdate();
+            cache.put(req, res.clone());
+          }
           return res;
         }).catch(function (err) {
           if (hit) return hit;
@@ -79,6 +84,12 @@ self.addEventListener('fetch', function (event) {
     })
   );
 });
+
+function notifyUpdate() {
+  self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(function (list) {
+    list.forEach(function (c) { c.postMessage({ genbaUpdate: true }); });
+  });
+}
 
 self.addEventListener('install', function () { self.skipWaiting(); });
 self.addEventListener('activate', function (event) { event.waitUntil(self.clients.claim()); });

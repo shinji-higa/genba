@@ -47,6 +47,9 @@
   #guideCopy { background: #fff; color: #111; border: 2px solid #111; }
   #guideClose { background: #fff; color: #111; border: 1.5px solid #bdbdbd; }
   #guideNever { background: none; border: none; color: #666; font-weight: 600; font-size: 13px; padding: 8px; }
+  /* 新しい版が届いたときの案内（押すと入れ替え。2026-10-28） */
+  #updBar { position: fixed; left: 50%; transform: translateX(-50%); top: calc(8px + env(safe-area-inset-top, 0px)); z-index: 7; display: none; border: 0; border-radius: 20px; background: #111; color: #fff; font: 700 14px -apple-system, BlinkMacSystemFont, "Hiragino Sans", Meiryo, sans-serif; padding: 10px 18px; box-shadow: 0 3px 12px rgba(0,0,0,.35); cursor: pointer; white-space: nowrap; }
+  #updBar.show { display: block; }
   #help { position: fixed; right: 10px; bottom: calc(10px + env(safe-area-inset-bottom, 0px)); z-index: 3; display: none; background: rgba(17,17,17,.85); color: #fff; font: 600 12px -apple-system, BlinkMacSystemFont, "Hiragino Sans", Meiryo, sans-serif; padding: 8px 12px; border-radius: 18px; text-decoration: none; }
 </style>
 </head>
@@ -54,6 +57,7 @@
   <div id="splash"><img src="apple-touch-icon.png" alt=""><p>読み込んでいます…</p></div>
   <iframe id="app" title="現場管理システム" allow="camera; microphone; geolocation; clipboard-write; fullscreen; web-share"></iframe>
   <a id="help" href="guide.html">ホーム画面に追加する方法</a>
+  <button type="button" id="updBar" onclick="location.reload()">新しい版があります（押すと入れ替え）</button>
   <div id="guide" role="dialog" aria-modal="true">
     <div class="box">
       <div class="head"><img src="apple-touch-icon.png" alt=""><div><h2>ホーム画面に追加してください</h2><p class="sub">追加すると、次からはアイコンを押すだけで開けます</p></div></div>
@@ -202,6 +206,13 @@
   });
 
   // 準備（サービスワーカーの登録 → アプリ本体の表示を待つ → Firebase の読み込み）
+  // 新しい版の画面が届いた（サービスワーカーから連絡が来る）：上に案内を出す
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.addEventListener('message', function (e) {
+      if (e.data && e.data.genbaUpdate) document.getElementById('updBar').classList.add('show');
+    });
+  }
+
   var ready = !supported ? Promise.resolve() : navigator.serviceWorker.register('firebase-messaging-sw.js')
     .then(function (reg) { swReg = reg; return navigator.serviceWorker.ready; })
     .then(function () { return frameLoaded; })
