@@ -14,7 +14,7 @@
 (function () {
   var API_URL = 'https://script.google.com/macros/s/AKfycbxmdHzLOVkPWdaOqJeeh4HI6rU7oNIOKIMocslD4_P9Pahip-XBjzHSk603hc-7YMOJww/exec';
   // 画面の版（build.js が「Ver.年月日-その日の何回目」を入れる）。設定画面のいちばん上に出す（ユーザー指示 2026-10-28）
-  var APP_VER = 'Ver.20261029-02';
+  var APP_VER = 'Ver.20261029-03';
   window.GENBA_VER = APP_VER;
   document.addEventListener('DOMContentLoaded', function () {
     var el = document.getElementById('appVer'), card = document.getElementById('appVerCard'), btn = document.getElementById('btnAppRefresh');
@@ -1201,8 +1201,8 @@
     <div id="panelLogin" class="view-panel active">
       <div class="info-card" style="margin-top: 40px; text-align: center;">
         <div style="text-align: right; margin-bottom: 6px;"><span class="lang-switch" data-i18n-skip><button type="button" data-lang-btn="ja" onclick="setLang('ja')">日本語</button><button type="button" data-lang-btn="es" onclick="setLang('es')">Español</button></span></div>
-        <h2 id="loginTitle" style="font-size: 1.15rem; margin-bottom: 6px;">ログイン / 新規登録</h2>
-        <p id="loginSubtitle" style="font-size: 0.8rem; color: var(--muted); margin-bottom: 20px;">アカウントIDとパスワードを入力してください。<br>未登録の場合はそのまま新規登録へ進みます。</p>
+        <h2 id="loginTitle" style="font-size: 1.15rem; margin-bottom: 6px;">ログイン</h2>
+        <p id="loginSubtitle" style="font-size: 0.8rem; color: var(--muted); margin-bottom: 20px;">アカウントID（メールアドレス）とパスワードを入力してください。</p>
         <div id="loginMsg" class="msg-banner"></div>
         <div style="text-align: left;">
           <!-- 姓・名 入力欄（未登録時のみ表示） -->
@@ -1228,8 +1228,34 @@
             <input type="checkbox" id="loginRemember">
             <span>この端末でログインしたままにする</span>
           </label>
-          <button type="button" id="btnLoginSubmit" class="btn btn-dark" style="margin-top: 10px;" onclick="handleLoginAction()">新規登録・ログイン</button>
+          <button type="button" id="btnLoginSubmit" class="btn btn-dark" style="margin-top: 10px;" onclick="handleLoginAction()">ログイン</button>
           <button type="button" id="btnCancelRegister" class="btn btn-sub" style="margin-top: 8px; width: 100%; display: none;" onclick="cancelRegistrationMode()">ログイン入力に戻る</button>
+          <button type="button" id="btnFirstLogin" class="btn btn-sub" style="margin-top: 14px; width: 100%;" onclick="openCodeLogin()">初めての方・パスワードを忘れた方</button>
+        </div>
+        <!-- 初めての方・パスワードを忘れた方：メールに届く6けたの番号で本人確認してパスワードを決める（2026-10-29） -->
+        <div id="codeLoginWrap" style="display: none; text-align: left; margin-top: 16px; padding-top: 14px; border-top: 2px solid var(--border);">
+          <p style="font-size: 0.85rem; margin-bottom: 10px; line-height: 1.6;">作業員登録フォームで登録した<b>本人メールアドレス</b>を入れて「番号を送る」を押してください。メールに届いた6けたの番号を入れて、パスワードを決めます。</p>
+          <div class="form-group">
+            <label for="codeEmail">メールアドレス</label>
+            <input type="email" id="codeEmail" placeholder="例: taro@example.com" autocomplete="username" inputmode="email">
+          </div>
+          <button type="button" id="btnSendCode" class="btn btn-sub" style="width: 100%;" onclick="sendLoginCode()">番号を送る</button>
+          <div id="codeStep2" style="display: none; margin-top: 12px;">
+            <div class="form-group">
+              <label for="codeNum">メールに届いた番号（6けた）</label>
+              <input type="text" id="codeNum" inputmode="numeric" maxlength="6" autocomplete="one-time-code" placeholder="123456">
+            </div>
+            <div class="form-group">
+              <label for="codePass">新しいパスワード（4文字以上）</label>
+              <input type="password" id="codePass" autocomplete="new-password">
+            </div>
+            <div class="form-group">
+              <label for="codePass2">新しいパスワード（もう一度）</label>
+              <input type="password" id="codePass2" autocomplete="new-password">
+            </div>
+            <button type="button" id="btnSetPass" class="btn btn-dark" style="width: 100%;" onclick="submitCodeLogin()">パスワードを決めてログイン</button>
+          </div>
+          <button type="button" class="btn btn-sub" style="margin-top: 8px; width: 100%;" onclick="closeCodeLogin()">ログイン入力に戻る</button>
         </div>
       </div>
     </div>
@@ -2823,7 +2849,7 @@
       google.script.run
         .withSuccessHandler(function(res) {
           btn.disabled = false;
-          btn.textContent = '新規登録・ログイン';
+          btn.textContent = 'ログイン';
           if (res && res.success) {
             if (res.needRegister) {
               enterRegistrationMode(res.message);
@@ -2839,7 +2865,7 @@
         })
         .withFailureHandler(function(err) {
           btn.disabled = false;
-          btn.textContent = '新規登録・ログイン';
+          btn.textContent = 'ログイン';
           var errMsg = '通信エラー: ' + (err && err.message ? err.message : String(err));
           alert(errMsg);
           if (msg) { msg.className = 'msg-banner error'; msg.textContent = errMsg; msg.style.display = 'block'; }
@@ -2868,11 +2894,74 @@
       isRegisterMode = false;
       document.getElementById('nameFieldsWrap').style.display = 'none';
       document.getElementById('btnCancelRegister').style.display = 'none';
-      document.getElementById('btnLoginSubmit').textContent = '新規登録・ログイン';
-      document.getElementById('loginTitle').textContent = 'ログイン / 新規登録';
-      document.getElementById('loginSubtitle').textContent = 'アカウントIDとパスワードを入力してください。\n未登録の場合はそのまま新規登録へ進みます。';
+      document.getElementById('btnLoginSubmit').textContent = 'ログイン';
+      document.getElementById('loginTitle').textContent = 'ログイン';
+      document.getElementById('loginSubtitle').textContent = 'アカウントID（メールアドレス）とパスワードを入力してください。';
       var msg = document.getElementById('loginMsg');
       if (msg) msg.style.display = 'none';
+    }
+
+    /* ===== 初めての方・パスワードを忘れた方（2026-10-29）=====
+       メールアドレス → 番号を送る（requestLoginCode）→ 番号とパスワード → setPasswordWithCode でログイン */
+    function loginBanner(text, ok) {
+      var msg = document.getElementById('loginMsg');
+      if (!msg) return;
+      msg.className = 'msg-banner ' + (ok ? 'success' : 'error');
+      msg.textContent = text;
+      msg.style.display = 'block';
+    }
+    function openCodeLogin() {
+      document.getElementById('codeLoginWrap').style.display = 'block';
+      document.getElementById('btnFirstLogin').style.display = 'none';
+      var e = (document.getElementById('loginEmail').value || '').trim();
+      if (e && !document.getElementById('codeEmail').value) document.getElementById('codeEmail').value = e;
+      document.getElementById('codeEmail').focus();
+    }
+    function closeCodeLogin() {
+      document.getElementById('codeLoginWrap').style.display = 'none';
+      document.getElementById('codeStep2').style.display = 'none';
+      document.getElementById('btnFirstLogin').style.display = 'block';
+      var msg = document.getElementById('loginMsg');
+      if (msg) msg.style.display = 'none';
+    }
+    function sendLoginCode() {
+      var email = (document.getElementById('codeEmail').value || '').trim();
+      if (!email) { loginBanner('メールアドレスを入れてください。'); return; }
+      var btn = document.getElementById('btnSendCode');
+      btn.disabled = true; btn.textContent = '送っています…';
+      google.script.run
+        .withSuccessHandler(function(res) {
+          btn.disabled = false; btn.textContent = '番号をもう一度送る';
+          if (res && res.success) {
+            loginBanner(res.message, true);
+            document.getElementById('codeStep2').style.display = 'block';
+            document.getElementById('codeNum').focus();
+          } else loginBanner((res && res.message) || '番号を送れませんでした。');
+        })
+        .withFailureHandler(function(err) { btn.disabled = false; btn.textContent = '番号を送る'; loginBanner('通信エラー: ' + (err && err.message ? err.message : String(err))); })
+        .requestLoginCode(email);
+    }
+    function submitCodeLogin() {
+      var email = (document.getElementById('codeEmail').value || '').trim();
+      var code = (document.getElementById('codeNum').value || '').trim();
+      var p1 = document.getElementById('codePass').value || '', p2 = document.getElementById('codePass2').value || '';
+      if (!/^\d{6}$/.test(code.replace(/\D/g, ''))) { loginBanner('メールに届いた6けたの番号を入れてください。'); return; }
+      if (p1.trim().length < 4) { loginBanner('パスワードは4文字以上にしてください。'); return; }
+      if (p1 !== p2) { loginBanner('2つのパスワードが同じではありません。'); return; }
+      var btn = document.getElementById('btnSetPass');
+      btn.disabled = true; btn.textContent = '確かめています…';
+      google.script.run
+        .withSuccessHandler(function(res) {
+          btn.disabled = false; btn.textContent = 'パスワードを決めてログイン';
+          if (res && res.success) {
+            document.getElementById('loginEmail').value = email;
+            closeCodeLogin();
+            onLoggedIn(res);
+            openPortalPanel();
+          } else loginBanner((res && res.message) || 'ログインできませんでした。');
+        })
+        .withFailureHandler(function(err) { btn.disabled = false; btn.textContent = 'パスワードを決めてログイン'; loginBanner('通信エラー: ' + (err && err.message ? err.message : String(err))); })
+        .setPasswordWithCode(email, code, p1.trim());
     }
 
     window.addEventListener('DOMContentLoaded', function() {
