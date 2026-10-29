@@ -1,0 +1,908 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>丸ダクト注文</title>
+  <style>
+    /* 丸ダクト注文（スパイラルダクト・継手・フレキの注文書）。2026-10-28 作成
+       見た目は角ダクトの製作伝票にそろえる（白黒を基調に、薄い灰色は使わない） */
+    :root { --bg: #e8eaed; --text: #111; --muted: #3d3d3d; --border: #9e9e9e; --primary: #111; --err: #b3261e; }
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Yu Gothic UI", "Hiragino Sans", Meiryo, sans-serif; }
+    html, body { height: 100%; overflow: hidden; -webkit-text-size-adjust: 100%; }
+    body { background: var(--bg); color: var(--text); }
+    #app { height: 100%; overflow-y: auto; overflow-x: hidden; -webkit-overflow-scrolling: touch; }
+    button { font: inherit; color: inherit; }
+    input, select, textarea { min-width: 0; max-width: 100%; }
+    .top { position: sticky; top: 0; z-index: 30; background: #fff; border-bottom: 2px solid #111; padding: 8px 12px; display: flex; align-items: center; gap: 8px; }
+    .top-title { font-weight: 700; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .top-btns { display: flex; gap: 6px; flex-shrink: 0; }
+    .btn { display: inline-flex; align-items: center; justify-content: center; font-size: 0.85rem; font-weight: 700; border-radius: 4px; border: 1.5px solid var(--primary); cursor: pointer; padding: 9px 14px; background: #fff; white-space: nowrap; }
+    .btn-dark { background: var(--primary); color: #fff; }
+    .btn-sub { border-color: #6e6e6e; color: #222; font-size: 0.82rem; padding: 7px 10px; }
+    .btn-danger { color: var(--err); border-color: #d9a29d; }
+    .btn:disabled { background: #8a8a8a; border-color: #8a8a8a; color: #f2f2f2; }
+    .layout { display: flex; gap: 16px; padding: 12px; max-width: 1600px; margin: 0 auto; }
+    .col-left { width: 100%; max-width: 640px; margin: 0 auto; }
+    .col-right { display: none; }
+    @media (min-width: 1100px) {
+      .col-left { width: 460px; flex-shrink: 0; margin: 0; }
+      .col-right { display: block; flex: 1; min-width: 0; position: sticky; top: 58px; align-self: flex-start; max-height: calc(100vh - 72px); overflow: auto; }
+      .only-mobile { display: none !important; }
+    }
+    @media (max-width: 1099px) { .only-desk { display: none !important; } }
+    .card { border: 1.5px solid #a3a7ad; border-radius: 8px; background: #eceef1; padding: 12px; margin-bottom: 12px; }
+    .card-h { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 10px; padding-bottom: 8px; border-bottom: 1.5px solid #a3a7ad; font-weight: 700; font-size: 0.95rem; }
+    .fg { margin-bottom: 10px; }
+    label, .lbl { display: block; font-size: 0.8rem; font-weight: 700; margin-bottom: 4px; color: #222; }
+    input[type="text"], input[type="date"], input[type="number"], select, textarea { width: 100%; padding: 9px 10px; border: 1.5px solid #8d9298; border-radius: 4px; font-size: 1rem; background: #fff; color: #111; outline: none; }
+    input:focus, select:focus, textarea:focus { border-color: #111; }
+    input::placeholder, textarea::placeholder { color: #6b6b6b; }
+    textarea { resize: vertical; min-height: 56px; }
+    .g2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+    .g3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+    .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+    .chip { padding: 7px 12px; border-radius: 16px; border: 1.5px solid #6e6e6e; background: #fff; font-size: 0.85rem; font-weight: 700; color: #222; cursor: pointer; user-select: none; }
+    .chip.on { background: #111; border-color: #111; color: #fff; }
+    .note { font-size: 0.8rem; color: var(--muted); line-height: 1.6; }
+    .errbox { background: #fceded; color: var(--err); border-radius: 4px; padding: 8px 10px; font-size: 0.85rem; font-weight: 700; margin-top: 8px; }
+    /* 部材の一覧 */
+    .items { display: flex; flex-direction: column; gap: 8px; }
+    .item { display: flex; gap: 10px; align-items: center; border: 1.5px solid #9e9e9e; border-radius: 6px; padding: 8px; background: #fff; cursor: pointer; }
+    .item-ic { width: 54px; height: 34px; flex-shrink: 0; }
+    .item-b { flex: 1; min-width: 0; }
+    .item-t { font-weight: 700; font-size: 0.95rem; }
+    .item-s { font-size: 0.82rem; color: #333; }
+    .item-q { font-weight: 800; font-size: 1.05rem; white-space: nowrap; }
+    .empty { text-align: center; color: var(--muted); font-size: 0.9rem; padding: 16px 0; }
+    .bottom-bar { position: sticky; bottom: 0; z-index: 25; background: #fff; border-top: 1.5px solid #9e9e9e; padding: 10px 12px; display: flex; gap: 8px; }
+    .bottom-bar .btn { flex: 1; min-width: 0; padding: 12px 6px; }
+    /* 全画面のシート */
+    .sheet-bg { position: fixed; inset: 0; background: rgba(0,0,0,0.45); z-index: 50; display: none; }
+    .sheet-bg.open { display: block; }
+    .sheet { position: absolute; inset: 0; background: #fff; display: flex; flex-direction: column; }
+    @media (min-width: 900px) { .sheet { inset: 4vh auto auto 50%; transform: translateX(-50%); width: min(760px, 94vw); max-height: 92vh; border-radius: 8px; } }
+    .sheet-h { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 10px 12px; border-bottom: 1.5px solid #9e9e9e; font-weight: 700; }
+    .sheet-h .ttl { flex: 1; min-width: 0; }
+    .sheet-b { flex: 1; overflow: auto; padding: 12px; background: #eceef1; }
+    .sheet-f { display: flex; gap: 8px; padding: 10px 12px; border-top: 1.5px solid #9e9e9e; }
+    .sheet-f .btn { flex: 1; padding: 12px; }
+    .pick-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 10px; }
+    .pick { border: 1.5px solid #8d9298; border-radius: 6px; padding: 8px; cursor: pointer; text-align: center; background: #fff; }
+    .pick:hover { border-color: #111; }
+    .pick svg { width: 100%; height: 56px; }
+    .pick-n { font-weight: 700; font-size: 0.9rem; margin-top: 4px; }
+    .edfig { background: #fff; border: 1.5px solid #9e9e9e; border-radius: 6px; padding: 6px; margin-bottom: 10px; }
+    .edfig svg { width: 100%; height: 110px; display: block; }
+    .edbox { border: 1.5px solid #a3a7ad; border-radius: 8px; background: #eceef1; padding: 10px 12px; margin-bottom: 10px; }
+    .qty { display: flex; align-items: center; gap: 8px; }
+    .qty button { width: 46px; height: 42px; border: 1.5px solid #6e6e6e; border-radius: 6px; background: #fff; font-size: 1.3rem; font-weight: 700; cursor: pointer; }
+    .qty input { text-align: center; font-size: 1.15rem; font-weight: 700; }
+    .slip-row { display: flex; gap: 10px; align-items: center; border: 1.5px solid #9e9e9e; border-radius: 6px; padding: 10px; margin-bottom: 8px; background: #fff; }
+    .slip-row .b { flex: 1; min-width: 0; cursor: pointer; }
+    .slip-row .t { font-weight: 700; }
+    .slip-row .m { font-size: 0.8rem; color: var(--muted); }
+    /* 消耗品を選ぶ画面 */
+    .cons-g { margin-bottom: 14px; }
+    .cons-gh { font-weight: 700; font-size: 0.9rem; margin-bottom: 6px; padding-bottom: 4px; border-bottom: 1.5px solid #a3a7ad; }
+    .cons-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 6px; }
+    .cons-p { border: 1.5px solid #8d9298; border-radius: 6px; padding: 8px 10px; background: #fff; font-size: 0.88rem; font-weight: 700; cursor: pointer; text-align: left; }
+    .cons-p:hover { border-color: #111; }
+    .cons-p small { display: block; font-weight: 400; color: #333; font-size: 0.76rem; margin-top: 2px; }
+    .top-close { display: none; }
+    .hosted .top-close { display: inline-flex; }
+    .toast { position: fixed; left: 50%; bottom: 80px; transform: translateX(-50%); background: #111; color: #fff; padding: 10px 16px; border-radius: 6px; font-size: 0.9rem; z-index: 99; opacity: 0; transition: opacity .2s; pointer-events: none; }
+    .toast.show { opacity: 1; }
+
+    /* ===== 注文書（A4）===== 製作伝票と同じ書式 */
+    .pv-wrap { background: #e9e9ec; padding: 12px; border-radius: 6px; }
+    .pv-page { background: #fff; box-shadow: 0 1px 4px rgba(0,0,0,0.2); margin: 0 auto 12px; overflow: hidden; }
+    .pv-page > .dp { transform-origin: 0 0; }
+    .dp { width: 210mm; height: 297mm; padding: 8mm 9mm 7mm; color: #000; font-family: "MS Mincho", "Yu Mincho", "Hiragino Mincho ProN", serif; font-size: 9pt; display: flex; flex-direction: column; background: #fff; }
+    .dp .gt { font-family: "Yu Gothic", "Hiragino Sans", Meiryo, sans-serif; }
+    .dp-title { display: flex; align-items: flex-end; justify-content: center; position: relative; height: 13mm; }
+    .dp-title h1 { font-size: 22pt; font-weight: 400; letter-spacing: 0.3em; }
+    .dp-no { position: absolute; right: 0; bottom: 0; font-size: 9pt; text-align: right; line-height: 1.4; }
+    .dp-no b { font-size: 12pt; font-weight: 400; }
+    .dp-head { display: flex; justify-content: space-between; gap: 6mm; margin-top: 2mm; }
+    .dp-lines { width: 50%; }
+    .dp-line { display: flex; border-bottom: 1px solid #000; height: 6.4mm; align-items: flex-end; padding-bottom: 0.6mm; gap: 3mm; white-space: nowrap; overflow: hidden; }
+    .dp-line .k { width: 15mm; text-decoration: underline; flex-shrink: 0; }
+    .dp-line .v { flex: 1; overflow: hidden; text-overflow: ellipsis; }
+    .dp-co { width: 50%; text-align: right; padding-top: 5mm; font-size: 7.5pt; line-height: 1.5; }
+    .dp-co img { height: 6mm; vertical-align: middle; }
+    .dp-co .nm { font-size: 9.5pt; font-weight: 700; vertical-align: middle; margin-left: 2mm; }
+    .dp table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+    .dp td, .dp th { border: 1px solid #000; text-align: center; font-weight: 400; height: 6.6mm; padding: 0 1mm; white-space: nowrap; overflow: hidden; }
+    .dp-spec { margin-top: 2.5mm; font-size: 8.5pt; }
+    .dp-spec td.k { width: 14mm; }
+    .dp-spec td.memo { text-align: left; white-space: normal; line-height: 1.25; }
+    .dp-sec { margin-top: 3mm; margin-bottom: 1mm; font-size: 9pt; font-weight: 700; }
+    .dp-mx th { font-size: 9.5pt; }
+    .dp-mx td.sz { font-weight: 700; }
+    .dp-mx tr:nth-child(even) td { background: #e6f0f5; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    .dp-mx td.q, .dp-br td.q, .dp-fx td.q { font-size: 10.5pt; }
+    .dp-br td, .dp-fx td { height: 6.4mm; }
+    .dp-cs td { height: 6.4mm; }
+    .dp-cs td.l { text-align: left; }
+    .dp-foot { font-size: 7.5pt; margin-top: 1.5mm; }
+    .dp-cont-head { display: flex; align-items: flex-end; gap: 4mm; border-bottom: 1.5px solid #000; padding-bottom: 1.5mm; }
+    .dp-cont-head h1 { font-size: 15pt; font-weight: 400; letter-spacing: 0.15em; white-space: nowrap; }
+    .dp-cont-head .site { flex: 1; min-width: 0; font-size: 9pt; white-space: nowrap; overflow: hidden; }
+    .dp-cont-head .no { font-size: 9pt; text-align: right; white-space: nowrap; }
+    #print-root { display: none; }
+    @media print {
+      @page { size: A4 portrait; margin: 0; }
+      html, body { height: auto; overflow: visible; }
+      body { background: #fff; }
+      body > *:not(#print-root) { display: none !important; }
+      #print-root { display: block; }
+      #print-root .dp { page-break-after: always; break-after: page; }
+      #print-root .dp:last-child { page-break-after: auto; break-after: auto; }
+    }
+  </style>
+</head>
+<body>
+  <div id="app">
+    <div class="top">
+      <div class="top-title" id="topTitle">丸ダクト注文</div>
+      <div class="top-btns">
+        <button type="button" class="btn btn-sub top-close" onclick="closeApp()">閉じる</button>
+        <button type="button" class="btn btn-sub" onclick="openSlips()">注文書一覧</button>
+        <button type="button" class="btn btn-sub" onclick="saveSlip(true)">保存</button>
+        <button type="button" class="btn btn-sub only-desk" onclick="printSlip()">印刷</button>
+      </div>
+    </div>
+
+    <div class="layout">
+      <section class="col-left">
+        <div class="card">
+          <div class="card-h">注文書の情報</div>
+          <div class="g2">
+            <div class="fg"><label for="fNo">注文書NO</label><input type="text" id="fNo" data-k="no"></div>
+            <div class="fg"><label for="fOrderer">注文者</label><input type="text" id="fOrderer" data-k="orderer"></div>
+          </div>
+          <div class="fg"><label for="fSite">現場名</label><input type="text" id="fSite" data-k="site"></div>
+          <div class="fg"><label for="fRoom">室名</label><input type="text" id="fRoom" data-k="room"></div>
+          <div class="g2">
+            <div class="fg"><label for="fOrderDate">発注日</label><input type="date" id="fOrderDate" data-k="orderDate"></div>
+            <div class="fg"><label for="fDelivDate">搬入日</label><input type="date" id="fDelivDate" data-k="delivDate"></div>
+          </div>
+          <div class="fg"><span class="lbl">搬入先</span><div class="chips" id="cDest"></div></div>
+          <div class="fg"><span class="lbl">材質</span><div class="chips" id="cMat"></div></div>
+          <div class="fg"><label for="fMemo">Memo（注文書の材質の横に出ます）</label><textarea id="fMemo" data-k="memo" placeholder="例：キャップ＝NIサイズ　金網＝SPサイズ"></textarea></div>
+        </div>
+
+        <div class="card">
+          <div class="card-h"><span>部材（<span id="itemCount">0</span>件）</span>
+            <button type="button" class="btn btn-dark" onclick="openPicker()">＋ 部材を追加</button></div>
+          <div class="items" id="items"></div>
+        </div>
+
+        <div class="card">
+          <div class="card-h"><span>消耗品（<span id="consCount">0</span>件）</span>
+            <button type="button" class="btn btn-dark" onclick="openConsPicker()">＋ 消耗品を追加</button></div>
+          <div class="items" id="consItems"></div>
+        </div>
+      </section>
+      <section class="col-right"><div class="pv-wrap" id="pvDesk"></div></section>
+    </div>
+
+    <div class="bottom-bar only-mobile">
+      <button type="button" class="btn" onclick="openPreview()">注文書を見る</button>
+      <button type="button" class="btn btn-dark" onclick="openPicker()">＋ 部材を追加</button>
+    </div>
+  </div>
+
+  <!-- 部材の種類を選ぶ -->
+  <div class="sheet-bg" id="pickerBg" onclick="if(event.target===this)closeSheet('pickerBg')">
+    <div class="sheet">
+      <div class="sheet-h"><span class="ttl">部材の種類を選ぶ</span><button type="button" class="btn btn-sub" onclick="closeSheet('pickerBg')">閉じる</button></div>
+      <div class="sheet-b"><div class="pick-grid" id="pickGrid"></div></div>
+    </div>
+  </div>
+
+  <!-- 部材の入力 -->
+  <div class="sheet-bg" id="editorBg">
+    <div class="sheet">
+      <div class="sheet-h"><span class="ttl" id="edTitle">部材</span><button type="button" class="btn btn-sub" onclick="closeSheet('editorBg')">キャンセル</button></div>
+      <div class="sheet-b"><div class="edfig" id="edFig"></div><div id="edForm"></div></div>
+      <div class="sheet-f">
+        <button type="button" class="btn btn-danger" id="edDel" onclick="deleteItem()" style="flex:0 0 auto;">削除</button>
+        <button type="button" class="btn btn-dark" id="edOk" onclick="commitItem()">決定</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 消耗品を選ぶ -->
+  <div class="sheet-bg" id="consPickBg" onclick="if(event.target===this)closeSheet('consPickBg')">
+    <div class="sheet">
+      <div class="sheet-h"><span class="ttl">消耗品を選ぶ</span><button type="button" class="btn btn-sub" onclick="closeSheet('consPickBg')">閉じる</button>
+        <input type="text" id="consFind" placeholder="品名でさがす（例：バンド、アルミ、全ネジ）" oninput="renderConsPick()" style="flex-basis:100%;"></div>
+      <div class="sheet-b"><div id="consPick"></div></div>
+    </div>
+  </div>
+
+  <!-- 消耗品の入力 -->
+  <div class="sheet-bg" id="consEdBg">
+    <div class="sheet">
+      <div class="sheet-h"><span class="ttl" id="ceTitle">消耗品</span><button type="button" class="btn btn-sub" onclick="closeSheet('consEdBg')">キャンセル</button></div>
+      <div class="sheet-b"><div id="ceForm"></div></div>
+      <div class="sheet-f">
+        <button type="button" class="btn btn-danger" id="ceDel" onclick="deleteCons()" style="flex:0 0 auto;">削除</button>
+        <button type="button" class="btn btn-dark" id="ceOk" onclick="commitCons()">決定</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 注文書一覧 -->
+  <div class="sheet-bg" id="slipsBg" onclick="if(event.target===this)closeSheet('slipsBg')">
+    <div class="sheet">
+      <div class="sheet-h"><span class="ttl">注文書一覧</span><button type="button" class="btn btn-sub" onclick="closeSheet('slipsBg')">閉じる</button></div>
+      <div class="sheet-b"><button type="button" class="btn btn-dark" onclick="newSlip()" style="width:100%; margin-bottom:12px;">＋ 新しい注文書</button><div id="slipList"></div></div>
+    </div>
+  </div>
+
+  <!-- 注文書プレビュー（スマホ） -->
+  <div class="sheet-bg" id="pvBg">
+    <div class="sheet">
+      <div class="sheet-h"><span class="ttl">注文書プレビュー</span><button type="button" class="btn btn-sub" onclick="closeSheet('pvBg')">閉じる</button></div>
+      <div class="sheet-b" style="background:#e9e9ec;"><div id="pvMobile"></div></div>
+      <div class="sheet-f"><button type="button" class="btn btn-sub" onclick="printSlip()">印刷</button></div>
+    </div>
+  </div>
+
+  <div id="print-root"></div>
+  <div class="toast" id="toast"></div>
+
+  <script>
+    var LOGO = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAABPkAAACfCAYAAACLOwxVAAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAAJcEhZcwAADsMAAA7DAcdvqGQAAByKSURBVHhe7dhRjuw4kgXR2f+mZ1BINLrHmsykh3QZTskOYF9PlFOESpGo//kfSZIkSZIkSZIkSZIkSZIkSZJO8b/2mk7BfadTHs883Qm4ZzOz/0ySJEkq4x+V9p664j7TKY9nnq4r7tPMbJYkSZJUxj8q7X11w/2lUx7PPF033J+Z2V9JkiRJZfyj0t5bF9xXOuXxzNN1wX2Zma0mSZIklfGPSnt3HXBP6ZTHM0/XAfdkZlZJkiRJKuMflWb/9E3cSzrl8czTfRP3Ymb2SZIkSVIZ/6g0+1ffwn2kUx7PPN23cB9mZp8mSZIklfGPSrP/7Bu4h3TK45mn+wbuwczsSpIkSVIZ/6g0Y7txfjrl8czT7cb5ZmZXkyRJksr4R6XZqJ04O53yeObpduJsM7M7kiRJksr4R6XZrF04N53yeObpduFcM7O7kiRJksr4R6XZrF04N53yeObpduFcM7O7kiRJksr4R6XZb+3AmemUxzNPtwNnmpndmSRJklTGPyrN/iqN89Ipj2eeLo3zzMzuTpIkSSrjH5Vmf5XGeemUxzNPl8Z5ZmZ3J0mSJJXxj0qzlZI4K53yeObpkjjLzCyRJEmSVMY/Ks1WSuKsdMrjmadL4iwzs0SSJElSGf+oNFsthXPSKY9nni6Fc8zMUkmSJEll/KPSbLUUzkmnPJ55uhTOMTNLJUmSJJXxj0qz1VI4J53yeObpUjjHzCyVJEmSVMY/Ks1WS+GcdMrjmadL4Awzs2SSJElSGf+oNKuUwBnplMczT5fAGWZmySRJkqQy/lFpVimBM9Ipj2eeLoEzzMySSZIkSWX8o9KsUgJnpFMezzxdAmeYmSWTJEmSyvhHpVmlBM5IpzyeeboEzjAzSyZJkiSV8Y9Ks0oJnJFOeTzzdAmcYWaWTFIB/wOynyRJ78PfArNKCZyRTnk883QJnGFmlkxSAf8Dsp8kSe/D34J0yuJ5p0vgjHTK45mnS+CMdNIp+O4mk6QhfizsJ0nS+/C3IJn24LknS+CMdMrjmadL4Ixk0kn4/iaTpCF+LOwnSdL78LcgmfbguSdL4Ix0yuOZp0vgjGTSSfj+JpOkIX4s7CdJ0vvwtyCZ9uC5J0vgjHTK45mnS+CMZNJJ+P4mk6QhfizsJ0nS+/C3IJn24LknS+CMdMrjmadL4Ixk0kn4/iaTpCF+LOwnSdL78LcgmfbguSdL4Ix0yuOZp0vgjGTSSfj+JpOkIX4s7CdJ0vvwtyCZ9uC5J0vgjHTK45mnS+CMZNJJ+P4mk6QhfizsJ0nS+/C3IJn24LknS+CMdMrjmadL4Ixk0kn4/iaTpCF+LOwnSdL78LcgmfbguSdL4Ix0yuOZp0vgjGTSSfj+JpOkIX4s7CdJ0vvwtyCZ9uC5J0vgjHTK45mnS+CMZNJJ+P4mk6QhfizsJ0nS+/C3IJn24LknS+CMdMrjmadL4Ixk0kn4/iaTpCF+LOwnSdL78LcgmfbguSdL4Ix0yuOZp0vgjGTSSfj+JpOkIX4s7CdJ0vvwtyCZ9uC5J0vgjHTK45mnS+CMZNJJ+P4mk6QhfiwqvR3Po9q3cT/VEjjj5Cq4drUuuK/VkjirQ3fhfTt1Oj5PMu3Bc0+WwBnplMczT5fAGcmkk/D9TSZJQ/xYVHo7nscnfQv38Ul34X2fUgXXrtYF97XanXjvjl3Be53QifgMybQHzz1ZAmekUx7PPF0CZySTTsL3N5kkDfFjUenteB6fthvnf9pVvN/TquDa1brgvla7A+/ZuU/wHid2Eu49mfbguSdL4Ix0yuOZp0vgjGTSSfj+JpOkIX4sKr0dz+NKu3Dula7gvZ5YBdeu1gX3tdpVvF/3Krj29E7BfSfTHjz3ZAmckU55PPN0CZyRTDoJ399kkjTEj0Wlt+N5XGkHzrzap3ifp1bBtat1wX2tdgXvdUKruO5Jdcf9JtMePPdkCZyRTnk883QJnJFMOgnf32SSNMSPRSX995lcKYmzrvYp3ufJVXDtal1wX6t9ivc5pRVc88Q6416TaQ+ee7IEzkinPJ55ugTOSCadhO9vMkka4seikv77TK6WwjlX+hTv8/QquHa1Lriv1T7Be5zUCq55Yp1xr8m0B889WQJnpFMezzxdAmckk07C9zeZJA3xY1FJP3guV7sb73+1T/Aeb6iCa1frgvtarYrrT+svvP7JdcV9JtMePPdkCZyRTnk883QJnJFMOgnf32SSNMSPRSX9G8/manfhfa/2Kd7nDVVw7WpdcF+rVXH9af2G1z69rrjPZNqD554sgTPSKY9nni6BM5JJJ+H7m0yShvixqKT/j+dztat4v6t9ivd5SxVcu1oX3NdqVVx/Wr/htW+oI+4xmfbguSdL4Ix0yuOZp0vgjGTSSfj+JpOkIX4sKum/8Yyu9ine52pX8F5vqYJrV+uC+1qtgmtP7De89g11xD0m0x4892QJnJFOeTzzdAmckUw6Cd/fZJI0xI9FJY3xnK70Cd7jalfxfm+pgmtX64L7Wq2Ca09shte9qW64v2Tag+eeLIEz0imPZ54ugTOSSSfh+5tMkob4saikMZ7T1Sq49mpX8X5vqoJrV+uC+1qtgmtPbIbXvaluuL9k2oPnniyBM9Ipj2eeLoEzkkkn4fubTJKG+LGopDme1dVWcd2V7sB7vqkKrl2tC+5rtQquPbEZXvemuuH+kmkPnnuyBM5IpzyeeboEzkgmnYTvbzJJGuLHopJ+x/O62l94/dXuwHu+qQquXa0L7mu1Cq49sRle96a64f6SaQ+ee7IEzkinPJ55ugTOSCadhO9vMkka4seikv7GM7vaDK+72l1430pvwmdfrQvua7UKrq3UHfdbqQPuqVI33F8y7cFzT5bAGemUxzNPl8AZyaST8P1NJklD/Fg8uW/hPq5G/Per3Yn3rvQmfPbVuuC+Vqvg2tVOwD1X6oB7qtQN95dMe/DckyVwRjrl8czTJXBGMukkfH+TSdIQPxZP7pu4l6ul73sX3r/Sm/DZV+uC+1qtgmtXOwH3XKkD7qlSN9xfMu3Bc0+WwBnplMczT5fAGcmkk/D9TSZJQ/xYPLlv436udPf9/imBMyq9CZ99tS64r9UquHa1E3DPlTrgnip1w/0l0x4892QJnJFOeTzzdAmckUw6Cd/fZJI0xI/Fk/s27qdTKZxT6U347Kt1wX2tVsG1q52Ae67UAfdUqRvuL5n24LknS+CMdMrjmadL4Ixk0kn4/iaTpCF+LJ5cB9xTh5I4q9Kb8NlX64L7Wq2Ca1c7AfdcqQPuqVI33F8y7cFzT5bAGemUxzNPl8AZyaST8P1NJklD/Fg8uS64r2+XxFmV3oTPvloX3NdqFVy72gm450odcE+VuuH+kmkPnnuyBM5IpzyeeboEzkgmnYTvbzJJGuLH4sl1wr19qzTOq/QmfPbVuuC+Vqvg2tVOwD1X6oB7qtQN95dMe/DckyVwRjrl8czTJXBGMukkfH+TSdIQPxZPrhvub3c7cGalN+Gzr9YF97VaBdeudgLuuVIH3FOlbri/ZNqD554sgTPSKY9nni6BM5JJJ+H7m0yShvixeHIdcY+72oVzK70Jn321Lriv1Sq4drUTcM9vqhvuL5n24LknS+CMdMrjmadL4Ixk0kn4/iaTpCF+LJ5cR9zjjnbi7EpvwmdfrQvua7UKrl3tBNzzm+qG+0umPXjuyRI4I53yeObpEjgjmXQSvr/JJGmIH4sn1xX3mWw3zq/0Jnz21brgvlar4NrVTsA9v6luuL9k2oPnniyBM9Ipj2eeLoEzkkkn4fubTJKG+LF4cp1xr4m+gXuo9CZ89tW64L5Wq+Da1U7APb+pbri/ZNqD554sgTPSKY9nni6BM5JJJ+H7m0yShvixeHLdcb939w3cQ6U34bOv1gX3tVoF1652Au75TXXD/SXTHjz3ZAmckU55PPN0CZyRTDoJ399kkjTEj8WTOwH3fFffwn1UehM++2pdcF+rVXDtaifgnt9UN9xfMu3Bc0+WwBnplMczT5fAGcmkk/D9TSZJQ/xYPLlTcN9X+ybupdKb8NlX64L7Wq2Ca1c7Aff8prrh/pJpD557sgTOSKc8nnm6BM5IJp2E728ySRrix6KS7sczvqNv4l4qvQmffbUuuK/VKrh2tRNwz2+qG+4vmfbguSdL4Ix0yuOZp0vgjGTSSfj+JpOkIX4sKul+POO7+hbuo9Kb8NlX64L7Wq2Ca1c7Aff8prrh/pJpD557sgTOSKc8nnm6BM5IJp2E728ySRrix6KS7sXzvbtv4B4qvQmffbUuuK/VKrh2tRNwz2+qG+4vmfbguSdL4Ix0yuOZp0vgjGTSSfj+JpOkIX4sKuk+PNtUu3F+pTfhs6/WBfe1WgXXrnYC7vlNdcP9JdMePPdkCZyRTnk883QJnJFMOgnf32SSNMSPRSXdg+eabifOrvQmfPbVuuC+Vqvg2tVOwD2/qW64v2Tag+eeLIEz0imPZ54ugTOSSSfh+5tMkob4saik63imO9qJsyu9CZ99tS64r9UquHa1E3DPb6ob7i+Z9uC5J0vgjHTK45mnS+CMZNJJ+P4mk6Qhfiwq6Rqe58524dxKb8JnX60L7mu1Cq5d7QTc85vqhvtLpj147skSOCOd8njm6RI4I5l0Er6/ySRpiB+LSrqG57m7HTiz0pvw2VfrgvtarYJrVzsB9/ymuuH+kmkPnnuyBM5IpzyeeboEzkgmnYTvbzJJGuLHopI+x7P8VmmcV+lN+OyrdcF9rVbBtaudgHuupHvxfJNpD557sgTOSKc8nnm6BM5IJp2E728ySRrix6KSPsNz/HZJnFXpTfjsq3XBfa1WwbWrnYB7rqR78XyTaQ+ee7IEzkinPJ55ugTOSCadhO9vMkka4seikup4hh1K4qxKb8JnX60L7mu1Cq5d7QTccyXdi+ebTHvw3JMlcEY65fHM0yVwRjLpJHx/k0nSED8WlVTD8+tUCudUehM++2pdcF+rVXDtaifgnivpXjzfZNqD554sgTPSKY9nni6BM5JJJ+H7m0yShvixqKQant+V7r7fPyVwRqU34bOv1gX3tVoF1652Au65ku7F802mPXjuyRI4I53yeObpEjgjmXQSvr/JJGmIH4tKWsezu1Lqvv90N96/0pvw2VfrgvtarYJrVzsB91xJ9+L5JtMePPdkCZyRTnk883QJnJFMOgnf32SSNMSPRSWt4bldjfjvV7sT713pTfjsq3XBfa1WwbWrnYB7rqR78XyTaQ+ee7IEzkinPJ55ugTOSCadhO9vMkka4seikv7GM7vaDK+72l1430pvwmdfrQvua7UKrl3tBNxzJd2L55tMe/DckyVwRjrl8czTJXBGMukkfH+TSdIQPxb20x14z6v9hddf6S68b7W34HNX+jbup1IF1652Au65ku7F802mPXjuyRI4I53yeObpEjgjmXQSvr/JJGmIHwv76Sre72qruO5Kd+A931QF176lCq5d7QTc85vqhvtLpj147skSOCOd8njm6RI4I5l0Er6/ySRpiB8L++kq3u9KFVx7tat4vzdVwbVvqYJrVzsB9/ymuuH+kmkPnnuyBM5IpzyeeboEzkgmnYTvbzJJGuLHwn66gve6WhXXX+0K3utNVXDtW6rg2tVOwD2/qW64v2Tag+eeLIEz0imPZ54ugTOSSSfh+5tMkob4sbCfPsX7XO1TvM/VruC93lIF176lCq5d7QTc85vqhvtLpj147skSOCOd8njm6RI4I5l0Er6/yaRP8V2aVcX1o56AzzTqq7gZ++kTvMfVruL9rvYp3uctVXDtW6rg2tVOwX2/pW64v2Tag+eeLIEz0imPZ54ugTOSSSfh+5tM+hTfpVlVXD/qCfhMo76Km7Gfqrj+anfhfa/0Kd7nLVVx/dOr4vrVTsF9v6VuuL9k2oPnniyBM9Ipj2eeLoEzkkkn4fubTPoU36VZVVw/6gn4TKO+ipuxn6q4/kp34r2v9ine5w1Vcf3Tq+L61U7Cvb+hbri/ZNqD554sgTPSKY9nni6BM5JJJ+H7m0z6FN+lWVVcP+oJ+EyjvoqbsZ8quPZKCZxxtU/wHm/oE7zHU/sE77HaSbj3N9QN95dMe/DckyVwRjrl8czTJXBGMukkfH+TSZ/iuzSriutHPQGfadRXcTP20yquu1oK51ztE7zH0/sE7/HUPsF7rHYa7v/pdcP9JdMePPdkCZyRTnk883QJnJFMOgnf32TSp/guzari+lFPwGca9VXcjP20gmuulsZ5V/sE7/HkPsX7PK1P8T6rnYjP8OS64f6SaQ+ee7IEzkinPJ55ugTOSCadhO9vMulTfJdmVXH9qCfgM436Km7GflrBNVfahXOv9Cne56ldwXs9pSt4r9VOxed4at1wf8m0B889WQJnpFMezzxdAmckk07C9zeZ9Cm+S7OquH7UE/CZRn0VN2M/reCaT9uN8z/tCt7riV3F+53cHXjP1U7GZ3li3XB/ybQHzz1ZAmekUx7PPF0CZySTTsL3N5n0Kb5Ls6q4ftQT8JlGfRU3Yz+t4JpP+gbu4dPuwHs+qbvwvqd1F953tdPxeZ5WN9xfMu3Bc0+WwBnplMczT5fAGcmkk/D9TSZ9iu/SrCquH/UEfKZRX8XN2E8ruOaTvoX7+KQ78d5P6G68f/fuxvuv9iR8tifUDfeXTHvw3JMlcEY65fHM0yVwRjLpJHx/k0mf4rs0q4rrRz0Bn2mUJElqgD/QybQHzz1ZAmekUx7PPF0CZySTTsL3N5n0Kb5Ls6q4ftQT8JlGSZKkBvgDnUx78NyTJXBGOuXxzNMlcEYy6SR8f5N9G/fzjaq4PlV33O+sKq6/u1Vc940kSVID/IFOpj147skSOCOd8njm6RI4I5l0Er6/yb6Be/h2q7huZx1xj7OquP7ufsNrv50kSWqAP9DJtAfPPVkCZ6RTHs88XQJnJJNOwvc32W6c36G/8Ppv1Q33N6uK6+9uhtd1SJIkNcAf6GTag+eeLIEz0imPZ54ugTOSSSfh+5tsJ87u0m947bfrhHubVcX1dzfCa7okSZIa4A90Mu3Bc0+WwBnplMczT5fAGcmkk/D9TbYL53bqN7y2Q11wX7OquP7uiP/eKUmS1AB/oJNpD557sgTOSKc8nnm6BM5IJp2E72+yXTi3UzO8rlMdcE+zqrj+7oj/3ilJktQAf6CTaQ+ee7IEzkinPJ55ugTOSCadhO9vsh04s1szvK5THXBPs6q4/u52zrqaJElqgD/QybQHzz1ZAmekUx7PPF0CZySTTsL3N9kOnNmtEV7TrQ64p1lVXH93O2ddTZIkNcAf6GTag+eeLIEz0imPZ54ugTOSSSfh+5tsB87s1giv6VYH3NOsKq6/u52zriZJkhrgD3Qy7cFzT5bAGemUxzNPl8AZyaST8P1NtgNndmuE13SrA+5pVhXX393OWVeTJEkN8Ac6mfbguSdL4Ix0yuOZp0vgjGTSSfj+JtuBM2d1wr3NSuCMUR1wT7OquH7UXXjfWQmcMUqSJDXAH+hk2oPnniyBM9Ipj2eeLoEzkkkn4fubbAfOnNUJ9zYrgTNGdcA9zari+lF34X1nJXDGKEmS1AB/oJNpD557sgTOSKc8nnm6BM5IJp2E72+yHThzVifc26wEzhjVAfc0q4rrR92F952VwBmjJElSA/yBTqcsnne6BM7YkXJ41jtK4Ix00in47ibbgTNndcK9zUrgjFEdcE+zqrh+1F1431kJnDFKkiQ1wB9os0oJnGFWLYEzzCo9GZ812Q6cOasT7m1WAmeM6oB7mlXF9aPuwvvOSuCMUZIkqQH+QJtVSuAMs2oJnGFW6cn4rMl24MxZnXBvsxI4Y1QH3NOsKq4fdRfed1YCZ4ySJEkN8AfarFICZ5hVSuEcs0pPxmdNtgNnzuqEe5uVwBmjOuCeZlVx/ai78L6zEjhjlCRJaoA/0GaVUjjHbLUUzjGr9GR81mQ7cOasTri3WQmcMaoD7mlWFdePugvvOyuBM0ZJkqQG+ANtVimFc8xWS+Ecs0pPxmdNtgNnzuqEe5uVwBmjOuCeZlVx/ai78L6zEjhjlCRJaoA/0GaVUjjHbLUUzjGr9GR81mQ7cOasTri3WQmcMaoD7mlWFdePugvvOyuBM0ZJkqQG+ANttloSZ5mtlsI5ZpWejM+abAfOnNUJ9zYrgTNGdcA9zari+lF34X1nJXDGKEmS1AB/oM1WS+Iss5XSOM9stSfjsybbgTNndcK9zUrgjFEdcE+zqrh+1F1431kJnDFKkiQ1wB9os9XSOM/sr9I4z2y1J+OzJtuBM2d1wr3NSuCMUR1wT7OquH7UXXjfWQmcMUqSJDXAH2izlXbgTLO/SuM8s9WejM+abAfOnNUJ9zYrgTNGdcA9zari+lF34X1nJXDGKEmS1AB/oM1W2oVzzWbtwrlmKz0ZnzXZDpw5qxPubVYCZ4zqgHuaVcX1o+7C+85K4IxRkiSpAf5Am620C+eazdqFc81WejI+a7IdOHNWJ9zbrATOGNUB9zSriutH3YX3nZXAGaO24nAzMzMz+6zdON+M7cb5Zn/1ZHzWZDtw5qxOuLdZCZwxqgPuaVYV14+6C+87K4EzRm3F4WZmZmZW7xu4BzO2G+eb/dWT8VmT7cCZszrh3mYlcMaoDrinWVVcP+ouvO+sBM4YtRWHm5mZmVm9b+E+zP7Vt3AfZr/1ZHzWZDtw5qxOuLdZCZwxqgPuaVYV14+6C+87K4EzRm3F4WZmZmZW65u4F7N/+jbux2zWk/FZk+3AmbM64d5mJXDGqA64p1lVXD/qLrzvrATOGLUVh5uZmZnZeh1wT2bfxv2YzXoyPmuyHTizWyO8plsjvGbWXXjfTyP++93tnHW13/DaUSVcbGZmZmbrdcF92XvrgvsyG/VkfNZkO3Bmt0Z4TbdGeM2sEV4zivjvn0b897vbOetqv+G1o0q42MzMzMzW6ob7s/fVDfdnxp6Mz5psB87s1giv6dYIr5k1wmtGEf/904j/fnc7Z13tN7x2VAkXm5mZmdnfdcV92nvqivs0+8+ejM+abAfO7NYIr+nWCK+ZNcJrRhH//dOI/353O2dd7Te8dlQJF5uZmZnZvBNwz/b8uuN+zf7Vk/FZk+3CuZ2a4XWdGuE1s0Z4zagRXvNJxH+/O+K/d+o3vHZUCRebmZmZ2biTcO/2zE7D/Zs9GZ812S6c26kZXtelGV43a4TXjBrhNZ80wmvujPjvnfoNrx1VwsVmZmZm9t+dis9hz+lUfA57d0/GZ022E2d36Te8tkMzvG7WCK8ZNcPrqs3wursa4TVd+g2vHVXCxWZmZmb2756Az2Rn9xR8LntnT8ZnTbYb53foL7z+m/2G184a4TWjfsNrK83wurua4XUd+g2vHVXCxWZmZmb2THxGO68n4jPau3oyPmuyb+Aevt0KrtndCq6ZNcJrRv2F16/2F15/td/w2m/3G147qoSLzczMzN7cW/C5rW9vwee2d/RkfNZk38S9fKsKrk1XwbWzRnjNqFVc91eruO7TVnDNt/oNrx1VwsVmZmZmb0o/eC72vfSD52LP7Mn4rMmkf/C9GCVJkiRJkiSpMf4PvVGSJEmSJEmSGuP/0BslSZIkSZIkqTH+D71RkiRJkiRJkhrj/9BjkiRJkiRJkprj/9Tzf/BJkiRJkiRJh+H/2PN/8EmSJEmSJEmH4f/c83/wSZIkSZIkSYfxf+5JkiRJkiRJkiRJkiRJkiRJkiRJkiRJkiRJkiRJkiRJkiRJkiRJ6u3/AJzYEu5YCiFyAAAAAElFTkSuQmCC';
+    var COMPANY = { name: 'エクスケアダクト株式会社', addr: '〒661-0961　兵庫県尼崎市戸ノ内町4丁目3-1-110', tel: 'TEL(06)6420-4045　FAX(06)6420-4046　携帯090-1489-6680' };
+
+    /* ===== サイズと部材 =====
+       サイズ：φ100〜φ400 は 25 刻み、それより上は 50 刻みで φ1000 まで（ユーザー指示 2026-10-28）
+       フレキはフカガワの納入仕様図のサイズ：ハイホース AC φ100〜φ400（25刻み）、DEC-M φ100〜φ250・φ300・φ350・φ400 */
+    var SIZES = (function () { var a = []; for (var d = 100; d <= 400; d += 25) a.push(d); for (d = 450; d <= 1000; d += 50) a.push(d); return a; })();
+    var SIZES_AC = [100, 125, 150, 175, 200, 225, 250, 275, 300, 325, 350, 375, 400];
+    var SIZES_DEC = [100, 125, 150, 175, 200, 225, 250, 300, 350, 400];
+    var FLEX_LEN = ['0.5', '1', '1.5', '2', '10'];   // m。端末加工ありは 0.5〜2m が標準（10m まで）、加工なしは 10m 巻き
+    // 表（直管・継手の数）に並べる部材。列の順番は今の注文書と同じ
+    var MX = ['sp', 'e90', 'e45', 'ni', 'nec', 'cap', 'mesh'];
+    var TYPES = {
+      sp:   { name: 'SP',       full: 'スパイラルダクト', col: 'SP' },
+      e90:  { name: '90°',      full: 'エルボ90°',        col: '90°' },
+      e45:  { name: '45°',      full: 'エルボ45°',        col: '45°' },
+      ni:   { name: 'NI',       full: 'ニップル',         col: 'NI' },
+      nec:  { name: 'NEC',      full: 'NEC',              col: 'NEC' },
+      cap:  { name: 'キャップ', full: 'キャップ',         col: 'キャップ' },
+      mesh: { name: '金網',     full: '金網',             col: '金網' },
+      t:    { name: 'T管',      full: 'T管',              br: true },
+      rt:   { name: 'RT管',     full: 'RT管',             br: true },
+      r:    { name: 'R管',      full: 'R管（レジューサー）', br: true },
+      dec:  { name: 'DEC',      full: 'DEC（ハイホース DEC-M）', flex: true, sizes: SIZES_DEC },
+      ac:   { name: 'AC',       full: '保温付きフレキ（ハイホース AC）', flex: true, sizes: SIZES_AC }
+    };
+    var TYPE_ORDER = ['sp', 'e90', 'e45', 'ni', 'nec', 'cap', 'mesh', 't', 'rt', 'r', 'dec', 'ac'];
+    var OPT = { dest: ['会社', '引取', '現場', '伊丹'], mat: ['亜鉛鋼板', 'ガルバリウム鋼板', 'ステンレス', '塩ビ鋼板'] };
+
+    /* ===== 消耗品（フカガワ総合カタログ vol.19 p.220〜268 から。2026-10-29）=====
+       ユーザー指示：一旦すべて入力できるようにし、あとで使うものに絞っていく。
+       n＝品名、s＝仕様・サイズの選択肢（無いものは文字で入れる）、u＝ふだんの単位、p＝カタログのページ、d＝説明 */
+    var PHI_BAND = (function () { var a = []; for (var d = 75; d <= 400; d += 25) a.push('φ' + d); return a; })();
+    var PHI_100_400 = PHI_BAND.slice(1), PHI_100_300 = PHI_BAND.slice(1, 10);
+    var UNITS = ['個', '本', '巻', '枚', '箱', '小箱', '大箱', 'ケース', '束', 'kg', '缶', '袋', 'セット', 'm'];
+    function cross(a, b, sep) { var r = []; a.forEach(function (x) { b.forEach(function (y) { r.push(x + (sep || '') + y); }); }); return r; }
+    var SCREW = ['×13mm', '×16mm', '×19mm'];
+    var CONS = [
+      { g: 'ダクト用吊バンド・縦バンド（スパイラル）', p: 233, list: [
+        { n: 'ツイストバンド', s: PHI_BAND, u: '個', d: '吊り（下でボルト締め）' },
+        { n: 'Dバンド', s: PHI_BAND, u: '個', d: '吊り' },
+        { n: '2点式吊バンド', s: PHI_BAND, u: '個', d: '大口径の2点吊り' },
+        { n: 'Uバンド', s: PHI_BAND, u: '個', d: '縦管をブラケットに止める' } ] },
+      { g: 'フレキ用バンド・吊り', p: 234, list: [
+        { n: '穴あき吊バンド', s: ['B5-60C（t0.5 ストレート 60m）', 'B5-30M（t0.5 波形 30m）', 'B6-30C（t0.6 ストレート 30m）', 'B6-30M（t0.6 波形 30m）', 'B6-30CS（ステンレス 30m）', 'B6-30CKN（クギ穴なし 30m）', 'B8-30C（t0.8 ストレート 30m）', 'B8-60（t0.8 60m）', 'B8-30M（t0.8 波形 30m）', 'B6-30KZ（黒ZAM 30m）'], u: '巻' },
+        { n: 'ハトメバンド HTBS（ハトメ2個）', s: PHI_100_300, u: '個', d: '保温フレキの吊り' },
+        { n: 'ハトメバンド HTBT（ハトメ4個）', s: PHI_100_300, u: '個', d: '保温フレキの吊り' },
+        { n: 'ワイドバンド WB-50', s: ['t1.0×幅50×50m'], u: '巻' },
+        { n: 'パッチンロック', s: ['t2〜t3'], u: '箱', d: '200個入り' },
+        { n: 'パッチンピンク', s: ['t2〜t3'], u: '箱', d: '200個入り' },
+        { n: 'パッチンアンカー', s: ['3/8ショートアンカー＋ワイドバンド'], u: '箱', d: '200個入り' },
+        { n: 'パッチンフック', s: ['W3/8全ネジ用'], u: '箱', d: '100個入り' },
+        { n: 'B型バンド', s: PHI_BAND, u: '個', d: 'フレキの締め付け' },
+        { n: 'ハイホース用B型バンド', s: PHI_100_400, u: '個', d: '保温フレキの締め付け' },
+        { n: 'ワイヤーバンド', s: PHI_BAND, u: '個' },
+        { n: 'スピーディバンドⅢ（バンド付き）', s: ['小（φ75〜150）', '中（φ175〜250）', '大（φ275〜400）'], u: '箱', d: '200本入り' },
+        { n: 'スピーディバンドⅡ（金具のみ）', s: [], u: '箱' },
+        { n: 'ワンウェイバンド', s: ['小（φ75〜150）', '中（φ175〜250）', '大（φ275〜400）'], u: '箱', d: '200個入り' },
+        { n: 'ワンウェイバンド（本体のみ）', s: [], u: '箱' },
+        { n: 'スチール締めバンド', s: ['亜鉛 t0.4×幅13×100m', '亜鉛 t0.4×幅16×100m', 'ステンレス t0.4×幅13×100m', 'ステンレス t0.4×幅16×100m'], u: '巻' },
+        { n: 'バンドシール', s: ['亜鉛 オープン', '亜鉛 オーバーラップ', 'ステンレス オープン', 'ステンレス オーバーラップ'], u: '箱', d: '1,000個入り' } ] },
+      { g: 'テープ', p: 251, list: [
+        { n: 'アルミテープ（ツヤなし）', s: ['幅50×25m', '幅50×50m', '幅75×50m', '幅100×50m'], u: '巻' },
+        { n: 'アルミテープ（ツヤあり）', s: ['幅50×25m', '幅50×50m', '幅75×50m', '幅100×50m'], u: '巻' },
+        { n: 'インターテープ', s: ['幅48×25m', '幅48×50m'], u: '巻' },
+        { n: '布粘着テープ NO.3326', s: ['幅50×25m'], u: '巻' },
+        { n: 'FKダクトテープ', s: ['幅50×25m'], u: '巻' },
+        { n: 'キッチンテープ', s: ['t1.0×幅40×5m（白）'], u: '巻' },
+        { n: 'ブチルシーリングテープ', s: ['t1.0×幅40×5m（黄）'], u: '巻' },
+        { n: 'ブチルテープ（黒）', s: ['t1.0×幅40×5m（黒）'], u: '巻' },
+        { n: '防食テープ', s: ['幅50×50m', '幅75×30m'], u: '巻' },
+        { n: '養生テープ', s: ['幅50×25m'], u: '巻' },
+        { n: 'アルミクラフト粘着テープ', s: [], u: '巻' },
+        { n: 'ALGCテープ', s: [], u: '巻' },
+        { n: '黒アルミテープ', s: [], u: '巻' } ] },
+      { g: 'ビス', p: 249, list: [
+        { n: 'ワンタッチビス（鉄 三価ユニクロ）', s: cross(['ST4.2'], SCREW), u: '小箱', d: '小箱1,000本（19mmは700本）' },
+        { n: 'ワンタッチビス（ステンレス）', s: cross(['ST4.2'], SCREW), u: '小箱' },
+        { n: 'ダクトダンバビス（鉄 三価ユニクロ）', s: cross(['M4'], SCREW), u: '小箱' },
+        { n: 'ダクトダンバビス（ステンレス）', s: cross(['M4'], SCREW), u: '小箱' },
+        { n: 'シンワッシャー', s: cross(['M4'], SCREW), u: '小箱', d: 'ワッシャー付き・フレキの固定' },
+        { n: '六角ビス', s: ['M5×19mm', 'M6×19mm', 'M6×25mm'], u: '小箱' } ] },
+      { g: 'リベット', p: 250, list: [
+        { n: '丸リベット（メッキ）', s: ['M4.5×8mm', 'M4.5×10mm'], u: '箱', d: '30kg入り' },
+        { n: '丸リベット（ステンレス）', s: ['M4.5×8mm', 'M4.5×10mm'], u: '箱', d: '1,000個入り' },
+        { n: '平リベット（メッキ）', s: ['M4.5×8mm', 'M4.5×10mm'], u: '箱', d: '25kg入り' },
+        { n: '平リベット（ステンレス）', s: ['M4.5×8mm', 'M4.5×10mm'], u: '箱', d: '1,000個入り' },
+        { n: 'ブラインドリベット', s: [], u: '箱', d: '径・型番を入れてください（1,000個入り）' } ] },
+      { g: 'ボルト・ナット・全ネジ', p: 247, list: [
+        { n: 'ボルト（メッキ）', s: ['M8×20', 'M8×25', 'W3/8×20', 'W3/8×25', 'W3/8×32', 'W1/2×25', 'W1/2×32'], u: '小箱' },
+        { n: 'ボルト（ステンレス）', s: ['M8×20', 'M8×25', 'M8×30', 'W3/8×20', 'W3/8×25', 'W1/2×25', 'W1/2×32'], u: '小箱' },
+        { n: 'ナット（メッキ）', s: ['W3/8', 'W1/2', 'M8', 'M10', 'M12'], u: '小箱' },
+        { n: 'ナット（ステンレス）', s: ['W3/8', 'W1/2', 'M8', 'M10', 'M12'], u: '小箱' },
+        { n: '長ナット', s: ['W3/8×40', 'W3/8×40（ストッパー付）', 'W3/8×40（窓2ヶ付）', 'W1/2×38', 'M10×40'], u: '小箱' },
+        { n: '袋ナット（メッキ）', s: ['W3/8', 'W1/2', 'M10'], u: '小箱' },
+        { n: '袋ナット（ステンレス）', s: ['W3/8', 'W1/2', 'M10'], u: '小箱' },
+        { n: '全ネジ（メッキ）', s: cross(['W3/8'], ['×1000', '×1500', '×2000', '×2500', '×3000']).concat(cross(['W1/2'], ['×1000', '×1500', '×2000', '×2500', '×3000']), ['M10×2000', 'M10×3000']), u: '本' },
+        { n: '全ネジ（ステンレス）', s: cross(['W3/8', 'W1/2'], ['×1000', '×1500', '×2000', '×2500', '×3000']), u: '本' },
+        { n: '丸座金（メッキ）', s: ['W3/8×25', 'W3/8×30', 'W3/8×50'], u: '小箱' },
+        { n: '丸座金（ステンレス）', s: ['W3/8×25', 'W3/8×30', 'W3/8×50'], u: '小箱' },
+        { n: 'タイロット用テラー', s: ['メッキ W3/8×72×t0.8', 'ステンレス W3/8×72×t0.8'], u: '個' } ] },
+      { g: 'シーリング材', p: 224, list: [
+        { n: 'FKダクトシーラー', s: ['180ml シルバー'], u: '本' },
+        { n: 'ボンドハイパーコーク（防カビ剤入り）', s: ['330ml クリヤー', '330ml 白', '330ml ニューアイボリー', '330ml ライトグレー'], u: '本' },
+        { n: 'ボンド変成シリコンコーク', s: ['333ml 白', '333ml アイボリー', '333ml ライトグレー'], u: '本' },
+        { n: 'FK変成シリコン（ノズル付）', s: ['150g グレー'], u: '本' },
+        { n: 'ボンド耐火目地用シーラント', s: ['333ml 白', '333ml グレー'], u: '本' },
+        { n: 'シャーピーシリコーンS パウチ', s: ['330ml 白', '330ml クリア', '330ml グレー', '330ml 黒'], u: '本' },
+        { n: 'ボンドウレタンコーク ノンブリード', s: ['320ml 白', '320ml ライトグレー'], u: '本' },
+        { n: 'FKシリコンラミネート', s: [], u: '本' } ] },
+      { g: 'ガスケット', p: 220, list: [
+        { n: 'FGK-101 クロロプレン（一般空調）', s: ['t3×25×1m', 't3×30×1m', 't3×40×1m', 't5×10×1m', 't5×15×1m'], u: '箱' },
+        { n: 'FGK-103 エスコ（一般空調）', s: ['t5×15×10m'], u: '巻' },
+        { n: 'FGK-107 HFTダクト（一般空調・プール）', s: ['t4.8×10×14.9m', 't4.8×15×14.9m'], u: '巻' },
+        { n: 'FGK-109 アクティヴ AG-14（一般空調）', s: ['t5×15×10m'], u: '巻' },
+        { n: 'FGK-111 アクティヴ AG-02（一般空調）', s: ['t6×15×10m'], u: '巻' },
+        { n: 'FGK-201 サンシールリボン AS-87（排煙）', s: ['t4×25×15m（穴有）', 't4×30×15m（穴有）', 't4×40×15m（穴有）', 't5×15×10m'], u: '巻' },
+        { n: 'FGK-203 アクティヴロック AS-97AR（排煙）', s: ['t4×25×15m', 't4×30×15m', 't4×40×15m', 't6×15×10m'], u: '巻' },
+        { n: 'FGK-205 ガラスリボンテープ（排煙・一般）', s: ['t3×25×30m', 't3×30×30m', 't3×40×30m'], u: '巻' },
+        { n: 'FGK-302 ブチルゴム系（厨房・屋外）', s: ['t3×10×10m', 't3×15×10m', 't5×10×10m', 't5×15×10m'], u: '巻' },
+        { n: 'FGK-306 キッチン（厨房・屋外）', s: ['t3×10×10m', 't3×15×10m', 't5×10×10m', 't5×15×10m'], u: '巻' },
+        { n: 'FGK-401 フッ素樹脂（薬品・クリーンルーム）', s: [], u: '巻' },
+        { n: 'FGK-403 シリコンゴム系（高温厨房・薬品）', s: ['t3×25（1m単位）', 't3×30（1m単位）', 't3×40（1m単位）', 't5×15（1m単位）'], u: 'm' } ] },
+      { g: '吊金具・アンカー', p: 226, list: [
+        { n: 'ハンガーアングル 両穴 LW-40', s: ['ユニクロ L40×40×2500', 'ドブ L40×40×2500'], u: '本' },
+        { n: 'ハンガーアングル 片穴 LS-40', s: ['L40×40×2500'], u: '本' },
+        { n: 'ハンガーアングル ステンレス LWS-40（両穴）', s: ['L40×40×2500'], u: '本' },
+        { n: 'ハンガーアングル ステンレス LSS-40（片穴）', s: ['L40×40×2500'], u: '本' },
+        { n: 'ハンガーチャンネル ADLHW', s: ['溶融亜鉛 30×40×30×2500'], u: '本' },
+        { n: 'アングル吊金具 SCA', s: [], u: '個' },
+        { n: 'チャンネル吊金具（SCK・SCC・SCX）', s: [], u: '個' },
+        { n: 'スーパーつよし君（FHB-4N・H-4N）', s: [], u: '個' },
+        { n: 'エイムS', s: [], u: '個' },
+        { n: '吊金具用耐震フック', s: [], u: '個' },
+        { n: 'デッキ用吊金具', s: ['F-N', 'H-SF', 'I-U', 'L', 'QL-N', 'S-50B', 'SCW', 'NS-1', 'E3', 'C1'], u: '個' },
+        { n: 'C金具', s: [], u: '個' },
+        { n: 'LGハンガー', s: [], u: '個' },
+        { n: 'ねじ込みT足', s: [], u: '個' },
+        { n: 'ハンガーピース', s: [], u: '個' },
+        { n: '防振ハンガー', s: ['30型-H', 'MSF-30-D'], u: '個' },
+        { n: '振れ止め金具', s: ['TB-F1', 'NF-1', 'NT1-S', 'NT1-W', 'クロスロック FL-V', 'クロスロック FL-D'], u: '個' },
+        { n: 'ユニコンアンカー', s: [], u: '箱' },
+        { n: 'ルーティアンカー', s: [], u: '箱' },
+        { n: 'ビッグワン', s: [], u: '箱' },
+        { n: 'クイックワン R-NUT', s: [], u: '箱' },
+        { n: 'QCアンカー', s: [], u: '箱' } ] },
+      { g: '切断刃・スプレー・養生', p: 253, list: [
+        { n: '切断砥石 きれもの君Ⅱ A30P81', s: ['φ105×1.0×φ15'], u: '箱', d: '10枚入り' },
+        { n: 'チップソー替刃（スパイラル切断用）', s: ['YSD-110FSW φ110×1.6×36P', 'YSD-135FSW φ135×1.4×30P'], u: '枚' },
+        { n: 'カットマン（スパイラル切断用）', s: ['φ110×1.45×36P'], u: '枚' },
+        { n: 'ラッカースプレーJ', s: ['300ml つや消し黒（ダクト内部）', '300ml シルバー（外部）'], u: '本' },
+        { n: 'マザックススプレー', s: ['300ml シルバー'], u: '本' },
+        { n: 'ライフ錆止21', s: ['400ml 赤', '400ml グレー'], u: '本' },
+        { n: 'リムーバースプレー 2WAY', s: ['350ml'], u: '本' },
+        { n: 'ラスタージンクスプレー（亜鉛めっき補修）', s: ['420ml シルバー'], u: '本' },
+        { n: '養生フィルム TF-200B', s: ['0.06×500mm×100m', '0.06×1000mm×100m'], u: '巻' } ] },
+      { g: '保温材・保温用品', p: 256, list: [
+        { n: 'グラスウールボード', s: ['32k t25 605×910', '32k t50 605×910', '40k t25 605×910', '40k t50 605×910'], u: '枚' },
+        { n: 'グラスウールロール ALK付', s: ['24k t25 910幅', '24k t50 910幅', '32k t25 910幅', '32k t50 910幅'], u: '巻' },
+        { n: 'マイティロール', s: [], u: '巻' },
+        { n: 'ATピン', s: [], u: '箱' },
+        { n: 'スピンドルピン', s: [], u: '箱' },
+        { n: 'スプレーのり JET1', s: [], u: '本' },
+        { n: '亀甲金網', s: [], u: '巻' },
+        { n: 'セラカバーS', s: ['直管', '90°', '45°'], u: '個' },
+        { n: '発泡ゴム保温材（FEF・アーマフレックス・エアロフレックス）', s: [], u: '本' } ] },
+      { g: 'その他', p: 0, list: [
+        { n: 'その他（品名を入れる）', s: [], u: '個', free: true } ] }
+    ];
+    function consProd(g, n) {
+      for (var i = 0; i < CONS.length; i++) if (CONS[i].g === g) for (var j = 0; j < CONS[i].list.length; j++) if (CONS[i].list[j].n === n) return CONS[i].list[j];
+      return null;
+    }
+
+    function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
+    function num(v) { var n = parseFloat(String(v == null ? '' : v).replace(/[^\d.]/g, '')); return isNaN(n) ? 0 : n; }
+    function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 7); }
+    function today() { var d = new Date(); return d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2) + '-' + ('0' + d.getDate()).slice(-2); }
+    function jpDate(s) { var m = String(s || '').match(/^(\d{4})-(\d{2})-(\d{2})$/); return m ? (+m[1]) + '年' + (+m[2]) + '月' + (+m[3]) + '日' : ''; }
+
+    /* ===== 部材の絵（一覧・選ぶ画面・入力画面で共通） ===== */
+    function icon(type, big) {
+      var s = big ? 'stroke-width="2"' : 'stroke-width="2.5"';
+      var g = { sp: '<rect x="8" y="16" width="84" height="18" ' + s + '/><path d="M28 16l-6 18M48 16l-6 18M68 16l-6 18" stroke-width="1.2"/>',
+        e90: '<path d="M10 12h30a30 30 0 0 1 30 30v6H52v-6a12 12 0 0 0-12-12H10z" ' + s + '/>',
+        e45: '<path d="M8 14h36l26 26-13 13-21-21H8z" ' + s + '/>',
+        ni: '<rect x="30" y="16" width="40" height="18" ' + s + '/><line x1="50" y1="13" x2="50" y2="37" ' + s + '/>',
+        nec: '<rect x="20" y="10" width="10" height="30" ' + s + '/><rect x="30" y="16" width="44" height="18" ' + s + '/>',
+        cap: '<path d="M34 16h30v18H34z" ' + s + '/><path d="M64 12v26" ' + s + '/>',
+        mesh: '<rect x="30" y="12" width="40" height="26" ' + s + '/><path d="M30 20h40M30 28h40M40 12v26M50 12v26M60 12v26" stroke-width="1.2"/>',
+        t: '<path d="M8 10h84v16H8zM38 26h24v18H38z" ' + s + '/>',
+        rt: '<path d="M6 10h40l12 4h36v10H58l-12 4H6zM16 28h18v16H16z" ' + s + '/>',
+        r: '<path d="M8 10h34l18 6h32v18H60l-18 6H8z" ' + s + '/>',
+        dec: '<path d="M8 25c6-11 11 11 17 0s11 11 17 0 11 11 17 0 11 11 17 0 6-7 8-4" ' + s + '/>',
+        ac: '<path d="M8 25c6-11 11 11 17 0s11 11 17 0 11 11 17 0 11 11 17 0 6-7 8-4" stroke-width="6" stroke="#9a9a9a"/><path d="M8 25c6-11 11 11 17 0s11 11 17 0 11 11 17 0 11 11 17 0 6-7 8-4" ' + s + '/>' };
+      return '<svg viewBox="0 0 100 50" fill="none" stroke="#111" stroke-linejoin="round">' + (g[type] || '') + '</svg>';
+    }
+
+    /* ===== 注文書のデータ ===== */
+    var STORE = 'maruOrders.v1';
+    var S = null;
+    function blank() { return { id: uid(), no: '', orderer: '', site: '', room: '', orderDate: today(), delivDate: '', dest: '現場', mat: '亜鉛鋼板', memo: '', items: [], cons: [], updated: 0 }; }
+    function loadStore() { try { return JSON.parse(localStorage.getItem(STORE) || '[]'); } catch (e) { return []; } }
+    function writeStore(a) { try { localStorage.setItem(STORE, JSON.stringify(a)); } catch (e) { toast('この端末に保存できませんでした'); } }
+    function saveSlip(show) {
+      S.updated = Date.now();
+      var a = loadStore().filter(function (x) { return x.id !== S.id; });
+      a.unshift(JSON.parse(JSON.stringify(S)));
+      writeStore(a.slice(0, 200));
+      if (show) toast('保存しました');
+    }
+    var saveTimer = null;
+    function changed() { renderAll(); clearTimeout(saveTimer); saveTimer = setTimeout(function () { saveSlip(false); }, 1500); }
+
+    /* 部材1件の文字（一覧と注文書で使う） */
+    function spLen(it) { return it.len === 'L' ? ('L=' + (num(it.lenMm) || '') ) : (it.len || '4') + 'm'; }
+    function sizeText(it) {
+      var t = TYPES[it.type];
+      if (it.type === 't') return 'T-' + it.d1 + '×' + it.d3;
+      if (it.type === 'rt') return 'RT-' + it.d1 + '×' + it.d2 + '×' + it.d3;
+      if (it.type === 'r') return 'R-' + it.d1 + '×' + it.d2;
+      if (t.flex) return 'φ' + it.d1 + '　L' + it.flen + 'm　' + (it.endc ? '端末加工あり' : '端末加工なし');
+      if (it.type === 'sp') return 'φ' + it.d1 + '　' + (it.len === 'L' ? '長さ指定 ' + (num(it.lenMm) || '') + 'mm' : '定尺 ' + (it.len || '4') + 'm');
+      return 'φ' + it.d1;
+    }
+    function itemErrors(it) {
+      var e = [];
+      if (!(num(it.qty) > 0)) e.push('数を入れてください。');
+      if (it.type === 't' && num(it.d3) > num(it.d1)) e.push('③（枝）は①より大きくできません。');
+      if (it.type === 'r' && !(num(it.d2) < num(it.d1))) e.push('②は①より小さいサイズにしてください。');
+      if (it.type === 'rt') {
+        if (!(num(it.d2) < num(it.d1))) e.push('②は①より小さいサイズにしてください。');
+        if (num(it.d3) > num(it.d1)) e.push('③（枝）は①より大きくできません。');
+      }
+      if (it.type === 'sp' && it.len === 'L' && !(num(it.lenMm) > 0)) e.push('長さ（mm）を入れてください。');
+      return e;
+    }
+
+    /* ===== 画面の表示 ===== */
+    function renderAll() {
+      if (!S.cons) S.cons = [];
+      document.querySelectorAll('[data-k]').forEach(function (el) { if (document.activeElement !== el) el.value = S[el.getAttribute('data-k')] || ''; });
+      renderChips('cDest', OPT.dest, 'dest');
+      renderChips('cMat', OPT.mat, 'mat');
+      document.getElementById('topTitle').textContent = '丸ダクト注文' + (S.site ? '　' + S.site : '');
+      renderItems();
+      renderCons();
+      renderPreview();
+    }
+    function renderChips(id, list, key) {
+      document.getElementById(id).innerHTML = list.map(function (v) {
+        return '<span class="chip' + (S[key] === v ? ' on' : '') + '" onclick="setOpt(\'' + key + '\',\'' + v + '\')">' + esc(v) + '</span>';
+      }).join('');
+    }
+    function setOpt(k, v) { S[k] = v; changed(); }
+    function renderItems() {
+      var el = document.getElementById('items');
+      document.getElementById('itemCount').textContent = S.items.length;
+      if (!S.items.length) { el.innerHTML = '<div class="empty">「＋ 部材を追加」から入力してください。</div>'; return; }
+      // 部材の種類の順、同じ種類はサイズの大きい順に並べる
+      var list = S.items.map(function (it, i) { return { it: it, i: i }; }).sort(itemSort);
+      el.innerHTML = list.map(function (x) {
+        var it = x.it, er = itemErrors(it);
+        return '<div class="item" onclick="editItem(' + x.i + ')"><div class="item-ic">' + icon(it.type) + '</div>' +
+          '<div class="item-b"><div class="item-t">' + esc(TYPES[it.type].name) + '</div><div class="item-s">' + esc(sizeText(it)) + '</div>' +
+          (er.length ? '<div class="item-s" style="color:var(--err);font-weight:700;">' + esc(er[0]) + '</div>' : '') + '</div>' +
+          '<div class="item-q">× ' + esc(it.qty || 0) + '</div></div>';
+      }).join('');
+    }
+    function itemSort(a, b) {
+      var ta = TYPE_ORDER.indexOf(a.it.type), tb = TYPE_ORDER.indexOf(b.it.type);
+      if (ta !== tb) return ta - tb;
+      return num(a.it.d1) - num(b.it.d1) || num(a.it.d2) - num(b.it.d2) || num(a.it.d3) - num(b.it.d3);
+    }
+
+    document.addEventListener('input', function (e) {
+      var k = e.target.getAttribute && e.target.getAttribute('data-k');
+      if (k) { S[k] = e.target.value; changed(); }
+    });
+
+    /* ===== 部材を選ぶ・入れる ===== */
+    function openPicker() {
+      document.getElementById('pickGrid').innerHTML = TYPE_ORDER.map(function (t) {
+        return '<div class="pick" onclick="pickType(\'' + t + '\')">' + icon(t, true) + '<div class="pick-n">' + esc(TYPES[t].name) + '</div></div>';
+      }).join('');
+      openSheet('pickerBg');
+    }
+    var ED = null;   // { it, index }
+    function newItem(type) {
+      var it = { type: type, d1: 200, d2: '', d3: '', qty: 1 };
+      if (type === 'sp') { it.len = '4'; it.lenMm = ''; }
+      if (type === 't') { it.d3 = 150; }
+      if (type === 'rt') { it.d1 = 250; it.d2 = 200; it.d3 = 150; }
+      if (type === 'r') { it.d2 = 150; }
+      if (TYPES[type].flex) { it.d1 = 150; it.flen = '2'; it.endc = true; }
+      return it;
+    }
+    function pickType(t) { closeSheet('pickerBg'); ED = { it: newItem(t), index: -1 }; openEditor(); }
+    function editItem(i) { ED = { it: JSON.parse(JSON.stringify(S.items[i])), index: i }; openEditor(); }
+    function sizeSel(key, list, label) {
+      var it = ED.it;
+      return '<div class="fg"><label>' + label + '</label><select onchange="edSet(\'' + key + '\', +this.value)">' +
+        list.map(function (d) { return '<option value="' + d + '"' + (+it[key] === d ? ' selected' : '') + '>φ' + d + '</option>'; }).join('') + '</select></div>';
+    }
+    function openEditor() {
+      var it = ED.it, t = TYPES[it.type];
+      document.getElementById('edTitle').textContent = t.full + (ED.index >= 0 ? '（編集）' : '');
+      document.getElementById('edDel').style.display = ED.index >= 0 ? '' : 'none';
+      var h = '<div class="edbox">';
+      if (it.type === 't') h += '<div class="g2">' + sizeSel('d1', SIZES, '①②（本管）') + sizeSel('d3', SIZES, '③（枝）') + '</div>';
+      else if (it.type === 'rt') h += '<div class="g3">' + sizeSel('d1', SIZES, '①（大きい口）') + sizeSel('d2', SIZES, '②（小さい口）') + sizeSel('d3', SIZES, '③（枝）') + '</div>';
+      else if (it.type === 'r') h += '<div class="g2">' + sizeSel('d1', SIZES, '①（大きい口）') + sizeSel('d2', SIZES, '②（小さい口）') + '</div>';
+      else h += sizeSel('d1', t.sizes || SIZES, 'サイズ');
+      if (it.type === 'sp') {
+        h += '<div class="fg"><span class="lbl">長さ</span><div class="chips">' +
+          [['2', '定尺 2m'], ['4', '定尺 4m'], ['L', '長さを指定']].map(function (o) {
+            return '<span class="chip' + ((it.len || '4') === o[0] ? ' on' : '') + '" onclick="edSet(\'len\',\'' + o[0] + '\')">' + o[1] + '</span>';
+          }).join('') + '</div></div>';
+        if (it.len === 'L') h += '<div class="fg"><label>長さ（mm）</label><input type="number" inputmode="numeric" value="' + esc(it.lenMm) + '" oninput="ED.it.lenMm=this.value; refreshEd(true)"></div>';
+      }
+      if (t.flex) {
+        h += '<div class="fg"><span class="lbl">長さ</span><div class="chips">' + FLEX_LEN.map(function (v) {
+          return '<span class="chip' + (it.flen === v ? ' on' : '') + '" onclick="edSet(\'flen\',\'' + v + '\')">' + v + 'm</span>';
+        }).join('') + '</div></div>';
+        h += '<div class="fg"><span class="lbl">端末加工</span><div class="chips">' +
+          '<span class="chip' + (it.endc ? ' on' : '') + '" onclick="edSet(\'endc\', true)">あり</span>' +
+          '<span class="chip' + (!it.endc ? ' on' : '') + '" onclick="edSet(\'endc\', false)">なし</span></div>' +
+          '<div class="note" style="margin-top:6px;">端末加工ありは 0.5m・1m・1.5m・2m が標準（10m まで作れます）。加工なしは 10m 巻きです。</div></div>';
+      }
+      h += '<div class="fg"><label>数</label><div class="qty"><button type="button" onclick="edQty(-1)">－</button><input type="number" inputmode="numeric" id="edQty" value="' + esc(it.qty) + '" oninput="ED.it.qty=this.value; refreshEd(true)"><button type="button" onclick="edQty(1)">＋</button></div></div>';
+      h += '</div><div id="edErr"></div>';
+      document.getElementById('edForm').innerHTML = h;
+      refreshEd();
+      openSheet('editorBg');
+    }
+    function edSet(k, v) {
+      ED.it[k] = v;
+      if (k === 'flen' && v === '10') ED.it.endc = false;   // 10m は加工なしが標準
+      openEditor();
+    }
+    function edQty(d) { ED.it.qty = Math.max(0, num(ED.it.qty) + d); document.getElementById('edQty').value = ED.it.qty; refreshEd(); }
+    function refreshEd() {
+      var it = ED.it, er = itemErrors(it);
+      document.getElementById('edFig').innerHTML = edFigure(it);
+      document.getElementById('edErr').innerHTML = er.length ? '<div class="errbox">' + er.map(esc).join('<br>') + '</div>' : '';
+      document.getElementById('edOk').disabled = er.length > 0;
+    }
+    // 入力画面の図：形と、①②③の位置・入れたサイズ
+    function edFigure(it) {
+      var tx = function (x, y, s, a) { return '<text x="' + x + '" y="' + y + '" font-size="11" text-anchor="' + (a || 'middle') + '" fill="#1a6fd1" font-weight="700">' + esc(s) + '</text>'; };
+      var body = '', p = 'fill="none" stroke="#111" stroke-width="2"';
+      if (it.type === 't') body = '<path d="M30 20h140v26H30zM82 46h36v34H82z" ' + p + '/>' + tx(20, 37, '①', 'end') + tx(180, 37, '②', 'start') + tx(100, 94, '③') + tx(100, 14, 'φ' + it.d1) + tx(126, 68, 'φ' + it.d3, 'start');
+      else if (it.type === 'rt') body = '<path d="M20 20h70l22 6h68v14h-68l-22 6H20zM40 46h28v34H40z" ' + p + '/>' + tx(12, 37, '①', 'end') + tx(188, 37, '②', 'start') + tx(54, 94, '③') + tx(55, 14, 'φ' + it.d1) + tx(146, 20, 'φ' + it.d2) + tx(76, 68, 'φ' + it.d3, 'start');
+      else if (it.type === 'r') body = '<path d="M30 18h55l30 10h55v30h-55l-30 10H30z" ' + p + '/>' + tx(20, 47, '①', 'end') + tx(180, 47, '②', 'start') + tx(57, 12, 'φ' + it.d1) + tx(142, 22, 'φ' + it.d2);
+      else body = '<g transform="translate(50 15) scale(1)">' + icon(it.type, true).replace('<svg viewBox="0 0 100 50"', '<svg x="0" y="0" width="100" height="60" viewBox="0 0 100 50"') + '</g>' + tx(100, 92, sizeText(it));
+      return '<svg viewBox="0 0 200 100">' + body + '</svg>';
+    }
+    function commitItem() {
+      var it = ED.it;
+      it.qty = num(it.qty);
+      if (itemErrors(it).length) return;
+      if (ED.index >= 0) S.items[ED.index] = it; else S.items.push(it);
+      closeSheet('editorBg');
+      changed();
+    }
+    function deleteItem() {
+      if (ED.index < 0) return;
+      S.items.splice(ED.index, 1);
+      closeSheet('editorBg');
+      changed();
+    }
+
+    /* ===== 消耗品を選ぶ・入れる ===== */
+    function consName(c) { return c.free ? (c.name || '') : c.n; }
+    function consErrors(c) {
+      var e = [];
+      if (c.free && !String(c.name || '').trim()) e.push('品名を入れてください。');
+      if (!(num(c.qty) > 0)) e.push('数を入れてください。');
+      return e;
+    }
+    function renderCons() {
+      var el = document.getElementById('consItems');
+      document.getElementById('consCount').textContent = S.cons.length;
+      if (!S.cons.length) { el.innerHTML = '<div class="empty">「＋ 消耗品を追加」から入力してください。</div>'; return; }
+      el.innerHTML = S.cons.map(function (c, i) {
+        var er = consErrors(c);
+        return '<div class="item" onclick="editCons(' + i + ')"><div class="item-b"><div class="item-t">' + esc(consName(c)) + '</div>' +
+          '<div class="item-s">' + esc([c.spec, c.memo].filter(Boolean).join('　')) + '</div>' +
+          (er.length ? '<div class="item-s" style="color:var(--err);font-weight:700;">' + esc(er[0]) + '</div>' : '') + '</div>' +
+          '<div class="item-q">× ' + esc(c.qty || 0) + ' ' + esc(c.unit || '') + '</div></div>';
+      }).join('');
+    }
+    function openConsPicker() { document.getElementById('consFind').value = ''; renderConsPick(); openSheet('consPickBg'); }
+    function renderConsPick() {
+      var q = document.getElementById('consFind').value.trim();
+      var h = CONS.map(function (g, gi) {
+        var list = g.list.map(function (p, pi) { return { p: p, pi: pi }; }).filter(function (x) {
+          return !q || (g.g + x.p.n + (x.p.d || '')).indexOf(q) !== -1;
+        });
+        if (!list.length) return '';
+        return '<div class="cons-g"><div class="cons-gh">' + esc(g.g) + (g.p ? '　<span class="note">カタログ p.' + g.p + '〜</span>' : '') + '</div><div class="cons-list">' +
+          list.map(function (x) {
+            return '<button type="button" class="cons-p" onclick="pickCons(' + gi + ',' + x.pi + ')">' + esc(x.p.n) + (x.p.d ? '<small>' + esc(x.p.d) + '</small>' : '') + '</button>';
+          }).join('') + '</div></div>';
+      }).join('');
+      document.getElementById('consPick').innerHTML = h || '<div class="empty">見つかりません。「その他」から品名を入れてください。</div>';
+    }
+    var CE = null;   // { c, index }
+    function pickCons(gi, pi) {
+      var g = CONS[gi], p = g.list[pi];
+      closeSheet('consPickBg');
+      CE = { c: { g: g.g, n: p.n, free: !!p.free, name: '', spec: p.s.length ? p.s[0] : '', qty: 1, unit: p.u, memo: '' }, index: -1 };
+      openConsEd();
+    }
+    function editCons(i) { CE = { c: JSON.parse(JSON.stringify(S.cons[i])), index: i }; openConsEd(); }
+    function openConsEd() {
+      var c = CE.c, p = consProd(c.g, c.n) || { s: [], u: c.unit };
+      document.getElementById('ceTitle').textContent = (c.free ? '消耗品' : c.n) + (CE.index >= 0 ? '（編集）' : '');
+      document.getElementById('ceDel').style.display = CE.index >= 0 ? '' : 'none';
+      var h = '<div class="edbox">';
+      if (c.free) h += '<div class="fg"><label>品名</label><input type="text" value="' + esc(c.name) + '" oninput="CE.c.name=this.value; refreshCe()"></div>';
+      var inList = p.s.indexOf(c.spec) !== -1;
+      if (p.s.length) {
+        h += '<div class="fg"><label>仕様・サイズ</label><select onchange="ceSpec(this.value)">' +
+          p.s.map(function (v) { return '<option' + (c.spec === v ? ' selected' : '') + '>' + esc(v) + '</option>'; }).join('') +
+          '<option value="__other"' + (!inList ? ' selected' : '') + '>ほかの仕様（文字で入れる）</option></select></div>';
+      }
+      if (!p.s.length || !inList) h += '<div class="fg"><label>' + (p.s.length ? 'ほかの仕様' : '仕様・サイズ・型番') + '</label><input type="text" id="ceSpecTx" value="' + esc(c.spec) + '" placeholder="例：W3/8×20、φ150 など" oninput="CE.c.spec=this.value"></div>';
+      h += '<div class="fg"><label>数</label><div class="qty"><button type="button" onclick="ceQty(-1)">－</button><input type="number" inputmode="numeric" id="ceQty" value="' + esc(c.qty) + '" oninput="CE.c.qty=this.value; refreshCe()"><button type="button" onclick="ceQty(1)">＋</button></div></div>';
+      h += '<div class="fg"><label>単位</label><select onchange="CE.c.unit=this.value">' + UNITS.map(function (u) { return '<option' + (c.unit === u ? ' selected' : '') + '>' + u + '</option>'; }).join('') + '</select></div>';
+      h += '<div class="fg"><label>メモ（注文書に出ます）</label><input type="text" value="' + esc(c.memo) + '" oninput="CE.c.memo=this.value"></div>';
+      if (p.d) h += '<div class="note">' + esc(p.d) + '</div>';
+      h += '</div><div id="ceErr"></div>';
+      document.getElementById('ceForm').innerHTML = h;
+      refreshCe();
+      openSheet('consEdBg');
+    }
+    function ceSpec(v) { CE.c.spec = v === '__other' ? '' : v; openConsEd(); if (v === '__other') document.getElementById('ceSpecTx').focus(); }
+    function ceQty(d) { CE.c.qty = Math.max(0, num(CE.c.qty) + d); document.getElementById('ceQty').value = CE.c.qty; refreshCe(); }
+    function refreshCe() {
+      var er = consErrors(CE.c);
+      document.getElementById('ceErr').innerHTML = er.length ? '<div class="errbox">' + er.map(esc).join('<br>') + '</div>' : '';
+      document.getElementById('ceOk').disabled = er.length > 0;
+    }
+    function commitCons() {
+      var c = CE.c;
+      c.qty = num(c.qty);
+      if (consErrors(c).length) return;
+      if (CE.index >= 0) S.cons[CE.index] = c; else S.cons.push(c);
+      closeSheet('consEdBg');
+      changed();
+    }
+    function deleteCons() {
+      if (CE.index < 0) return;
+      S.cons.splice(CE.index, 1);
+      closeSheet('consEdBg');
+      changed();
+    }
+
+    /* ===== 注文書（A4）=====
+       案A（ユーザー指示 2026-10-28）：
+       ・直管・継手の数：使ったサイズの行だけ。列は SP・90°・45°・NI・NEC・キャップ・金網。SP の長さが 4m 以外なら「SP 2m」などの列を足す
+       ・分岐・片落ち：T管・RT管・R管を ①②③・数・書き方（T-200×150 など）で1行ずつ
+       ・フレキ：DEC・AC をサイズ・長さ・端末加工・数で1行ずつ
+       同じ部材・同じサイズ・同じ長さは数を足して1つにまとめる */
+    function spKey(it) { return it.len === 'L' ? 'L' + num(it.lenMm) : (it.len || '4'); }
+    function spColName(k) { return k.charAt(0) === 'L' ? 'SP L=' + k.slice(1) : 'SP ' + k + 'm'; }
+    function collect() {
+      var mx = {}, cols = {}, br = {}, fx = {};
+      S.items.forEach(function (it) {
+        if (itemErrors(it).length) return;
+        var t = TYPES[it.type], q = num(it.qty);
+        if (t.br) {
+          var k = it.type + '|' + it.d1 + '|' + (it.d2 || '') + '|' + (it.d3 || '');
+          if (!br[k]) br[k] = { it: it, q: 0 };
+          br[k].q += q;
+        } else if (t.flex) {
+          var kf = it.type + '|' + it.d1 + '|' + it.flen + '|' + (it.endc ? 1 : 0);
+          if (!fx[kf]) fx[kf] = { it: it, q: 0 };
+          fx[kf].q += q;
+        } else {
+          var col = it.type === 'sp' ? 'sp:' + spKey(it) : it.type;
+          cols[col] = true;
+          mx[it.d1] = mx[it.d1] || {};
+          mx[it.d1][col] = (mx[it.d1][col] || 0) + q;
+        }
+      });
+      // SP の列：4m を最初に、そのあと 2m、長さ指定
+      var spCols = Object.keys(cols).filter(function (c) { return c.indexOf('sp:') === 0; }).sort(function (a, b) {
+        var o = function (c) { return c === 'sp:4' ? 0 : c === 'sp:2' ? 1 : 2 + num(c.slice(4)); };
+        return o(a) - o(b);
+      });
+      var onlyStd4 = !spCols.length || (spCols.length === 1 && spCols[0] === 'sp:4');
+      var colList = (onlyStd4 ? [{ k: 'sp:4', h: 'SP' }] : spCols.map(function (c) { return { k: c, h: spColName(c.slice(3)) }; }))
+        .concat(MX.slice(1).map(function (t) { return { k: t, h: TYPES[t].col }; }));
+      var sizes = Object.keys(mx).map(Number).sort(function (a, b) { return a - b; });
+      var brList = Object.keys(br).map(function (k) { return br[k]; }).sort(function (a, b) { return itemSort({ it: a.it }, { it: b.it }); });
+      var fxList = Object.keys(fx).map(function (k) { return fx[k]; }).sort(function (a, b) { return itemSort({ it: a.it }, { it: b.it }) || num(a.it.flen) - num(b.it.flen); });
+      // 消耗品：入れた順。品名・仕様・単位・メモが同じものは数を足して1行にする
+      var cs = {}, csList = [];
+      (S.cons || []).forEach(function (x) {
+        if (consErrors(x).length) return;
+        var k = [consName(x), x.spec, x.unit, x.memo].join('|');
+        if (!cs[k]) { cs[k] = { c: x, q: 0 }; csList.push(cs[k]); }
+        cs[k].q += num(x.qty);
+      });
+      return { mx: mx, colList: colList, sizes: sizes, brList: brList, fxList: fxList, csList: csList, onlyStd4: onlyStd4 };
+    }
+    function headHtml(page, pages) {
+      return '<div class="dp-title"><h1>注 文 書</h1><div class="dp-no">（NO, <b>' + esc(S.no || '') + '</b>）<br>ページNo, ⇒ ' + page + '／' + pages + '</div></div>' +
+        '<div class="dp-head"><div class="dp-lines">' +
+        '<div class="dp-line"><span class="k">現場名</span><span class="v">' + esc(S.site) + '</span></div>' +
+        '<div class="dp-line"><span class="k">室名</span><span class="v">' + esc(S.room) + '</span></div>' +
+        '<div class="dp-line"><span class="k">発注日</span><span class="v">' + esc(jpDate(S.orderDate)) + '</span></div>' +
+        '<div class="dp-line"><span class="k">搬入日</span><span class="v">' + esc(jpDate(S.delivDate)) + '　' + esc(S.dest || '') + '</span></div>' +
+        '</div><div class="dp-co"><img src="' + LOGO + '" alt="ExcureDUCT"><br><span class="nm">' + esc(COMPANY.name) + '</span>　注文者 ' + esc(S.orderer || '') +
+        '<br>' + esc(COMPANY.addr) + '<br>' + esc(COMPANY.tel) + '</div></div>' +
+        '<table class="dp-spec"><tr><td class="k">材質</td><td style="width:32mm">' + esc(S.mat) + '</td><td class="k">板厚</td><td style="width:16mm">標準</td><td class="k">Memo</td><td class="memo">' + esc(S.memo || '') + '</td></tr></table>';
+    }
+    function contHead(page, pages) {
+      return '<div class="dp-cont-head"><h1>注文書（続き）</h1><span class="site">' + esc(S.site) + (S.room ? '　' + esc(S.room) : '') + '</span><span class="no">（NO, ' + esc(S.no || '') + '）　ページNo, ' + page + '／' + pages + '</span></div>';
+    }
+    function mxTable(c, sizes) {
+      return '<table class="dp-mx"><colgroup><col style="width:15mm">' + c.colList.map(function () { return '<col>'; }).join('') + '</colgroup>' +
+        '<tr><th></th>' + c.colList.map(function (x) { return '<th>' + esc(x.h) + '</th>'; }).join('') + '</tr>' +
+        sizes.map(function (d) {
+          return '<tr><td class="sz">' + d + '</td>' + c.colList.map(function (x) { var q = (c.mx[d] || {})[x.k]; return '<td class="q">' + (q ? q : '') + '</td>'; }).join('') + '</tr>';
+        }).join('') + '</table>';
+    }
+    function brTable(list) {
+      return '<table class="dp-br"><colgroup><col style="width:20mm"><col><col><col><col style="width:14mm"><col style="width:52mm"></colgroup>' +
+        '<tr><th>部材</th><th>①</th><th>②</th><th>③</th><th>数</th><th>書き方</th></tr>' +
+        list.map(function (x) {
+          var it = x.it;
+          var d2 = it.type === 't' ? it.d1 : (it.d2 || '－'), d3 = it.type === 'r' ? '－' : it.d3;
+          return '<tr><td>' + esc(TYPES[it.type].name) + '</td><td>' + it.d1 + '</td><td>' + d2 + '</td><td>' + d3 + '</td><td class="q">' + x.q + '</td><td>' + esc(sizeText(it)) + '</td></tr>';
+        }).join('') + '</table>';
+    }
+    function fxTable(list) {
+      return '<table class="dp-fx"><colgroup><col><col style="width:22mm"><col style="width:22mm"><col style="width:26mm"><col style="width:14mm"></colgroup>' +
+        '<tr><th>部材</th><th>サイズ</th><th>長さ</th><th>端末加工</th><th>数</th></tr>' +
+        list.map(function (x) {
+          var it = x.it;
+          return '<tr><td>' + esc(TYPES[it.type].full) + '</td><td>φ' + it.d1 + '</td><td>' + esc(it.flen) + 'm</td><td>' + (it.endc ? 'あり' : 'なし') + '</td><td class="q">' + x.q + '</td></tr>';
+        }).join('') + '</table>';
+    }
+    function csTable(list) {
+      return '<table class="dp-cs"><colgroup><col style="width:62mm"><col><col style="width:14mm"><col style="width:13mm"><col style="width:36mm"></colgroup>' +
+        '<tr><th>品名</th><th>仕様・サイズ</th><th>数</th><th>単位</th><th>メモ</th></tr>' +
+        list.map(function (x) {
+          var c = x.c;
+          return '<tr><td class="l">' + esc(consName(c)) + '</td><td class="l">' + esc(c.spec || '') + '</td><td class="q">' + x.q + '</td><td>' + esc(c.unit || '') + '</td><td class="l">' + esc(c.memo || '') + '</td></tr>';
+        }).join('') + '</table>';
+    }
+    // 用紙に入る行数で、表をページに分ける（1行 6.6mm。1枚目は見出しのぶん少ない）
+    function buildPages() {
+      var c = collect(), blocks = [];
+      if (c.sizes.length) blocks.push({ kind: 'mx', rows: c.sizes, title: '■ 直管・継手（数）' + (c.onlyStd4 ? '　SP は定尺 4m' : '') });
+      if (c.brList.length) blocks.push({ kind: 'br', rows: c.brList, title: '■ 分岐・片落ち（T管・RT管・R管）' });
+      if (c.fxList.length) blocks.push({ kind: 'fx', rows: c.fxList, title: '■ フレキ（DEC・保温付きフレキ AC）' });
+      if (c.csList.length) blocks.push({ kind: 'cs', rows: c.csList, title: '■ 消耗品' });
+      var FIRST = 34, NEXT = 40;   // 1枚に入る行数のめやす（見出し・表の頭を含む）
+      var pages = [[]], left = FIRST;
+      blocks.forEach(function (b) {
+        var i = 0;
+        while (i < b.rows.length) {
+          if (left < 4) { pages.push([]); left = NEXT; }
+          var n = Math.min(b.rows.length - i, left - 2);
+          pages[pages.length - 1].push({ kind: b.kind, rows: b.rows.slice(i, i + n), title: b.title + (i > 0 ? '（続き）' : '') });
+          left -= n + 2; i += n;
+        }
+      });
+      var total = pages.length;
+      return pages.map(function (blk, pi) {
+        var h = pi === 0 ? headHtml(1, total) : contHead(pi + 1, total);
+        if (!blk.length && pi === 0) h += '<div class="dp-sec">（部材がまだありません）</div>';
+        blk.forEach(function (b) {
+          h += '<div class="dp-sec gt">' + esc(b.title) + '</div>';
+          if (b.kind === 'mx') h += mxTable(c, b.rows);
+          if (b.kind === 'br') h += brTable(b.rows);
+          if (b.kind === 'fx') h += fxTable(b.rows);
+          if (b.kind === 'cs') h += csTable(b.rows);
+        });
+        if (pi === total - 1) h += '<div class="dp-foot">※板厚はサイズに応じた標準板厚（φ450以下 0.5・φ710以下 0.6・φ1000以下 0.8）</div>';
+        return '<div class="dp">' + h + '</div>';
+      });
+    }
+    function renderPreview() {
+      var pages = buildPages();
+      ['pvDesk', 'pvMobile'].forEach(function (id) {
+        var host = document.getElementById(id);
+        if (!host || !host.offsetParent && id === 'pvDesk') { if (host) host.innerHTML = ''; if (id === 'pvDesk') return; }
+        var w = Math.max(200, (host.clientWidth || 360) - (id === 'pvDesk' ? 24 : 0));
+        var sc = Math.min(1, w / 793.7);
+        host.innerHTML = pages.map(function (p) {
+          return '<div class="pv-page" style="width:' + (793.7 * sc) + 'px;height:' + (1122.5 * sc) + 'px;"><div style="transform:scale(' + sc + ');transform-origin:0 0;">' + p + '</div></div>';
+        }).join('');
+      });
+    }
+    function openPreview() { openSheet('pvBg'); renderPreview(); }
+    function printSlip() {
+      document.getElementById('print-root').innerHTML = buildPages().join('');
+      setTimeout(function () { window.print(); }, 50);
+    }
+
+    /* ===== 注文書一覧 ===== */
+    function openSlips() {
+      saveSlip(false);
+      var list = loadStore();
+      document.getElementById('slipList').innerHTML = list.length ? list.map(function (x) {
+        var d = new Date(x.updated || 0);
+        return '<div class="slip-row"><div class="b" onclick="loadSlip(\'' + x.id + '\')"><div class="t">' + esc(x.site || '（現場名なし）') + (x.no ? '　NO.' + esc(x.no) : '') + (x.id === S.id ? '　（開いている注文書）' : '') + '</div>' +
+          '<div class="m">' + esc(x.room || '') + '　部材' + (x.items || []).length + '件　更新 ' + (d.getMonth() + 1) + '/' + d.getDate() + ' ' + d.getHours() + ':' + ('0' + d.getMinutes()).slice(-2) + '</div></div>' +
+          '<button type="button" class="btn btn-sub" onclick="copySlip(\'' + x.id + '\')">複製</button></div>';
+      }).join('') : '<div class="empty">保存した注文書はまだありません。</div>';
+      openSheet('slipsBg');
+    }
+    function loadSlip(id) { var x = loadStore().filter(function (s) { return s.id === id; })[0]; if (!x) return; S = x; closeSheet('slipsBg'); renderAll(); }
+    function copySlip(id) {
+      var x = loadStore().filter(function (s) { return s.id === id; })[0]; if (!x) return;
+      S = JSON.parse(JSON.stringify(x)); S.id = uid(); S.no = ''; S.orderDate = today(); S.delivDate = '';
+      saveSlip(false); closeSheet('slipsBg'); renderAll(); toast('複製しました');
+    }
+    function newSlip() { saveSlip(false); S = blankForHost(); closeSheet('slipsBg'); renderAll(); }
+
+    function openSheet(id) { document.getElementById(id).classList.add('open'); }
+    function closeSheet(id) { document.getElementById(id).classList.remove('open'); }
+    function toast(m) { var t = document.getElementById('toast'); t.textContent = m; t.classList.add('show'); clearTimeout(t._h); t._h = setTimeout(function () { t.classList.remove('show'); }, 1600); }
+    window.addEventListener('resize', function () { renderPreview(); });
+
+    /* 現場管理の中で開いたとき（注文 → 丸ダクト注文）：閉じるボタン、現場名・注文者を入れておく。
+       今はまだ試し（テスト画面だけ）で、注文書はこの端末に保存する */
+    var HOST = null;
+    try { HOST = window.parent !== window && window.parent.maruHost ? window.parent.maruHost : null; } catch (e) { HOST = null; }
+    function closeApp() { saveSlip(false); if (HOST) HOST.close(); }
+    function blankForHost() { var b = blank(); if (HOST) { b.site = HOST.site || ''; b.orderer = HOST.userName || ''; } return b; }
+
+    (function start() {
+      var list = loadStore();
+      if (HOST) {
+        document.body.classList.add('hosted');
+        S = list.filter(function (x) { return x.site === HOST.site; })[0] || blankForHost();
+      } else {
+        S = list[0] || blank();
+      }
+      renderAll();
+    })();
+  </script>
+</body>
+</html>
