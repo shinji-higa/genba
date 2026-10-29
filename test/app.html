@@ -14,7 +14,7 @@
 (function () {
   var API_URL = 'https://script.google.com/macros/s/AKfycbxmdHzLOVkPWdaOqJeeh4HI6rU7oNIOKIMocslD4_P9Pahip-XBjzHSk603hc-7YMOJww/exec';
   // 画面の版（build.js が「Ver.年月日-その日の何回目」を入れる）。設定画面のいちばん上に出す（ユーザー指示 2026-10-28）
-  var APP_VER = 'Ver.20261029-01';
+  var APP_VER = 'Ver.20261029-02';
   window.GENBA_VER = APP_VER;
   document.addEventListener('DOMContentLoaded', function () {
     var el = document.getElementById('appVer'), card = document.getElementById('appVerCard'), btn = document.getElementById('btnAppRefresh');
@@ -599,11 +599,17 @@
       justify-content: center;
     }
     .flow-color-ALL.active { background-color: #111111 !important; color: #ffffff !important; }
-    .flow-color-作業前 { background-color: #e8f0fe !important; color: #1967d2 !important; }
-    .flow-color-進行中 { background-color: #fef7e0 !important; color: #b06000 !important; }
+    /* 作業前＝黄色・進行中＝青（ユーザー指示 2026-10-29）。絞り込みボタンは押すと濃い色に白い文字（全て表示の白→黒と同じ） */
+    .flow-color-作業前 { background-color: #fef7e0 !important; color: #8a5a00 !important; }
+    .flow-color-進行中 { background-color: #e8f0fe !important; color: #1967d2 !important; }
     .flow-color-完了調整中 { background-color: #f3e8fd !important; color: #7627bb !important; }
     .flow-color-完了 { background-color: #e6f4ea !important; color: #137333 !important; }
     .flow-color-EXD管理 { background-color: #fce8e6 !important; color: #c5221f !important; }
+    .flow-filter-btn.flow-color-作業前.active { background-color: #e0a800 !important; border-color: #e0a800 !important; color: #ffffff !important; }
+    .flow-filter-btn.flow-color-進行中.active { background-color: #1967d2 !important; border-color: #1967d2 !important; color: #ffffff !important; }
+    .flow-filter-btn.flow-color-完了調整中.active { background-color: #7627bb !important; border-color: #7627bb !important; color: #ffffff !important; }
+    .flow-filter-btn.flow-color-完了.active { background-color: #137333 !important; border-color: #137333 !important; color: #ffffff !important; }
+    .flow-filter-btn.flow-color-EXD管理.active { background-color: #c5221f !important; border-color: #c5221f !important; color: #ffffff !important; }
     .site-card-btn { width: 100%; text-align: left; background: #ffffff; border: 1px solid var(--border); border-radius: 6px; padding: 14px 16px; cursor: pointer; margin-bottom: 10px; display: block; }
     .site-card-btn:hover { border-color: var(--primary); box-shadow: 0 2px 8px rgba(0,0,0,0.06); }
     .search-row { display: flex; align-items: center; gap: 8px; width: 100%; margin-bottom: 12px; }
@@ -1937,6 +1943,8 @@
         </div>
         <div class="form-group"><label for="acGoogle">googleアカウント</label><input type="text" id="acGoogle" placeholder="例: taro@gmail.com" autocomplete="off"></div>
         <div class="form-group"><label for="acCompany">会社名</label><input type="text" id="acCompany" autocomplete="off"></div>
+        <div class="form-group" id="acMobileRow" style="display:none;"><label for="acMobile">携帯番号（伝票・注文書の注文者の欄に出ます）</label><input type="tel" id="acMobile" placeholder="例: 090-1234-5678" autocomplete="off" inputmode="tel"></div>
+        <div class="form-group" id="acGroupRow" style="display:none;"><label>グループ（マスターが決めます）</label><div id="acGroup" style="font-weight:700; padding:6px 0;"></div></div>
         <div class="form-group" style="padding-top: 12px; border-top: 1px solid #f0f0f0;">
           <label for="acCurPass">現在のパスワード（本人確認のため必須） <span class="req">*</span></label>
           <input type="password" id="acCurPass" autocomplete="current-password">
@@ -2641,7 +2649,18 @@
       if (window.genbaNetOffline && window.genbaNetOffline()) { uiAlert('電波がないため、丸ダクト注文は使えません。電波のある所で開いてください。'); return; }
       var ov = document.getElementById('denpyoOverlay');
       if (!ov) { ov = document.createElement('div'); ov.id = 'denpyoOverlay'; document.body.appendChild(ov); }
-      window.maruHost = { site: site, userName: currentUser.userName || '', close: function() { closeDenpyo(); } };
+      window.maruHost = {
+        site: site, userName: currentUser.userName || '',
+        call: function(fn, args) {   // 角ダクト注文と同じ呼び方（本人確認 cred() は最後に自動で足す）
+          return new Promise(function(resolve, reject) {
+            google.script.run
+              .withSuccessHandler(function(r) { if (r && r.success === false) { reject(r); return; } resolve(r); })
+              .withFailureHandler(function(err) { reject({ message: (err && err.message) || String(err) }); })[fn].apply(null, (args || []).concat([cred()]));
+          });
+        },
+        confirm: function(msg) { return uiConfirm(msg); },
+        close: function() { closeDenpyo(); }
+      };
       ov.innerHTML = '';
       var f = document.createElement('iframe');
       f.className = 'denpyo-frame';
@@ -8016,6 +8035,10 @@
           document.getElementById('acEmail').value = p.email || '';
           document.getElementById('acGoogle').value = p.googleAccount || '';
           document.getElementById('acCompany').value = p.company || '';
+          document.getElementById('acMobileRow').style.display = p.hasMobile ? '' : 'none';
+          document.getElementById('acMobile').value = p.mobile || '';
+          document.getElementById('acGroupRow').style.display = p.hasMobile ? '' : 'none';
+          document.getElementById('acGroup').textContent = p.group || '未設定（エクスケア）';
         })
         .withFailureHandler(function() {})
         .getAccountProfile(cred());
@@ -8165,7 +8188,8 @@
         email: document.getElementById('acEmail').value.trim(),
         newPass: document.getElementById('acNewPass').value.trim(),
         googleAccount: document.getElementById('acGoogle').value.trim(),
-        company: document.getElementById('acCompany').value.trim()
+        company: document.getElementById('acCompany').value.trim(),
+        mobile: document.getElementById('acMobileRow').style.display === 'none' ? null : document.getElementById('acMobile').value.trim()
       };
       var curPass = document.getElementById('acCurPass').value.trim();
       if (!form.lastName) { alert('姓を入力してください。'); return; }
