@@ -1508,8 +1508,11 @@
         msg.textContent = '保存しています…'; t1 = Date.now();
         return HOST.call('saveMaruPdf', [HOST.site, dir, nf, b64, name, S.pdfId || '', rev, S.no]);   // 前の版のPDFは削除フォルダへ（上書き）
       }).then(function (res) {
+        // 保存先フォルダの名前は画面で選んだものを前に付ける（サーバーで調べると時間がかかるため。2026-10-31）
+        var dirLabel = dir ? (r.parentNode.textContent || '').trim() : nf;
+        if (dirLabel && !/^「[^」]*」に「/.test(res.message)) res.message = '「' + dirLabel + '」に' + res.message;
         // かかった時間を出す（スマホで遅いところを調べるため。2026-10-31）
-        res.message += '\n（PDF作成 ' + ((t1 - t0) / 1000).toFixed(1) + '秒・保存 ' + ((Date.now() - t1) / 1000).toFixed(1) + '秒）';
+        res.message +='\n（PDF作成 ' + ((t1 - t0) / 1000).toFixed(1) + '秒・保存 ' + ((Date.now() - t1) / 1000).toFixed(1) + '秒）';
         S.pdfFolderId = res.folderId; S.pdfId = res.pdfId; S.pdfUrl = res.url;
         S.status = 'submitted'; S.rev = rev; S.subAt = Date.now(); S.subSnap = slipSnap(S);
         SRV.dirty = true; renderAll(); hostSaveNow().catch(noop);
