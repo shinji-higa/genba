@@ -44,6 +44,7 @@
     .chips { display: flex; flex-wrap: wrap; gap: 6px; }
     .chip { padding: 7px 12px; border-radius: 16px; border: 1.5px solid #6e6e6e; background: #fff; font-size: 0.85rem; font-weight: 700; color: #222; cursor: pointer; user-select: none; }
     .chip.on { background: #111; border-color: #111; color: #fff; }
+    .chip.dis { background: #e3e3e3; border-color: #b5b5b5; color: #8a8a8a; cursor: default; }   /* 選べない（ダンパーの SPサイズなど） */
     .note { font-size: 0.8rem; color: var(--muted); line-height: 1.6; }
     .errbox { background: #fceded; color: var(--err); border-radius: 4px; padding: 8px 10px; font-size: 0.85rem; font-weight: 700; margin-top: 8px; }
     /* 部材の一覧 */
@@ -325,14 +326,14 @@
       rty:  { name: 'RTY管', full: 'RTY管', br: true, ops: ['d1', 'd2', 'd3'], inp: IN_M, code: 'RTY', wr: [0, 1, 2], rule: 'm', fam: 'tyf' },
       cross:{ name: 'クロス管', full: 'クロス管', br: true, ops: ['d1', 'd2', 'd3', 'd4'], inp: IN_X, code: 'クロス', wr: [0, 2, 3], rule: 'm', fam: 'xf' },
       rcross:{ name: 'Rクロス管', full: 'Rクロス管', br: true, ops: ['d1', 'd2', 'd3', 'd4'], inp: IN_X, code: 'Rクロス', wr: [0, 1, 2, 3], rule: 'm', fam: 'xf' },
-      we45: { name: 'WE45',  full: 'WE45',  br: true, ops: ['d1', 'd1', 'd1'], inp: IN_W, code: 'WE45', wr: [0], rule: '' },
-      we90: { name: 'WE90',  full: 'WE90',  br: true, ops: ['d1', 'd1', 'd1'], inp: IN_W, code: 'WE90', wr: [0], rule: '' },
+      we45: { name: 'WE45',  full: 'WE45',  br: true, ops: ['d1', 'd1', 'd1'], inp: IN_W, code: 'WE45', wr: [0], rule: '', oneFit: true },
+      we90: { name: 'WE90',  full: 'WE90',  br: true, ops: ['d1', 'd1', 'd1'], inp: IN_W, code: 'WE90', wr: [0], rule: '', oneFit: true },   // NI/SP も①②③共通
       tpk:  { name: 'Tピンキー', full: 'Tピンキー', br: true, ops: ['d1', 'd2'], inp: IN_P, nf: [0], code: 'Tピンキー', wr: [0, 1], rule: 'p' },
       ypk:  { name: 'Yピンキー', full: 'Yピンキー', br: true, ops: ['d1', 'd2'], inp: IN_P, nf: [0], code: 'Yピンキー', wr: [0, 1], rule: 'p' },
       s:    { name: 'S管',   full: 'S管',   ot: true, fit: true },
-      jit:  { name: '実管',  full: '実管',  ot: true },
+      jit:  { name: '実管',  full: '実管',  ot: true, fixT: 1.6 },   // 実管は常に 1.6t（選択なし）
       col:  { name: 'カラー', full: 'カラー', ot: true, fit: true },
-      dmp:  { name: 'ダンパー', full: 'ダンパー', ot: true, fit: true, noT: true },
+      dmp:  { name: 'ダンパー', full: 'ダンパー', ot: true, fit: true, noT: true, kinds: true, spOff: true },   // SPサイズは選べない
       ac:   { name: '保温付きフレキ', full: '保温付きフレキ', flex: true, noT: true },
       dec:  { name: 'フレキ',         full: 'フレキ',         flex: true, noT: true }   // アルミ・鉄・SUSのフレキ（ユーザー指示 2026-10-30：アルミフレキ→フレキ）
     };
@@ -346,11 +347,36 @@
     var FITS = ['NI', 'SP'];
     /* フレキは「部材名 → 商品名」の順に選ぶ（ユーザー指示 2026-10-30）。商品が増えたらここに足す。
        lens＝長さ(m)の選択肢、def＝最初の長さ、endc＝端末加工を選べるか */
+    /* 商品・種類（部材名を選んだあと、種類を選んで入力する。ユーザー指示 2026-10-30）
+       lens＝長さ(m)の選択肢・def＝最初の長さ・endc＝端末加工を選べる・fixLen＝決まった長さ・lenSel＝基本1m（ほかは入力）・
+       L＝ダンパーの長さ(mm)・opts＝[項目, 見出し, 選択肢]・free＝その他（メーカー名・型式・サイズ・長さ・メモを入力） */
+    var FUSE = ['fuse', 'ヒューズ', ['72°', '120°', '280°']], RET = ['ret', '復帰', ['自動復帰', '手動復帰']];
     var PRODUCTS = {
-      ac:  [{ n: 'ハイホース AC', sizes: SIZES_AC, lens: ['0.5', '1', '1.5', '2', '10'], def: '1', endc: true }],
-      dec: [{ n: 'DEC-M', sizes: SIZES_DEC, lens: ['10'], def: '10', endc: false }]
+      ac:  [{ n: 'ACフレキ（保温消音フレキ）', sizes: SIZES_AC, lens: ['0.5', '1', '1.5', '2', '10'], def: '1', endc: true },
+            { n: 'SLフレキ（保温消音フレキ・内面ポリ）', sizes: SIZES_AC, lens: ['0.5', '1', '1.5', '2', '10'], def: '1', endc: true },
+            { n: 'その他', free: true }],
+      dec: [{ n: 'アルミフレキ2重', sizes: SIZES_AC, fixLen: '3m' }, { n: 'マイルズフレキ（鉄）', sizes: SIZES_AC, fixLen: '3m' },
+            { n: 'ステンレスフレキ', sizes: SIZES_AC, fixLen: '3m' }, { n: 'FKワイヤーフレキ', sizes: SIZES_AC, fixLen: '10m' },
+            { n: 'STフレキ', sizes: SIZES_AC, fixLen: '10m' },
+            { n: '硬質フレキ', sizes: SIZES_AC, lenSel: true, opts: [['kata', '型', ['P型', 'BR型']], ['end', '端部', ['化粧リング', 'シャッター', 'ルーバー']]] },
+            { n: 'その他', free: true }],
+      dmp: [{ n: 'VD', L: 200, opts: [['op', '操作', ['ウォームギア式', 'レバー式']]] }, { n: 'FD', L: 350, opts: [FUSE] },
+            { n: 'CD', L: 200, opts: [['wt', 'ウェイト', ['ウェイト付き', 'ウェイト無し']], ['mount', '取付', ['水平取付', '垂直取付']]] },
+            { n: 'MD', L: 300 }, { n: 'SFD', L: 350, opts: [RET, FUSE] }, { n: 'PD', L: 300 }, { n: 'PFD', L: 350, opts: [FUSE] },
+            { n: 'EWD', L: 350, opts: [RET] }, { n: 'その他', free: true }]
     };
     function prodOf(it) { var l = PRODUCTS[it.type] || []; return l.filter(function (p) { return p.n === it.prod; })[0] || l[0]; }
+    function poDef(p) { var o = {}; (p.opts || []).forEach(function (x) { o[x[0]] = x[2][0]; }); return o; }
+    function fxOf(it) { return it.fx || {}; }
+    // 種類の文字（例：硬質フレキ P型・化粧リング、VD ウォームギア式、その他 ○○ ××）
+    function kindText(it) {
+      var p = prodOf(it), fx = fxOf(it);
+      if (p.free) return ['その他', fx.maker, fx.model].filter(Boolean).join(' ');
+      var o = (p.opts || []).map(function (x) { return (it.po || {})[x[0]] || x[2][0]; });
+      return p.n + (o.length ? ' ' + o.join('・') : '');
+    }
+    function sizeOf(it) { var p = TYPES[it.type].flex || TYPES[it.type].kinds ? prodOf(it) : {}; return p.free ? (fxOf(it).size || '') : 'φ' + it.d1; }
+    function flexLen(it) { var p = prodOf(it); return p.free ? (fxOf(it).len || '') : p.fixLen ? p.fixLen : p.lenSel ? (it.flenm === 'in' ? (it.flen || '') + 'm' : '1m') : it.flen + 'm'; }
     // 圧力は低圧・高圧だけ（高圧1・高圧2は板厚が同じ。ユーザー指示 2026-10-30）。接合は差込・FG（最初は差込）
     var OPT = { dest: ['会社', '引取', '現場', '伊丹'], mat: ['亜鉛鋼板', 'ガルバリウム鋼板', '塩ビ鋼板', 'ステンレス'], use: ['一般', '厨房排気', '排煙'], press: ['低圧', '高圧'], th: ['標準', '番手アップ', '1.6t'], join: ['差込', 'FG'] };
     var MAT_SHORT = { '亜鉛鋼板': '亜鉛', 'ガルバリウム鋼板': 'ガルバ', '塩ビ鋼板': '塩ビ', 'ステンレス': 'SUS' };
@@ -386,6 +412,7 @@
     function tablePress(th) { return th === '低圧' || th === '高圧' ? th : S.spec.press; }
     function thickOf(it, th) {
       var t = TYPES[it.type]; if (!t || t.noT) return 0;
+      if (t.fixT) return t.fixT;
       th = th || itemPr(it);
       if (th === '1.6t') return 1.6;
       var d = Math.max(num(it.d1), num(it.d2), num(it.d3)), rows = THICK[thickKey(it.type, tablePress(th))].rows, v = rows[rows.length - 1][1];
@@ -398,7 +425,7 @@
     // 部材で使っている板厚の選択（板厚のある部材だけ）
     function pressUsed() {
       var u = [];
-      S.items.forEach(function (it) { if (!TYPES[it.type].noT) { var p = itemPr(it); if (u.indexOf(p) < 0) u.push(p); } });
+      S.items.forEach(function (it) { var tt = TYPES[it.type]; if (!tt.noT && !tt.fixT) { var p = itemPr(it); if (u.indexOf(p) < 0) u.push(p); } });
       return TH_OPTS.filter(function (p) { return u.indexOf(p) >= 0; });
     }
     // 注文書で印を付けない板厚（ふつうは仕様どおり。部材が全部ほかのものならそちら）
@@ -501,15 +528,18 @@
       s.items.forEach(function (it) { if (it.pr) { if (!it.th) it.th = hi(it.pr); delete it.pr; } });
       s.items.forEach(function (it) {
         if (TYPES[it.type].flex) {
-          if (!it.prod) it.prod = prodOf(it).n;
+          it.prod = prodOf(it).n;   // 前の商品名（ハイホース AC・DEC-M）は一覧の先頭に置きかえる
           var p = prodOf(it);
-          if (p.lens.indexOf(it.flen) < 0) it.flen = p.def;
+          if (p.lens && p.lens.indexOf(it.flen) < 0) it.flen = p.def;
           if (!p.endc) it.endc = false;
+          if (!it.po) it.po = poDef(p);
         } else if (!TYPES[it.type].noT && !it.th) it.th = s.spec.th === '標準' ? s.spec.press : s.spec.th;
         // NI/SP：最初は NI。分岐は口ごと（前の形の it.fit は全部の口に写す）
         if (TYPES[it.type].br) { if (!it.fits) it.fits = [0, 1, 2, 3].map(function () { return it.fit || 'NI'; }); delete it.fit; }
         else if (TYPES[it.type].fit && !it.fit) it.fit = 'NI';
         if (TYPES[it.type].net && !it.net) it.net = NETS[0];
+        if (TYPES[it.type].kinds) { it.prod = prodOf(it).n; if (!it.po) it.po = poDef(prodOf(it)); }
+        if (TYPES[it.type].spOff) it.fit = 'NI';
         // T・Y・TY は前は②を入れていなかった（①と同じ）。②を入れてから T↔RT などを決め直す。WE は①だけ
         if (TYPES[it.type].fam) { if (!num(it.d2)) it.d2 = it.d1; famType(it); }
       });
@@ -532,16 +562,18 @@
     function sizeText(it) {
       var t = TYPES[it.type];
       if (t.br) return t.code + '-' + t.wr.map(function (i) { return it[t.ops[i]]; }).join('×');
-      if (t.flex) return prodOf(it).n + '　φ' + it.d1 + '　L' + it.flen + 'm' + (prodOf(it).endc ? '　' + (it.endc ? '端末加工あり' : '端末加工なし') : '');
+      if (t.flex) return kindText(it) + '　' + sizeOf(it) + '　L' + flexLen(it) + (prodOf(it).endc ? '　' + (it.endc ? '端末加工あり' : '端末加工なし') : '');
       if (it.type === 'sp') return 'φ' + it.d1 + '　' + (it.len === 'L' ? '長さ指定 ' + (num(it.lenMm) || '') + 'mm' : '定尺 ' + (it.len || '4') + 'm');
-      if (t.ot) return 'φ' + it.d1 + '　' + otDim(it);
+      if (t.ot) return sizeOf(it) + '　' + otDim(it);
       if (t.net) return 'φ' + it.d1 + '　' + (it.net || NETS[0]);
       return 'φ' + it.d1;
     }
-    // S管・実管・カラーの寸法の文字
+    // S管の長さの最小（サイズ＋50＋サイズ＋50＋20。200φなら520L）
+    function sMin(it) { return num(it.d1) * 2 + 120; }
+    // S管・実管・カラー・ダンパーの寸法の文字
     function otDim(it) {
       if (it.type === 'col') return 'ツバ ' + (num(it.tb) ? num(it.tb) + 'mm' : '6〜8mm');
-      if (it.type === 'dmp') return '';
+      if (it.type === 'dmp') { var pd = prodOf(it); return kindText(it) + '　L=' + (pd.free ? (fxOf(it).len || '') : pd.L) + (pd.free && fxOf(it).memo ? '　' + fxOf(it).memo : ''); }
       return 'L=' + (num(it.L) || '') + (it.type === 's' && num(it.H) ? '　H=' + num(it.H) : '');
     }
     // 口ごとの NI/SP をまとめた文字（例：NI・NI・SP）
@@ -551,7 +583,8 @@
       var t = TYPES[it.type], a = [sizeText(it)];
       if (t.br) a.push(fitsText(it));
       else if (t.fit && it.fit) a.push(it.fit + 'サイズ');
-      if (!t.noT) a.push(itemPr(it) === '1.6t' ? '1.6t' : itemPr(it) + ' ' + fmtT(thickOf(it)) + 't');
+      if (t.fixT) a.push(fmtT(t.fixT) + 't');
+      else if (!t.noT) a.push(itemPr(it) === '1.6t' ? '1.6t' : itemPr(it) + ' ' + fmtT(thickOf(it)) + 't');
       return a.join('　');
     }
     function itemErrors(it) {
@@ -563,6 +596,13 @@
       }
       if ((t.rule === 'r' || t.rule === 'p') && !(d('d2') < d('d1'))) e.push('②は①より小さいサイズにしてください。');
       if ((it.type === 's' || it.type === 'jit') && !(d('L') > 0)) e.push('長さ L（mm）を入れてください。');
+      else if (it.type === 's' && d('L') < sMin(it)) e.push('S管の長さは ' + sMin(it) + 'L 以上にしてください（サイズ＋50＋サイズ＋50＋20）。');
+      if ((t.flex || t.kinds) && prodOf(it).free) {
+        if (!fxOf(it).maker && !fxOf(it).model) e.push('メーカー名か型式を入れてください。');
+        if (!fxOf(it).size) e.push('サイズを入れてください。');
+        if (!fxOf(it).len) e.push('長さを入れてください。');
+      }
+      if (t.flex && prodOf(it).lenSel && it.flenm === 'in' && !(num(it.flen) > 0)) e.push('長さ（m）を入れてください。');
       if (it.type === 'col' && it.tbOn && !(d('tb') > 0)) e.push('ツバの長さ（mm）を入れてください。');
       if (it.type === 'sp' && it.len === 'L' && !(num(it.lenMm) > 0)) e.push('長さ（mm）を入れてください。');
       return e;
@@ -656,10 +696,11 @@
       if (t.rule === 'p') { it.d1 = 300; it.d2 = 150; }
       if (t.br) { it.fits = ['NI', 'NI', 'NI', 'NI']; if (t.cl) it.closed = [false, false, false, false]; }   // 口ごとの NI/SP（最初は NI）と閉止板（T管だけ）
       else if (t.fit) it.fit = 'NI';
-      if (type === 's' || type === 'jit') { it.L = ''; it.H = ''; }
+      if (type === 's') { it.L = sMin(it); it.H = ''; }   // S管の長さの最小＝サイズ＋50＋サイズ＋50＋20（ユーザー指示 2026-10-30）
+      if (type === 'jit') it.L = 300;                   // 実管は 300L が最初
       if (type === 'col') it.tb = '';                  // ツバ：空＝標準 6〜8mm
       if (!t.noT) it.th = specTh();
-      if (t.flex) { var p = PRODUCTS[type][0]; it.prod = p.n; it.d1 = 150; it.flen = p.def; it.endc = p.endc; }
+      if (t.flex || t.kinds) { var p = PRODUCTS[type][0]; it.prod = p.n; if (t.flex) it.d1 = 150; it.flen = p.def || ''; it.endc = !!p.endc; it.po = poDef(p); it.fx = {}; }
       return it;
     }
     function pickType(t) { closeSheet('pickerBg'); ED = { it: newItem(t), index: -1 }; openEditor(); }
@@ -693,22 +734,20 @@
       var h = '<div class="edbox">', chip = function (k, v, label, on) {
         return '<span class="chip' + (on ? ' on' : '') + '" onclick="edSet(\'' + k + '\',\'' + v + '\')">' + esc(label) + '</span>';
       };
-      if (t.flex) {   // 部材名を選んだあと、商品名を選ぶ
-        h += '<div class="fg"><label>商品名</label><select onchange="edSet(\'prod\', this.value)">' + PRODUCTS[it.type].map(function (p) {
-          return '<option' + (p.n === prodOf(it).n ? ' selected' : '') + '>' + esc(p.n) + '</option>';
-        }).join('') + '</select></div>';
-      }
       if (t.br) {
         h += '<div class="' + (t.inp.length === 2 ? 'g2' : t.inp.length === 3 ? 'g3' : 'g2') + '">' + t.inp.map(function (x) { return sizeSel(x[0], sizeList(it, x[0]), x[1]); }).join('') + '</div>';
         // 口ごとの NI/SP（ピンキーの親ダクトは選ばない）
-        h += '<div class="fg"><span class="lbl">NIサイズ・SPサイズ' + (t.cl ? '・閉止板' : '') + '（口ごと）</span>' + t.ops.map(function (k, i) {
+        if (t.oneFit) h += '<div class="fg"><span class="lbl">NIサイズ・SPサイズ（①②③共通）</span><div class="chips">' + FITS.map(function (f) { return chip('fitAll', f, f + 'サイズ', opFit(it, 0) === f); }).join('') + '</div></div>';
+        else h += '<div class="fg"><span class="lbl">NIサイズ・SPサイズ' + (t.cl ? '・閉止板' : '') + '（口ごと）</span>' + t.ops.map(function (k, i) {
           if ((t.nf || []).indexOf(i) >= 0) return '';
           return '<div style="display:flex;align-items:center;gap:8px;margin-top:6px;"><b style="width:26px;">' + CIRC[i] + '</b><div class="chips">' +
             (opClosed(it, i) ? '' : FITS.map(function (f) { return chip('fit' + i, f, f + 'サイズ', opFit(it, i) === f); }).join('')) +   // 閉止板の口は NI/SP を選ばない
             (t.cl ? chip('cl' + i, '1', '閉止板', opClosed(it, i)) : '') + '</div></div>';
         }).join('') + '</div>';
+      } else if (t.flex || t.kinds) {
+        h += kindsHtml(it, chip);
       } else {
-        h += sizeSel('d1', t.flex ? prodOf(it).sizes : SIZES, 'サイズ');
+        h += sizeSel('d1', SIZES, 'サイズ');
         if (t.net) h += '<div class="fg"><span class="lbl">金網の種類</span><div class="chips">' + NETS.map(function (n) { return chip('net', n, n, (it.net || NETS[0]) === n); }).join('') + '</div></div>';
         if (t.fit) h += '<div class="fg"><span class="lbl">NIサイズ・SPサイズ</span><div class="chips">' + FITS.map(function (f) { return chip('fit', f, f + 'サイズ', it.fit === f); }).join('') + '</div></div>';
       }
@@ -725,14 +764,8 @@
           }).join('') + '</div></div>';
         if (it.len === 'L') h += '<div class="fg"><label>長さ（mm）</label><input type="number" inputmode="numeric" value="' + esc(it.lenMm) + '" oninput="ED.it.lenMm=this.value; refreshEd(true)"></div>';
       }
-      if (t.flex) {
-        var pd = prodOf(it);
-        if (pd.lens.length > 1) h += '<div class="fg"><span class="lbl">長さ</span><div class="chips">' + pd.lens.map(function (v) { return chip('flen', v, v + 'm', it.flen === v); }).join('') + '</div></div>';
-        else h += '<div class="fg"><span class="lbl">長さ</span><div class="note">' + esc(pd.lens[0]) + 'm のみ' + (pd.endc ? '' : '（端末加工なし）') + '</div></div>';
-        if (pd.endc) h += '<div class="fg"><span class="lbl">端末加工</span><div class="chips">' + chip('endc', '1', 'あり', it.endc) + chip('endc', '', 'なし', !it.endc) + '</div>' +
-          '<div class="note" style="margin-top:6px;">端末加工ありは 0.5m・1m・1.5m・2m が標準（10m まで作れます）。加工なしは 10m 巻きです。</div></div>';
-      }
-      if (!t.noT) {   // 板厚：部材ごとに選ぶ（最初は仕様どおり。ユーザー指示 2026-10-30）
+      if (t.fixT) h += '<div class="fg"><span class="lbl">板厚</span><div class="note">' + fmtT(t.fixT) + 't（' + esc(t.name) + 'は常に ' + fmtT(t.fixT) + 't）</div></div>';
+      else if (!t.noT) {   // 板厚：部材ごとに選ぶ（最初は仕様どおり。ユーザー指示 2026-10-30）
         h += '<div class="fg"><span class="lbl">板厚</span><div class="chips">' + TH_OPTS.map(function (p) {
           return chip('th', p, (p === '1.6t' ? p : p + '　' + fmtT(thickOf(it, p)) + 't'), itemPr(it) === p);
         }).join('') + '</div>' + (itemPr(it) !== specTh() ? '<div class="note" style="margin-top:6px;">ダクト仕様（' + esc(specTh()) + '）と違う板厚です。注文書の数に「' + PRESS_TAG[itemPr(it)] + '」の印が付きます。</div>' : '') + '</div>';
@@ -743,15 +776,53 @@
       refreshEd();
       openSheet('editorBg');
     }
+    // フレキ・保温付きフレキ・ダンパー：種類を選び、種類ごとの項目を入れる（ユーザー指示 2026-10-30）
+    function kindsHtml(it, chip) {
+      var t = TYPES[it.type], p = prodOf(it), fx = fxOf(it), h = '';
+      h += '<div class="fg"><span class="lbl">' + (t.flex ? '種類（商品名）' : 'ダンパーの種類') + '</span><div class="chips">' +
+        PRODUCTS[it.type].map(function (q) { return chip('prod', q.n, q.n, p.n === q.n); }).join('') + '</div></div>';
+      if (p.free) {   // その他：メーカー名・型式・サイズ・長さ・メモ
+        var tx = function (k, label, ph) { return '<div class="fg"><label>' + label + '</label><input type="text" value="' + esc(fx[k] || '') + '" placeholder="' + (ph || '') + '" oninput="fxSet(\'' + k + '\', this.value)"></div>'; };
+        return h + '<div class="g2">' + tx('maker', 'メーカー名') + tx('model', '型式') + tx('size', 'サイズ', '例：φ200') + tx('len', '長さ', t.flex ? '例：2m' : '例：300') + '</div>' + tx('memo', 'メモ');
+      }
+      h += sizeSel('d1', p.sizes || SIZES, 'サイズ');
+      if (t.spOff) h += '<div class="fg"><span class="lbl">NIサイズ・SPサイズ</span><div class="chips"><span class="chip on">NIサイズ</span><span class="chip dis">SPサイズ</span></div></div>';
+      (p.opts || []).forEach(function (o) {
+        var cur = (it.po || {})[o[0]] || o[2][0];
+        h += '<div class="fg"><span class="lbl">' + esc(o[1]) + '</span><div class="chips">' + o[2].map(function (v) {
+          var off = o[0] === 'wt' && v === 'ウェイト無し' && (it.po || {}).mount === '垂直取付';   // 垂直取付はウェイト付きだけ
+          return off ? '<span class="chip dis">' + esc(v) + '</span>' : chip('po:' + o[0], v, v, cur === v);
+        }).join('') + '</div></div>';
+      });
+      if (p.lens) h += '<div class="fg"><span class="lbl">長さ</span><div class="chips">' + p.lens.map(function (v) { return chip('flen', v, v + 'm', it.flen === v); }).join('') + '</div></div>';
+      if (p.fixLen) h += '<div class="fg"><span class="lbl">長さ</span><div class="note">' + esc(p.fixLen) + '</div></div>';
+      if (p.L) h += '<div class="fg"><span class="lbl">長さ</span><div class="note">' + p.L + 'L</div></div>';
+      if (p.lenSel) {
+        h += '<div class="fg"><span class="lbl">長さ</span><div class="chips">' + chip('flenm', '', '1m', it.flenm !== 'in') + chip('flenm', 'in', '長さを指定', it.flenm === 'in') + '</div></div>';
+        if (it.flenm === 'in') h += '<div class="fg"><label>長さ（m）</label><input type="number" inputmode="decimal" step="0.1" value="' + esc(it.flen) + '" oninput="ED.it.flen=this.value; refreshEd(true)"></div>';
+      }
+      if (p.endc) h += '<div class="fg"><span class="lbl">端末加工</span><div class="chips">' + chip('endc', '1', 'あり', it.endc) + chip('endc', '', 'なし', !it.endc) + '</div>' +
+        '<div class="note" style="margin-top:6px;">端末加工ありは 0.5m・1m・1.5m・2m が標準（10m まで作れます）。加工なしは 10m 巻きです。</div></div>';
+      return h;
+    }
+    function fxSet(k, v) { ED.it.fx = Object.assign({}, ED.it.fx || {}); ED.it.fx[k] = v; refreshEd(true); }
     function edSet(k, v) {
       var m = /^fit(\d)$/.exec(k);
       if (m) { ED.it.fits = (ED.it.fits || ['NI', 'NI', 'NI', 'NI']).slice(); ED.it.fits[+m[1]] = v; openEditor(); return; }
       var mc = /^cl(\d)$/.exec(k);   // 閉止板：押すたびに付ける・外す
       if (mc) { ED.it.closed = (ED.it.closed || [false, false, false, false]).slice(); ED.it.closed[+mc[1]] = !ED.it.closed[+mc[1]]; openEditor(); return; }
       if (k === 'tbm') { ED.it.tbOn = !!v; if (!v) ED.it.tb = ''; openEditor(); return; }
+      if (k === 'fitAll') { ED.it.fits = [v, v, v, v]; openEditor(); return; }
+      var mp = /^po:(\w+)$/.exec(k);   // 種類の中の選択（操作・ヒューズ・型など）
+      if (mp) {
+        ED.it.po = Object.assign({}, ED.it.po || {}); ED.it.po[mp[1]] = v;
+        if (mp[1] === 'mount' && v === '垂直取付') ED.it.po.wt = 'ウェイト付き';   // CD：垂直取付はウェイト付き必須
+        openEditor(); return;
+      }
       if (k === 'endc') v = !!v;
       ED.it[k] = v;
-      if (k === 'prod') { var p = prodOf(ED.it); if (p.sizes.indexOf(+ED.it.d1) < 0) ED.it.d1 = p.sizes[0]; ED.it.flen = p.def; ED.it.endc = p.endc; }
+      if (k === 'prod') { var p = prodOf(ED.it); if (p.sizes && p.sizes.indexOf(+ED.it.d1) < 0) ED.it.d1 = p.sizes[0]; ED.it.flen = p.def || ''; ED.it.flenm = ''; ED.it.endc = !!p.endc; ED.it.po = poDef(p); if (!ED.it.fx) ED.it.fx = {}; }
+      if (k === 'd1' && ED.it.type === 's' && num(ED.it.L) < sMin(ED.it)) ED.it.L = sMin(ED.it);   // S管：最小より短くなったら最小に
       if (k === 'flen' && v === '10') ED.it.endc = false;   // 10m は加工なしが標準
       // ①を変えたら、①より大きくなった口（小さい口・枝）を選べる中でいちばん大きいサイズに直す
       if (k === 'd1' && TYPES[ED.it.type].br) TYPES[ED.it.type].inp.forEach(function (x) {
@@ -827,11 +898,11 @@
           if (!br[k]) br[k] = { it: it, q: 0 };
           br[k].q += q;
         } else if (t.ot) {   // S管・実管・カラー
-          var ko = it.type + '|' + it.d1 + '|' + (it.fit || '') + '|' + otDim(it) + '|' + pr;
+          var ko = it.type + '|' + sizeOf(it) + '|' + (it.fit || '') + '|' + otDim(it) + '|' + pr;
           if (!ot[ko]) ot[ko] = { it: it, q: 0 };
           ot[ko].q += q;
         } else if (t.flex) {
-          var kf = it.type + '|' + prodOf(it).n + '|' + it.d1 + '|' + it.flen + '|' + (it.endc ? 1 : 0);
+          var kf = it.type + '|' + kindText(it) + '|' + sizeOf(it) + '|' + flexLen(it) + '|' + (it.endc ? 1 : 0) + '|' + (fxOf(it).memo || '');
           if (!fx[kf]) fx[kf] = { it: it, q: 0 };
           fx[kf].q += q;
         } else {
@@ -886,7 +957,7 @@
     function footHtml(c) {
       var a = [], sps = {}, joint = false, up = false, b = basePress(), tag = false;
       S.items.forEach(function (it) {
-        var t = TYPES[it.type], th = itemPr(it); if (t.noT || itemErrors(it).length) return;
+        var t = TYPES[it.type], th = itemPr(it); if (t.noT || t.fixT || itemErrors(it).length) return;
         if (th !== '1.6t') { if (it.type === 'sp') sps[thickKey('sp', tablePress(th))] = S.spec.use === '排煙' ? '排煙' : tablePress(th); else joint = true; }
         if (th === '番手アップ') up = true;
         if (th !== b) tag = true;
@@ -930,8 +1001,8 @@
         '<tr><th>部材</th><th>サイズ</th><th>NI/SP</th><th>寸法</th><th>板厚</th><th>数</th></tr>' +
         list.map(function (x) {
           var it = x.it, pr = itemPr(it);
-          var th = TYPES[it.type].noT ? '－' : (pr !== b ? '<span class="pt">' + PRESS_TAG[pr] + '</span>' : '') + fmtT(thickOf(it));
-          return '<tr><td>' + esc(TYPES[it.type].name) + '</td><td>φ' + it.d1 + '</td><td>' + esc(it.fit || '－') + '</td><td>' + esc(otDim(it) || '－') + '</td>' +
+          var tt = TYPES[it.type], th = tt.noT ? '－' : tt.fixT ? fmtT(tt.fixT) : (pr !== b ? '<span class="pt">' + PRESS_TAG[pr] + '</span>' : '') + fmtT(thickOf(it));
+          return '<tr><td>' + esc(TYPES[it.type].name) + '</td><td>' + esc(sizeOf(it)) + '</td><td>' + esc(it.fit || '－') + '</td><td>' + esc(otDim(it) || '－') + '</td>' +
             '<td>' + th + '</td><td class="q">' + x.q + '</td></tr>';
         }).join('') + '</table>';
     }
@@ -940,7 +1011,7 @@
         '<tr><th>部材</th><th>商品名</th><th>サイズ</th><th>長さ</th><th>端末加工</th><th>数</th></tr>' +
         list.map(function (x) {
           var it = x.it, p = prodOf(it);
-          return '<tr><td>' + esc(TYPES[it.type].full) + '</td><td>' + esc(p.n) + '</td><td>φ' + it.d1 + '</td><td>' + esc(it.flen) + 'm</td><td>' + (p.endc ? (it.endc ? 'あり' : 'なし') : '－') + '</td><td class="q">' + x.q + '</td></tr>';
+          return '<tr><td>' + esc(TYPES[it.type].full) + '</td><td>' + esc(kindText(it) + (p.free && fxOf(it).memo ? '　' + fxOf(it).memo : '')) + '</td><td>' + esc(sizeOf(it)) + '</td><td>' + esc(flexLen(it)) + '</td><td>' + (p.endc ? (it.endc ? 'あり' : 'なし') : '－') + '</td><td class="q">' + x.q + '</td></tr>';
         }).join('') + '</table>';
     }
     // 用紙に入る行数で、表をページに分ける（1行 6.6mm。1枚目は見出しのぶん少ない）
