@@ -46,6 +46,7 @@
     .chip.on { background: #111; border-color: #111; color: #fff; }
     .chip.dis { background: #e3e3e3; border-color: #b5b5b5; color: #8a8a8a; cursor: default; }   /* 選べない（ダンパーの SPサイズなど） */
     .note { font-size: 0.8rem; color: var(--muted); line-height: 1.6; }
+    .warnbox { background: #fff4d6; color: #6b4a00; border: 1.5px solid #e0b64a; border-radius: 4px; padding: 8px 10px; font-size: 0.85rem; font-weight: 700; margin-top: 8px; }
     .errbox { background: #fceded; color: var(--err); border-radius: 4px; padding: 8px 10px; font-size: 0.85rem; font-weight: 700; margin-top: 8px; }
     /* 部材の一覧 */
     .items { display: flex; flex-direction: column; gap: 8px; }
@@ -74,7 +75,7 @@
     .pick svg { width: 100%; height: 84px; }
     .pick-n { font-weight: 700; font-size: 0.9rem; margin-top: 4px; }
     .edfig { background: #fff; border: 1.5px solid #9e9e9e; border-radius: 6px; padding: 6px; margin-bottom: 10px; }
-    .edfig svg { width: 100%; height: 170px; display: block; }
+    .edfig svg { width: 100%; height: auto; max-height: 230px; display: block; }
     .edbox { border: 1.5px solid #a3a7ad; border-radius: 8px; background: #eceef1; padding: 10px 12px; margin-bottom: 10px; }
     .qty { display: flex; align-items: center; gap: 8px; }
     .qty button { width: 46px; height: 42px; border: 1.5px solid #6e6e6e; border-radius: 6px; background: #fff; font-size: 1.3rem; font-weight: 700; cursor: pointer; }
@@ -112,6 +113,10 @@
     @media screen { .co-link { color: #1a56c4; text-decoration: underline; cursor: pointer; } }
     .dp table { width: 100%; border-collapse: collapse; table-layout: fixed; }
     .dp td, .dp th { border: 1px solid #000; text-align: center; font-weight: 400; height: 6.6mm; padding: 0 1mm; white-space: nowrap; overflow: hidden; }
+    /* 接合（差込・FG）はとても大事なので黒地に白の太字（ユーザー指示 2026-10-30） */
+    .dp td.join { background: #000; color: #fff; font-weight: 700; font-size: 10.5pt; letter-spacing: 0.1em; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    /* 長い文字（その他のメモなど）は文字を小さくせずに折り返す */
+    .dp td.wrap { white-space: normal; height: auto; min-height: 6.4mm; line-height: 1.3; padding: 0.8mm 1mm; word-break: break-all; }
     .dp-spec { margin-top: 2.5mm; font-size: 8.5pt; }
     .dp-spec td.k { width: 14mm; }
     .dp-spec td.memo { text-align: left; white-space: normal; line-height: 1.25; }
@@ -358,7 +363,7 @@
       dec: [{ n: 'アルミフレキ2重', sizes: SIZES_AC, fixLen: '3m' }, { n: 'マイルズフレキ（鉄）', sizes: SIZES_AC, fixLen: '3m' },
             { n: 'ステンレスフレキ', sizes: SIZES_AC, fixLen: '3m' }, { n: 'FKワイヤーフレキ', sizes: SIZES_AC, fixLen: '10m' },
             { n: 'STフレキ', sizes: SIZES_AC, fixLen: '10m' },
-            { n: '硬質フレキ', sizes: SIZES_AC, lenSel: true, opts: [['kata', '型', ['P型', 'BR型']], ['end', '端部', ['化粧リング', 'シャッター', 'ルーバー']]] },
+            { n: '硬質フレキ', sizes: SIZES_AC, lenSel: true, opts: [['kata', '型', ['P型', 'BR型']], ['end', '片側の端部', ['化粧リング付', 'シャッター付', 'ルーバー付']]] },
             { n: 'その他', free: true }],
       dmp: [{ n: 'VD', L: 200, opts: [['op', '操作', ['ウォームギア式', 'レバー式']]] }, { n: 'FD', L: 350, opts: [FUSE] },
             { n: 'CD', L: 200, opts: [['wt', 'ウェイト', ['ウェイト付き', 'ウェイト無し']], ['mount', '取付', ['水平取付', '垂直取付']]] },
@@ -435,7 +440,7 @@
       var b = basePress(), head = b === '低圧' || b === '高圧' ? [b] : [S.spec.press, b];
       return head.concat(pressUsed().filter(function (p) { return p !== b; }).map(function (p) { return '一部' + p; })).join('・');
     }
-    function specLabel() { var sp = S.spec; return (MAT_SHORT[sp.mat] || sp.mat) + '・' + sp.use + '・' + pressLabel() + '・' + (sp.join || '差込'); }
+    function specLabel() { var sp = S.spec; return (MAT_SHORT[sp.mat] || sp.mat) + '・' + sp.use + '・' + pressLabel(); }   // 接合は右の欄に黒地で出す
 
     function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
     function num(v) { var n = parseFloat(String(v == null ? '' : v).replace(/[^\d.]/g, '')); return isNaN(n) ? 0 : n; }
@@ -533,6 +538,8 @@
           if (p.lens && p.lens.indexOf(it.flen) < 0) it.flen = p.def;
           if (!p.endc) it.endc = false;
           if (!it.po) it.po = poDef(p);
+          // 選択肢の名前が変わったもの（例：化粧リング → 化粧リング付）は今の名前にする
+          (p.opts || []).forEach(function (o) { var v = it.po[o[0]]; if (o[2].indexOf(v) < 0) it.po[o[0]] = o[2].indexOf(v + '付') >= 0 ? v + '付' : o[2][0]; });
         } else if (!TYPES[it.type].noT && !it.th) it.th = s.spec.th === '標準' ? s.spec.press : s.spec.th;
         // NI/SP：最初は NI。分岐は口ごと（前の形の it.fit は全部の口に写す）
         if (TYPES[it.type].br) { if (!it.fits) it.fits = [0, 1, 2, 3].map(function () { return it.fit || 'NI'; }); delete it.fit; }
@@ -587,6 +594,12 @@
       else if (!t.noT) a.push(itemPr(it) === '1.6t' ? '1.6t' : itemPr(it) + ' ' + fmtT(thickOf(it)) + 't');
       return a.join('　');
     }
+    // 注意（決定はできる）：S管が最小の長さのときは、ほぼ直角になる（ユーザー指示 2026-10-30）
+    function itemWarns(it) {
+      var w = [];
+      if (it.type === 's' && num(it.L) > 0 && num(it.L) === sMin(it)) w.push('長さが最小（' + sMin(it) + 'L）なので、S管の曲がりがほぼ直角になります。');
+      return w;
+    }
     function itemErrors(it) {
       var e = [], t = TYPES[it.type], d = function (k) { return num(it[k]); };
       if (!(num(it.qty) > 0)) e.push('数を入れてください。');
@@ -597,6 +610,7 @@
       if ((t.rule === 'r' || t.rule === 'p') && !(d('d2') < d('d1'))) e.push('②は①より小さいサイズにしてください。');
       if ((it.type === 's' || it.type === 'jit') && !(d('L') > 0)) e.push('長さ L（mm）を入れてください。');
       else if (it.type === 's' && d('L') < sMin(it)) e.push('S管の長さは ' + sMin(it) + 'L 以上にしてください（サイズ＋50＋サイズ＋50＋20）。');
+      if (it.type === 's' && !(d('H') > 0)) e.push('フレ H（mm）を入れてください。');
       if ((t.flex || t.kinds) && prodOf(it).free) {
         if (!fxOf(it).maker && !fxOf(it).model) e.push('メーカー名か型式を入れてください。');
         if (!fxOf(it).size) e.push('サイズを入れてください。');
@@ -751,7 +765,7 @@
         if (t.net) h += '<div class="fg"><span class="lbl">金網の種類</span><div class="chips">' + NETS.map(function (n) { return chip('net', n, n, (it.net || NETS[0]) === n); }).join('') + '</div></div>';
         if (t.fit) h += '<div class="fg"><span class="lbl">NIサイズ・SPサイズ</span><div class="chips">' + FITS.map(function (f) { return chip('fit', f, f + 'サイズ', it.fit === f); }).join('') + '</div></div>';
       }
-      if (it.type === 's') h += '<div class="g2">' + mmIn('L', '長さ L（mm）') + mmIn('H', 'ずれ H（mm・分かれば）') + '</div>';
+      if (it.type === 's') h += '<div class="g2">' + mmIn('L', '長さ L（mm）') + mmIn('H', 'フレ H（mm）') + '</div>';
       if (it.type === 'jit') h += mmIn('L', '長さ L（mm）');
       if (it.type === 'col') {
         h += '<div class="fg"><span class="lbl">ツバの長さ</span><div class="chips">' + chip('tbm', '', '標準（6〜8mm）', !it.tbOn) + chip('tbm', '1', '長さを指定', !!it.tbOn) + '</div></div>';
@@ -783,7 +797,8 @@
         PRODUCTS[it.type].map(function (q) { return chip('prod', q.n, q.n, p.n === q.n); }).join('') + '</div></div>';
       if (p.free) {   // その他：メーカー名・型式・サイズ・長さ・メモ
         var tx = function (k, label, ph) { return '<div class="fg"><label>' + label + '</label><input type="text" value="' + esc(fx[k] || '') + '" placeholder="' + (ph || '') + '" oninput="fxSet(\'' + k + '\', this.value)"></div>'; };
-        return h + '<div class="g2">' + tx('maker', 'メーカー名') + tx('model', '型式') + tx('size', 'サイズ', '例：φ200') + tx('len', '長さ', t.flex ? '例：2m' : '例：300') + '</div>' + tx('memo', 'メモ');
+        return h + '<div class="g2">' + tx('maker', 'メーカー名') + tx('model', '型式') + tx('size', 'サイズ', '例：φ200') + tx('len', '長さ', t.flex ? '例：2m' : '例：300') + '</div>' +
+          '<div class="fg"><label>メモ</label><textarea rows="3" oninput="fxSet(\'memo\', this.value)">' + esc(fx.memo || '') + '</textarea></div>';   // 長いメモも折り返して全部見える
       }
       h += sizeSel('d1', p.sizes || SIZES, 'サイズ');
       if (t.spOff) h += '<div class="fg"><span class="lbl">NIサイズ・SPサイズ</span><div class="chips"><span class="chip on">NIサイズ</span><span class="chip dis">SPサイズ</span></div></div>';
@@ -836,7 +851,9 @@
     function refreshEd() {
       var it = ED.it, er = itemErrors(it);
       document.getElementById('edFig').innerHTML = edFigure(it);
-      document.getElementById('edErr').innerHTML = er.length ? '<div class="errbox">' + er.map(esc).join('<br>') + '</div>' : '';
+      var wn = itemWarns(it);
+      document.getElementById('edErr').innerHTML = (er.length ? '<div class="errbox">' + er.map(esc).join('<br>') + '</div>' : '') +
+        (wn.length ? '<div class="warnbox">⚠ ' + wn.map(esc).join('<br>⚠ ') + '</div>' : '');
       document.getElementById('edOk').disabled = er.length > 0;
     }
     /* 入力画面の図：部材の絵を大きく出して、口の位置に①②③④、下に口ごとのサイズと NI/SP を書く。
@@ -863,8 +880,11 @@
         (LBL[it.type] || []).forEach(function (p, i) { body += tx(ox + p[0] * dw + (p[2] === 'e' ? -3 : p[2] === 's' ? 3 : 0), oy + p[1] * dh + 4, CIRC[i], AN[p[2]]); });
       }
       var cap = t.br ? t.ops.map(function (k, i) { return CIRC[i] + 'φ' + it[k] + (opFit(it, i) ? ' ' + opFit(it, i) : '') + (opClosed(it, i) ? ' 閉' : ''); }).join('　') : sizeText(it);
-      body += tx(100, 124, cap, 'middle', t.br && t.ops.length > 3 ? 8.5 : 10);
-      return '<svg viewBox="0 0 200 130">' + body + '</svg>';
+      // 長いとき（その他のメモなど）は文字を小さくせずに何行かに分ける
+      var fs = t.br && t.ops.length > 3 ? 8.5 : 10, lines = [cap];
+      if (cap.length > 30) { lines = []; var rest = cap; while (rest.length > 30) { var cut = rest.lastIndexOf('　', 30); if (cut < 10) cut = 30; lines.push(rest.slice(0, cut)); rest = rest.slice(cut).replace(/^　/, ''); } if (rest) lines.push(rest); }
+      lines.forEach(function (s, i) { body += tx(100, 124 + i * 13, s, 'middle', fs); });
+      return '<svg viewBox="0 0 200 ' + (130 + (lines.length - 1) * 13) + '">' + body + '</svg>';
     }    function commitItem() {
       var it = ED.it;
       it.qty = num(it.qty);
@@ -943,7 +963,7 @@
         '<div class="dp-line"><span class="k">搬入日</span><span class="v">' + esc(jpDate(S.delivDate)) + '　' + esc(S.dest || '') + '</span></div>' +
         '</div>' + coHtml(S) + '</div>' +
         '<table class="dp-spec"><colgroup><col style="width:22mm"><col><col style="width:14mm"><col style="width:24mm"></colgroup>' +
-        '<tr><td class="k">ダクト仕様</td><td class="memo">' + esc(specLabel()) + '</td><td class="k">板厚</td><td>' + esc(S.spec.th || '標準') + '</td></tr>' +
+        '<tr><td class="k">ダクト仕様</td><td class="memo">' + esc(specLabel()) + '</td><td class="k">接合</td><td class="join">' + esc(S.spec.join || '差込') + '</td></tr>' +
         '<tr><td class="k">Memo</td><td class="memo" colspan="3">' + esc(S.memo || '') + '</td></tr></table>';
     }
     // 板厚ごとの数：仕様どおりはそのまま、違う板厚は黒地の印（低・高・UP・1.6）を付ける
@@ -1002,7 +1022,7 @@
         list.map(function (x) {
           var it = x.it, pr = itemPr(it);
           var tt = TYPES[it.type], th = tt.noT ? '－' : tt.fixT ? fmtT(tt.fixT) : (pr !== b ? '<span class="pt">' + PRESS_TAG[pr] + '</span>' : '') + fmtT(thickOf(it));
-          return '<tr><td>' + esc(TYPES[it.type].name) + '</td><td>' + esc(sizeOf(it)) + '</td><td>' + esc(it.fit || '－') + '</td><td>' + esc(otDim(it) || '－') + '</td>' +
+          return '<tr><td>' + esc(TYPES[it.type].name) + '</td><td>' + esc(sizeOf(it)) + '</td><td>' + esc(it.fit || '－') + '</td><td class="wrap">' + esc(otDim(it) || '－') + '</td>' +
             '<td>' + th + '</td><td class="q">' + x.q + '</td></tr>';
         }).join('') + '</table>';
     }
@@ -1011,7 +1031,7 @@
         '<tr><th>部材</th><th>商品名</th><th>サイズ</th><th>長さ</th><th>端末加工</th><th>数</th></tr>' +
         list.map(function (x) {
           var it = x.it, p = prodOf(it);
-          return '<tr><td>' + esc(TYPES[it.type].full) + '</td><td>' + esc(kindText(it) + (p.free && fxOf(it).memo ? '　' + fxOf(it).memo : '')) + '</td><td>' + esc(sizeOf(it)) + '</td><td>' + esc(flexLen(it)) + '</td><td>' + (p.endc ? (it.endc ? 'あり' : 'なし') : '－') + '</td><td class="q">' + x.q + '</td></tr>';
+          return '<tr><td>' + esc(TYPES[it.type].full) + '</td><td class="wrap">' + esc(kindText(it) + (p.free && fxOf(it).memo ? '　' + fxOf(it).memo : '')) + '</td><td>' + esc(sizeOf(it)) + '</td><td>' + esc(flexLen(it)) + '</td><td>' + (p.endc ? (it.endc ? 'あり' : 'なし') : '－') + '</td><td class="q">' + x.q + '</td></tr>';
         }).join('') + '</table>';
     }
     // 用紙に入る行数で、表をページに分ける（1行 6.6mm。1枚目は見出しのぶん少ない）
