@@ -14,7 +14,7 @@
 (function () {
   var API_URL = 'https://script.google.com/macros/s/AKfycbzVlXtdeBEba1Z1qhxOvSi9AOXs0LPfdSK_sXwBDf2eIhJKR6z7CdZ6yGIDiK9IIw7tAw/exec';
   // 画面の版（build.js が「Ver.年月日-その日の何回目」を入れる）。設定画面のいちばん上に出す（ユーザー指示 2026-10-28）
-  var APP_VER = 'Ver.20261030-01';
+  var APP_VER = 'Ver.20261030-02';
   window.GENBA_VER = APP_VER;
   document.addEventListener('DOMContentLoaded', function () {
     var el = document.getElementById('appVer'), card = document.getElementById('appVerCard'), btn = document.getElementById('btnAppRefresh');
@@ -3301,6 +3301,57 @@
       if (cachedReports) renderReports();
       fetchFullSiteDetail(siteName, !!cachedReports);
       loadSitePatrols(siteName);   // マスターだけ：「OSP」とこの現場のパトロール
+      prefetchSiteTabs(siteName);
+    }
+
+    // 現場を開いたら、写真・資料・担当のデータも同時に先に読んでおく（2026-10-30 速くする案2）
+    // タブを押したときには届いていることが多いので、待たずに出せる。届いた内容は端末にも残す（次回すぐ出る・電波なしでも見られる）
+    var prefetchState = { photo: null, doc: null, staff: null };
+    function prefetchSiteTabs(site) {
+      [['photo', '写真', 'getSitePhotoExplorerData'], ['doc', '資料', 'getSiteDocExplorerData']].forEach(function(p) {
+        var kind = p[0], tabName = p[1];
+        prefetchState[kind] = site;
+        var done = function() { if (prefetchState[kind] === site) prefetchState[kind] = null; };
+        google.script.run
+          .withSuccessHandler(function(res) {
+            done();
+            if (!res || !res.success) {
+              // 先読みが失敗して、そのタブがもう開いていたら、ふつうに取り直す
+              if (detailSiteName === site && currentActiveTabName.indexOf(tabName) !== -1) {
+                if (kind === 'photo') reloadPhotoExplorerData(false); else reloadDocExplorerData(false);
+              }
+              return;
+            }
+            LS.set(ck(kind, site), res);
+            if (detailSiteName !== site) return;
+            var open = currentActiveTabName.indexOf(tabName) !== -1;
+            if (kind === 'photo') applyPhotoExplorer(res, !open); else applyDocExplorer(res, !open);
+          })
+          .withFailureHandler(function() {
+            done();
+            if (detailSiteName === site && currentActiveTabName.indexOf(tabName) !== -1) {
+              if (kind === 'photo') reloadPhotoExplorerData(false); else reloadDocExplorerData(false);
+            }
+          })[p[2]](site, cred());
+      });
+      // 担当：先に届いていれば、タブを開いたときにそれを出す。開いたあとに届いたら、その場で描く
+      prefetchState.staff = site;
+      var staffDone = function() { if (prefetchState.staff === site) prefetchState.staff = null; };
+      var staffOpen = function() { return detailSiteName === site && currentActiveTabName.indexOf('担当') !== -1; };
+      google.script.run
+        .withSuccessHandler(function(res) {
+          staffDone();
+          if (res && res.success) {
+            LS.set(ck('staff', site), { staffList: res.staffList || [], myRole: res.myRole });
+            if (staffOpen() && !Object.keys(pendingStaffRoleChanges).length) {
+              siteStaffList = res.staffList || [];
+              myCurrentSiteRole = res.myRole || '一般作業員';
+              renderStaffAssignments();
+            }
+          } else if (staffOpen()) reloadStaffAssignments();
+        })
+        .withFailureHandler(function() { staffDone(); if (staffOpen()) reloadStaffAssignments(); })
+        .getSiteStaffAssignments(site, cred());
     }
 
     // 現場詳細と報告を「同時に」取得（詳細は報告を待たずに表示）
@@ -5751,7 +5802,8 @@
     };
     var activeFolderId = null;
 
-    function applyPhotoExplorer(res) {
+    // noRender：先読み（タブを開く前）のときは、データだけ入れて画面は描かない
+    function applyPhotoExplorer(res, noRender) {
       photoExplorerData.rootFolderId = res.rootFolderId;
       photoExplorerData.rootFolderName = res.rootFolderName;
       photoExplorerData.foldersMap = res.foldersMap || {};
@@ -5759,7 +5811,7 @@
       photoExplorerData.canDeleteAll = !!res.canDeleteAll;
       photoExplorerData.myName = res.myName || '';
       if (!activeFolderId || !photoExplorerData.foldersMap[activeFolderId]) activeFolderId = res.rootFolderId;
-      renderExplorerView();
+      if (!noRender) renderExplorerView();
     }
 
     function initPhotoExplorer() {
@@ -5771,6 +5823,11 @@
       // 前回のデータがあればすぐ表示し、裏で最新に更新
       var cached = LS.get(ck('photo', detailSiteName));
       if (cached) applyPhotoExplorer(cached);
+      // 先読み中なら、それが届いたときに描くので、ここでは取りに行かない
+      if (prefetchState.photo === detailSiteName) {
+        if (!cached) document.getElementById('photoContainer').innerHTML = '<div class="info-card" style="grid-column: 1/-1; text-align:center; color:var(--muted);">写真データを読み込んでいます...</div>';
+        return;
+      }
       reloadPhotoExplorerData(!!cached);
     }
 
@@ -6032,7 +6089,7 @@
     };
     var activeDocFolderId = null;
 
-    function applyDocExplorer(res) {
+    function applyDocExplorer(res, noRender) {
       docExplorerData.rootFolderId = res.rootFolderId;
       docExplorerData.rootFolderName = res.rootFolderName;
       docExplorerData.foldersMap = res.foldersMap || {};
@@ -6040,7 +6097,7 @@
       docExplorerData.canDeleteAll = !!res.canDeleteAll;
       docExplorerData.myName = res.myName || '';
       if (!activeDocFolderId || !docExplorerData.foldersMap[activeDocFolderId]) activeDocFolderId = res.rootFolderId;
-      renderDocExplorerView();
+      if (!noRender) renderDocExplorerView();
     }
 
     function initDocExplorer() {
@@ -6051,6 +6108,10 @@
       }
       var cached = LS.get(ck('doc', detailSiteName));
       if (cached) applyDocExplorer(cached);
+      if (prefetchState.doc === detailSiteName) {
+        if (!cached) document.getElementById('docContainer').innerHTML = '<div class="info-card" style="text-align:center; color:var(--muted);">資料データを読み込んでいます...</div>';
+        return;
+      }
       reloadDocExplorerData(!!cached);
     }
 
@@ -6432,6 +6493,11 @@
     function initStaffAssignments() {
       if (!currentDetailSite) return;
       pendingStaffRoleChanges = {};
+      // 先読みがまだ届いておらず、前回のデータも無いときは、先読みが届くのを待つ（同じものを2回取りに行かない）
+      if (prefetchState.staff === currentDetailSite.siteName && !LS.get(ck('staff', currentDetailSite.siteName))) {
+        document.getElementById('staffListContainer').innerHTML = '<div class="info-card" style="text-align:center; color:var(--muted);">担当者一覧を読み込んでいます...</div>';
+        return;
+      }
       reloadStaffAssignments();
     }
 
@@ -6440,24 +6506,37 @@
       if (typeof onDone !== 'function') onDone = null;
       pendingStaffRoleChanges = {};
       var container = document.getElementById('staffListContainer');
-      container.innerHTML = '<div class="info-card" style="text-align:center; color:var(--muted);">担当者一覧を読み込んでいます...</div>';
+      var site = currentDetailSite.siteName;
+      // 前回のデータがあればすぐ表示し、裏で最新に更新（2026-10-30 速くする案1）
+      var cached = LS.get(ck('staff', site));
+      if (cached) {
+        siteStaffList = cached.staffList || [];
+        myCurrentSiteRole = cached.myRole || '一般作業員';
+        renderStaffAssignments();
+      } else {
+        container.innerHTML = '<div class="info-card" style="text-align:center; color:var(--muted);">担当者一覧を読み込んでいます...</div>';
+      }
 
       google.script.run
         .withSuccessHandler(function(res) {
           if (onDone) onDone(res.success ? '' : res.message);
+          if (res.success) LS.set(ck('staff', site), { staffList: res.staffList || [], myRole: res.myRole });
+          if (detailSiteName !== site) return;
           if (res.success) {
+            // 届く前に権限を触り始めていたら、その操作を消さないよう描き直さない
+            if (Object.keys(pendingStaffRoleChanges).length) return;
             siteStaffList = res.staffList || [];
             myCurrentSiteRole = res.myRole || '一般作業員';
             renderStaffAssignments();
-          } else {
+          } else if (!cached) {
             container.innerHTML = '<div class="msg-banner error">取得失敗: ' + esc(res.message) + '</div>';
           }
         })
         .withFailureHandler(function(err) {
           if (onDone) onDone(err.message);
-          container.innerHTML = '<div class="msg-banner error">通信エラー: ' + esc(err.message) + '</div>';
+          if (detailSiteName === site && !cached) container.innerHTML = '<div class="msg-banner error">通信エラー: ' + esc(err.message) + '</div>';
         })
-        .getSiteStaffAssignments(currentDetailSite.siteName, cred());
+        .getSiteStaffAssignments(site, cred());
     }
 
     function renderStaffAssignments() {
