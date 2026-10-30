@@ -922,8 +922,18 @@
       closeSheet('editorBg');
       changed();
     }
+    // 削除ボタンは2回押しで確定（製作伝票と同じ。ブラウザの確認ダイアログは使わない）
+    var delArmed = 0;
+    function confirmInline() {
+      var b = document.getElementById('edDel');
+      if (Date.now() - delArmed < 3000) { delArmed = 0; b.textContent = '削除'; return true; }
+      delArmed = Date.now(); b.textContent = 'もう一度押すと削除';
+      setTimeout(function () { b.textContent = '削除'; }, 3000);
+      return false;
+    }
     function deleteItem() {
       if (ED.index < 0) return;
+      if (!confirmInline()) return;
       S.items.splice(ED.index, 1);
       closeSheet('editorBg');
       changed();
