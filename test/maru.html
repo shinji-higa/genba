@@ -212,7 +212,7 @@
   <!-- 部材の入力 -->
   <div class="sheet-bg" id="editorBg">
     <div class="sheet">
-      <div class="sheet-h"><span class="ttl" id="edTitle">部材</span><button type="button" class="btn btn-sub" onclick="closeSheet('editorBg')">キャンセル</button></div>
+      <div class="sheet-h"><span class="ttl" id="edTitle">部材</span><span style="display:flex; gap:8px;"><button type="button" class="btn btn-sub" id="edBack" onclick="backToPicker()">← 部材の種類を選ぶ</button><button type="button" class="btn btn-sub" onclick="closeSheet('editorBg')">キャンセル</button></span></div>
       <div class="sheet-b"><div class="edfig" id="edFig"></div><div id="edForm"></div></div>
       <div class="sheet-f">
         <button type="button" class="btn btn-danger" id="edDel" onclick="deleteItem()" style="flex:0 0 auto;">削除</button>
@@ -300,9 +300,13 @@
        br＝分岐・片落ち：ops＝口①②③④のサイズの項目、inp＝入力するサイズ、nf＝NI/SPを選ばない口（ピンキーの親ダクト）、
        code＝書き方の頭、wr＝書き方に使う口、rule＝'t'（枝≦①）・'r'（②<①、枝≦①）・'x'（②≦①、枝≦①）・'w'（②③≦①）・'p'（②<①）
        ot＝その他（S管・実管・カラー）。口ごとの NI/SP は it.fits[0..3]（ユーザー指示 2026-10-30：T管は①②③ごとに選ぶ） */
-    var IN_T = [['d1', '①②（本管）'], ['d3', '③（枝）']];
-    var IN_R3 = [['d1', '①（大きい口）'], ['d2', '②（小さい口）'], ['d3', '③（枝）']];
-    var IN_W = [['d1', '①（入口）'], ['d2', '②'], ['d3', '③']];
+    // T・Y・TY・クロスは①②③の順に入れ、②が①より小さければ RT・RY・RTY・Rクロスになる（ユーザー提案 2026-10-30。fam＝同じ仲間）
+    var IN_M = [['d1', '①（本管）'], ['d2', '②（本管の先）'], ['d3', '③（枝）']];
+    var IN_X = [['d1', '①（本管）'], ['d2', '②（本管の先）'], ['d3', '③（枝）'], ['d4', '④（枝）']];
+    var IN_W = [['d1', 'サイズ（①②③）']];   // WE45・WE90 は①②③が全部同じサイズ
+    var FAM = { tf: ['t', 'rt'], yf: ['y', 'ry'], tyf: ['ty', 'rty'], xf: ['cross', 'rcross'] };
+    var PICK_HIDE = ['rt', 'ry', 'rty', 'rcross'];   // 部材の種類を選ぶ画面には出さない（②のサイズで自動で決まる）
+    var NETS = ['防鳥網', '防虫網'];   // 金網の種類（最初は防鳥網。ユーザー指示 2026-10-30）
     var IN_P = [['d1', '①（親ダクト）'], ['d2', '②（枝）']];
     var TYPES = {
       sp:   { name: 'SP',       full: 'スパイラルダクト', col: 'SP' },
@@ -311,17 +315,18 @@
       ni:   { name: 'NI',       full: 'ニップル',         col: 'NI' },
       nec:  { name: 'NEC',      full: 'NEC',              col: 'NEC', fit: true },
       cap:  { name: 'キャップ', full: 'キャップ',         col: 'キャップ', fit: true },
-      mesh: { name: '金網',     full: '金網',             col: '金網', fit: true, noT: true },
+      mesh: { name: '金網',     full: '金網',             col: '金網', fit: true, noT: true, net: true },
       r:    { name: 'R管',   full: 'R管（レジューサー）', br: true, ops: ['d1', 'd2'], inp: [['d1', '①（大きい口）'], ['d2', '②（小さい口）']], code: 'R', wr: [0, 1], rule: 'r' },
-      t:    { name: 'T管',   full: 'T管',   br: true, ops: ['d1', 'd1', 'd3'], inp: IN_T, code: 'T', wr: [0, 2], rule: 't' },
-      rt:   { name: 'RT管',  full: 'RT管',  br: true, ops: ['d1', 'd2', 'd3'], inp: IN_R3, code: 'RT', wr: [0, 1, 2], rule: 'r' },
-      y:    { name: 'Y管',   full: 'Y管',   br: true, ops: ['d1', 'd1', 'd3'], inp: IN_T, code: 'Y', wr: [0, 2], rule: 't' },
-      ry:   { name: 'RY管',  full: 'RY管',  br: true, ops: ['d1', 'd2', 'd3'], inp: IN_R3, code: 'RY', wr: [0, 1, 2], rule: 'r' },
-      ty:   { name: 'TY管',  full: 'TY管',  br: true, ops: ['d1', 'd1', 'd3'], inp: IN_T, code: 'TY', wr: [0, 2], rule: 't' },
-      rty:  { name: 'RTY管', full: 'RTY管', br: true, ops: ['d1', 'd2', 'd3'], inp: IN_R3, code: 'RTY', wr: [0, 1, 2], rule: 'r' },
-      cross:{ name: 'クロス管', full: 'クロス管', br: true, ops: ['d1', 'd2', 'd3', 'd4'], inp: [['d1', '①'], ['d2', '②（①の向かい）'], ['d3', '③（枝）'], ['d4', '④（枝）']], code: 'クロス', wr: [0, 1, 2, 3], rule: 'x' },
-      we45: { name: 'WE45',  full: 'WE45',  br: true, ops: ['d1', 'd2', 'd3'], inp: IN_W, code: 'WE45', wr: [0, 1, 2], rule: 'w' },
-      we90: { name: 'WE90',  full: 'WE90',  br: true, ops: ['d1', 'd2', 'd3'], inp: IN_W, code: 'WE90', wr: [0, 1, 2], rule: 'w' },
+      t:    { name: 'T管',   full: 'T管',   br: true, ops: ['d1', 'd2', 'd3'], inp: IN_M, code: 'T', wr: [0, 2], rule: 'm', fam: 'tf', cl: true },
+      rt:   { name: 'RT管',  full: 'RT管',  br: true, ops: ['d1', 'd2', 'd3'], inp: IN_M, code: 'RT', wr: [0, 1, 2], rule: 'm', fam: 'tf', cl: true },
+      y:    { name: 'Y管',   full: 'Y管',   br: true, ops: ['d1', 'd2', 'd3'], inp: IN_M, code: 'Y', wr: [0, 2], rule: 'm', fam: 'yf' },
+      ry:   { name: 'RY管',  full: 'RY管',  br: true, ops: ['d1', 'd2', 'd3'], inp: IN_M, code: 'RY', wr: [0, 1, 2], rule: 'm', fam: 'yf' },
+      ty:   { name: 'TY管',  full: 'TY管',  br: true, ops: ['d1', 'd2', 'd3'], inp: IN_M, code: 'TY', wr: [0, 2], rule: 'm', fam: 'tyf' },
+      rty:  { name: 'RTY管', full: 'RTY管', br: true, ops: ['d1', 'd2', 'd3'], inp: IN_M, code: 'RTY', wr: [0, 1, 2], rule: 'm', fam: 'tyf' },
+      cross:{ name: 'クロス管', full: 'クロス管', br: true, ops: ['d1', 'd2', 'd3', 'd4'], inp: IN_X, code: 'クロス', wr: [0, 2, 3], rule: 'm', fam: 'xf' },
+      rcross:{ name: 'Rクロス管', full: 'Rクロス管', br: true, ops: ['d1', 'd2', 'd3', 'd4'], inp: IN_X, code: 'Rクロス', wr: [0, 1, 2, 3], rule: 'm', fam: 'xf' },
+      we45: { name: 'WE45',  full: 'WE45',  br: true, ops: ['d1', 'd1', 'd1'], inp: IN_W, code: 'WE45', wr: [0], rule: '' },
+      we90: { name: 'WE90',  full: 'WE90',  br: true, ops: ['d1', 'd1', 'd1'], inp: IN_W, code: 'WE90', wr: [0], rule: '' },
       tpk:  { name: 'Tピンキー', full: 'Tピンキー', br: true, ops: ['d1', 'd2'], inp: IN_P, nf: [0], code: 'Tピンキー', wr: [0, 1], rule: 'p' },
       ypk:  { name: 'Yピンキー', full: 'Yピンキー', br: true, ops: ['d1', 'd2'], inp: IN_P, nf: [0], code: 'Yピンキー', wr: [0, 1], rule: 'p' },
       s:    { name: 'S管',   full: 'S管',   ot: true, fit: true },
@@ -331,11 +336,13 @@
       ac:   { name: '保温付きフレキ', full: '保温付きフレキ', flex: true, noT: true },
       dec:  { name: 'フレキ',         full: 'フレキ',         flex: true, noT: true }   // アルミ・鉄・SUSのフレキ（ユーザー指示 2026-10-30：アルミフレキ→フレキ）
     };
-    var TYPE_ORDER = ['sp', 'e90', 'e45', 'ni', 'nec', 'cap', 'mesh', 'r', 't', 'rt', 'y', 'ry', 'ty', 'rty', 'cross', 'we45', 'we90', 'tpk', 'ypk', 's', 'jit', 'col', 'dmp', 'ac', 'dec'];
+    var TYPE_ORDER = ['sp', 'e90', 'e45', 'ni', 'nec', 'cap', 'mesh', 'r', 't', 'rt', 'y', 'ry', 'ty', 'rty', 'cross', 'rcross', 'we45', 'we90', 'tpk', 'ypk', 's', 'jit', 'col', 'dmp', 'ac', 'dec'];
     // 分岐の口ごとの NI/SP（選ばない口は ''）
-    function opFit(it, i) { var t = TYPES[it.type]; return (t.nf || []).indexOf(i) >= 0 ? '' : ((it.fits || [])[i] || 'NI'); }
+    function opFit(it, i) { var t = TYPES[it.type]; return (t.nf || []).indexOf(i) >= 0 || opClosed(it, i) ? '' : ((it.fits || [])[i] || 'NI'); }
     // 口に閉止板を付けるか（ユーザー指示 2026-10-30。ピンキーの親ダクトには付けない）
-    function opClosed(it, i) { var t = TYPES[it.type]; return (t.nf || []).indexOf(i) < 0 && !!(it.closed || [])[i]; }
+    function opClosed(it, i) { var t = TYPES[it.type]; return !!t.cl && !!(it.closed || [])[i]; }   // 閉止板は T管（②が小さい RT管も）だけ（ユーザー指示 2026-10-30）
+    // ②のサイズで T↔RT などを切り替える
+    function famType(it) { var t = TYPES[it.type]; if (t && t.fam) it.type = FAM[t.fam][num(it.d2) < num(it.d1) ? 1 : 0]; return it; }
     var FITS = ['NI', 'SP'];
     /* フレキは「部材名 → 商品名」の順に選ぶ（ユーザー指示 2026-10-30）。商品が増えたらここに足す。
        lens＝長さ(m)の選択肢、def＝最初の長さ、endc＝端末加工を選べるか */
@@ -436,7 +443,8 @@
       nec: { w: 128, h: 210, u: 'data:image/png;base64,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' },
       sp: { w: 303, h: 90, u: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAS8AAABaCAYAAADpRtAeAAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAAJcEhZcwAADsMAAA7DAcdvqGQAAAJDSURBVHhe7dQ9qiJRFIXRV4KB4h9OwcjJGBg5awMRnYDgEMxucyosO3k2am9YC3ZS3FPh99MAAv0MPwAkEC8gkngBkZ7i9Xg82ul0MjP7b1ZdGnqK1+VyabPZrE2n0zafz83MvrbqUPWoujT0FK/r9doWi0V/sFwuzcy+tupQ9ai6NPTXeK1Wq/5gvV739eu6zszsY6vuVH+qQ9WjX8erfrDZbNrhcDAz+9iqO9Wfl+NVBdzv98MnAG9V3an+vByv0WjUdrvd8AnAW1V3qj/iBUQRLyCSeAGRxAuIJF5AJPECIokXEEm8gEjiBUQSLyCSeAGRxAuIJF5AJPECIokXEEm8gEjiBUQSLyCSeAGRxAuIJF5AJPECIokXEEm8gEjiBUQSLyCSeAGRxAuIJF5AJPECIokXEEm8gEjiBUQSLyCSeAGRxAuIJF5AJPECIokXEEm8gEjiBUQSLyCSeAGRxAuIJF5AJPECIokXEEm8gEjiBUQSLyCSeAGRxAuIJF5AJPECIokXEEm8gEjiBUQSLyCSeAGRxAuIJF5AJPECIokXEEm8gEjiBUQSLyCSeAGRxAuIJF5ApH+OV9d1bb/fD58AvFV1p/rzcrzm83nbbDbtcDiYmX1s1Z3qz8vxWq/X/Q+qgGZmn1p1p/rz63jVwWw2a8vl0szsa6uITSaTdj6fh6l6jtflcunDNZ1O+0Mzs29tPB637XbbbrfbMFXP8Xo8Hu10OpmZfX3H47Hd7/dhpnpP8QJIIF5AJPECIokXEOkPO3XKxLn5DSEAAAAASUVORK5CYII=' },
       ac: { w: 303, h: 114, u: 'data:image/png;base64,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' },
-      dec: { w: 303, h: 93, u: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAS8AAABdCAYAAAD0Q+CmAAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAAJcEhZcwAADsMAAA7DAcdvqGQAAARfSURBVHhe7doxampbGIbhGElljIldOnsrGyvJCCSgrTgKW8FSUqWxkVQZg6XgBJxAHIApnIHVunwbAt6VW/w7Jtt/3f0+8BE4rH2KwP8251wFAEjQVfwHAJAC4gUgScQLQJK+xet4PIbdbscYY26mLsW+xevj4yM0Go1Qr9fD/f09Y4xdbOqQeqQuxf4zXvqgVquFu7s7xhi72NQh9cgcLxVPHzabzezDarXKGGOFTd1Rf9Qh9Sh3vPQXtFqt0O/3GWOssKk76s+P41WpVMJgMIifAMCfUnfUnx/H6/r6Ojw/P8dPAOBPqTvqD/ECkBTiBSBJxAtAkgqP1+FwCL1eL3Q6ndBut8NoNIqfACgJ3b86oB6oC+qDVeHx2u/32f+G1XdXV1eh2+3GTwCUhO5fHVAP1AX1warweH1+fobHx8dwe3sbbm5uwtPTU/wEQEno/tUB9UBdUB+siBeAiyFeAJJEvAAkqVTx2mw2YTKZhOl0mv3cbrfxEwAF0f2d3qPuM49SxWs2m2X/OvG15XIZPwFQEN3f6T3qPvMoVbxeXl6yX9LDw0P28/39PX4CoCC6v9N71H3mQbwAXATxyoF4AX4QrxzOidd6vQ7D4TCMx+Ps52q1ip8ApaM7OL0L3YkV8crhnHgtFovsm6/N5/P4CVA6uoPTu9CdWBGvHM6J19vb27++fX19jZ8ApaM7OL0L3YkV8cqBeAG/i3gZES/AF+JlRLwAX4iXEfECfCFeRsQL8IV4GREvwBfiZUS8AF+IlxHxAnwhXkbEC/CFeBkRL8AX4mVEvABfiJcR8QJ8IV5GxAvwhXgZES/AF+JlRLwAX4iXEfECfCFeRsQL8IV4GREvwBfiZUS8AF+IlxHxAnwhXkbEC/CFeBkRL8AX4mVEvABfiJcR8QJ8IV5GxAvwhXgZES/AF+JlRLwAX4iXEfECfCFeRsQL8IV4GREvwBfiZUS8AF+IlxHxAnwhXkbEC/CFeBkRL8AX4mVEvABfiJcR8QJ8IV5GxAvwhXgZES/AF+JldMl4LRaL7Juvzefz+AlQOrqD07vQnVgRrxzOidd6vQ7D4TCMx+Ps52q1ip8ApaM7OL0L3YkV8crhnHgB+F3EKwfiBfhBvHIgXoAfxCuH2WyW/ZK+tlwu4ycACqL7O71H3WcepYrXZrMJk8kkTKfT7Od2u42fACiI7u/0HnWfeZQqXgD+P4gXgCQRLwBJIl4AkpRUvPb7fWg0Gtl3+teJbrcbPwFQErp/dUA9UBfUB6vC43U4HEKv1wudTie02+0wGo3iJwBKQvevDqgH6oL6YFV4vADgNxAvAEkiXgCSRLwAJOnseFUqlTAYDOInAPCn1B3158fxqtfrodVqhX6/zxhjhU3dUX9+HK9ms5n9BdVqlTHGCpu6o/7kjpc+rNVq2YeMMXapqUPqkTle+t+w+kDFY4yxS00dUo9M8Toej2G32zHGmJupS7Fv8QKAFBAvAEkiXgCSRLwAJOkfUpW8V/Rh6LAAAAAASUVORK5CYII=' }
+      dec: { w: 303, h: 93, u: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAS8AAABdCAYAAAD0Q+CmAAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAAJcEhZcwAADsMAAA7DAcdvqGQAAARfSURBVHhe7doxampbGIbhGElljIldOnsrGyvJCCSgrTgKW8FSUqWxkVQZg6XgBJxAHIApnIHVunwbAt6VW/w7Jtt/3f0+8BE4rH2KwP8251wFAEjQVfwHAJAC4gUgScQLQJK+xet4PIbdbscYY26mLsW+xevj4yM0Go1Qr9fD/f09Y4xdbOqQeqQuxf4zXvqgVquFu7s7xhi72NQh9cgcLxVPHzabzezDarXKGGOFTd1Rf9Qh9Sh3vPQXtFqt0O/3GWOssKk76s+P41WpVMJgMIifAMCfUnfUnx/H6/r6Ojw/P8dPAOBPqTvqD/ECkBTiBSBJxAtAkgqP1+FwCL1eL3Q6ndBut8NoNIqfACgJ3b86oB6oC+qDVeHx2u/32f+G1XdXV1eh2+3GTwCUhO5fHVAP1AX1warweH1+fobHx8dwe3sbbm5uwtPTU/wEQEno/tUB9UBdUB+siBeAiyFeAJJEvAAkqVTx2mw2YTKZhOl0mv3cbrfxEwAF0f2d3qPuM49SxWs2m2X/OvG15XIZPwFQEN3f6T3qPvMoVbxeXl6yX9LDw0P28/39PX4CoCC6v9N71H3mQbwAXATxyoF4AX4QrxzOidd6vQ7D4TCMx+Ps52q1ip8ApaM7OL0L3YkV8crhnHgtFovsm6/N5/P4CVA6uoPTu9CdWBGvHM6J19vb27++fX19jZ8ApaM7OL0L3YkV8cqBeAG/i3gZES/AF+JlRLwAX4iXEfECfCFeRsQL8IV4GREvwBfiZUS8AF+IlxHxAnwhXkbEC/CFeBkRL8AX4mVEvABfiJcR8QJ8IV5GxAvwhXgZES/AF+JlRLwAX4iXEfECfCFeRsQL8IV4GREvwBfiZUS8AF+IlxHxAnwhXkbEC/CFeBkRL8AX4mVEvABfiJcR8QJ8IV5GxAvwhXgZES/AF+JlRLwAX4iXEfECfCFeRsQL8IV4GREvwBfiZUS8AF+IlxHxAnwhXkbEC/CFeBkRL8AX4mVEvABfiJcR8QJ8IV5GxAvwhXgZES/AF+JldMl4LRaL7Juvzefz+AlQOrqD07vQnVgRrxzOidd6vQ7D4TCMx+Ps52q1ip8ApaM7OL0L3YkV8crhnHgB+F3EKwfiBfhBvHIgXoAfxCuH2WyW/ZK+tlwu4ycACqL7O71H3WcepYrXZrMJk8kkTKfT7Od2u42fACiI7u/0HnWfeZQqXgD+P4gXgCQRLwBJIl4AkpRUvPb7fWg0Gtl3+teJbrcbPwFQErp/dUA9UBfUB6vC43U4HEKv1wudTie02+0wGo3iJwBKQvevDqgH6oL6YFV4vADgNxAvAEkiXgCSRLwAJOnseFUqlTAYDOInAPCn1B3158fxqtfrodVqhX6/zxhjhU3dUX9+HK9ms5n9BdVqlTHGCpu6o/7kjpc+rNVq2YeMMXapqUPqkTle+t+w+kDFY4yxS00dUo9M8Toej2G32zHGmJupS7Fv8QKAFBAvAEkiXgCSRLwAJOkfUpW8V/Rh6LAAAAAASUVORK5CYII=' },
+      rcross: { w: 275, h: 212, u: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAARMAAADUCAYAAAC/M8cAAAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAAJcEhZcwAADsMAAA7DAcdvqGQAAB+sSURBVHhe7Z0LtFVFGcdNe2dlma9EENN8oiJqKCm+g4oUfJemlpakkSKikGi+UhI0xFdZS0sxFCwlWoqalagkaVaK70I0n6n4Kl/RtH5jc9v3O/veu8+5c87Zj/9vrW9x7+XMOWfPzP7vmW+++WY5J4QQEVjO/kEIIRpBYiKEiILERAgRBYmJECIKlROTJUuWuBkzZrjZs2fLZs92s2bN8rZs2TJbVULURaXEZPHixW706NFuueWWkxm77LLL3NKlS22VCZGZSonJmDFj/I3zkY98RJawlVZaydfLvHnzbJUJkZlKicnYsWMlJimGmKywwgruxhtvtFUmRGYqJSbHHHNMJzH56Ec/6t7//ve75ZdfvnL2oQ99yF9/EJN3vvOdEhPRKyotJiuuuKIbOHCgGzlyZOWsb9++XlAkJiIWlRYTfp46dap9WSXYeeedvYBITEQsKi8mZ5xxhn1ZJdhxxx3du971LomJiIbERGIiMRFRkJhITCQmIgoSE4mJxEREQWIiMZGYiChITCQmEhMRBYmJxERiIqIgMZGYSExEFCQmEhOJiYiCxERiIjERUZCYSEwkJiIKEhOJicREREFiIjGRmIgoSEwkJhITEQWJicREYiKiIDGRmEhMRBQkJhITiYmIgsREYiIxEVGolJiMGzeuRkzOPPNM+7JKkCYmN910k32ZEJmplJgcf/zxNWIyZcoU+7JKQA7YpJhw1MX8+fPty4TITGXE5I477nDrrLOOz0gfxOSDH/ygGzBggBs+fHjlrE+fPh3Z6bH3vOc97vOf/7x7+eWXbdUJkYlKiAlP3I9//OP+SRzOisHCuTk8latmyXNzkiO1PfbYw1afEJmohJgMHjzY3yj25pF1NgTmve99r7vuuutsFQrRI5UQk2222ca9+93vrrl5ZJ0NsUV0x48fb6tQiB6phJgMGTJEYpLREJPvfOc7tgqF6BGJiayTISaTJk2yVShEj1RCTLbddluJSUZ7xzveUdlAPtE7KiEmW2+9tRywPRh1g+Cuueaa7tlnn7VVKESPVEJMbrjhBrfyyiv7m8UuDX/gAx/wS8ZVsw9/+MOd6oKYG2zmzJm2+oTIRCXEBBYtWuRGjRrlb6RwA7EUuv7667vtt9++ckbcDYJCPYRw+osvvthWmxCZqYyYwMSJE2vC6SdPnmxfVgl22mmnDmENYqJwetEbKiUmabuGtdFPu4ZFHCovJlVduZCYiNhITCQmEhMRBYmJxERiIqIgMZGYSExEFCQmEhOJiYiCxERiIjERUZCYSEwkJiIKEhOJicREREFiIjGRmIgoSEwkJhITEQWJicREYiKiIDGRmEhMRBRyIyYLFy70m+6+//3ve2M3L3lIYiIx+T/NFpPbb7/dt2Ez21Pki1yIya233upWXXVVf3MnjTNtRowY4Z5//nlbpCHSTvSTmLwtJpylQzv0ljfeeMN9+ctf9rlibHu+733v8+354osv2mKiBHQpJm+++ab7/e9/70cMzbRrrrnGpwqkY9ssaKFDDhs2rKZcI3bggQf6J7DEpPZ4UE70O//882vqrF776U9/6uuVDHa2PcnkFupcJweWj1Qx+ec//+muvfZat/zyy/tOxhOlWcahT7bjJY2/8xpbrhGzp9jRsadNm2YvvxKknSVEO9g6q9d4D9uG1hCxoUOHusMPP9zbQQcd5ObMmeMef/xxb0uWLHHPPPOM/coi56SKCaMFOhpp/ZptPBVtZ0szW64Rs58Vztd99dVXbRWUmiOOOKJGSDDqx9ZZvWbruCvj85NTIEYtq622mjfy9a677rrulFNOcaeffro/x+eCCy5wr732mrd//etf7t///re9LNFmUsXk6quv7uRbKKuFE+x2331398orr9hqKCV//OMf/Y2bPMA9D8aoMSS1xhjhJMWG6elGG23kbb311nM77LCDmzFjhrdLLrnEzZs3z16qaDGpYvLzn//cn58SGjr4L3iSxzY79Ugznni2XCPGdMk+OfmdznrVVVfZaigdd955p+vbt6+vB1vnTFFsfTViWdqzEaOdktMpPsuObHAqY5yTdMghh7hbbrmlw26++Wb3+uuv2yoREckkJtzMZDPfaqutohvOV97fdp7kZzP0teUasYEDB/pOaAWFp/THPvax0h/Yvccee/gbz97sCMCmm25aU1+NWE/tmXSsYwgD9c9IBLNtk8XCe+KLSRpTqWD0Z5zOOOGxfffd1y9VP/zww94efPBBW12iTjKJCY7YL3zhC/ZlUaCD8/62gwTj5v/Upz5lizUEc+1D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7aKs7dlOJCYZKWvnO/TQQ2v8JCE/CT/feeed/nWcAJgWbs+OY+zRRx+1b51rytqe7URikpEydj4y0iME9ggMfkcobr755o7XPvnkkz5dASMUu3MYhyw7h5977rlO759nytie7UZikpGydb7bb7+9IxesFQdGIIcddpgt4v785z/7VZyu8p8wXSoKZWvPPCAxyUjZOt9nPvOZmmkLxihj7733di+//LIt4pk+fXqX+U/wobC/pwiUrT3zgMQkI2XpfKQbIP8romHzk+AnQRCY0nTFG2+84fPAppVnkyBToTfffNMWyx1lac88ITHJSFk63y9+8Qs/srArM0S2YmSmz5JdfrPNNvN1nxzZhCNBOerC5o/NG2VpzzwhMclIGTofZ+YgAmGlJlhYBv7ud79ri3TJvHnzfJCbzX+CoPBeJ510ki2SK8rQnnlDYpKRonc+dgNvvvnmNaMJfua6Pv3pT9ednwT/SNooJxwP2sj5xa2i6O2ZRyQmGSl652NjHsu61nGKn2PDDTesW0gAgdpzzz1T41R43zXWWMM9/PDDtlguKHp75hGJSUaK3PkuuOACf8Pb825YgeHvP/jBD2yRzJCQmhgT6saOeHjvb37zm7ZILihye+YViUlGitr5CCQjw7zNnsYIhb+dffbZtkjdcBwG78X0xjpkaZ+JEydmcuq2kqK2Z56RmGSkiJ2PqcvQoUNrolbDqGGLLbaItqeGA8/DilCyXoimJTDuvvvus0XaShHbM+9ITDJSxM4XDii3gWnc3AMGDIjuz/jiF7/Y5edtsskmuRKUIrZn3pGYZKRone/KK6/038uOFFh54Ya/7rrrbJFeQ5Lp7bffvsul5913390WaRtFa88iIDHJSJE639/+9reO6YUdJXCg1rhx43wkazNg9zCxJ9Z/EpJRn3vuubZIWyhSexYFiUlGitL5iDzdZ599/NJs8vu1anSAoxWnrj1/h89H4PgO119/vS3WcorSnkVCYpKRonQ+QtnT4j6Yeqy++upuwYIFtkhTYAXH+k9C/AlToXanKyhKexYJiUlGitD55s+f75dj0/KT4Du54447bJGmsWTJErfBBht0uZK0ww47tHX/ThHas2hITDKS98532223+b0yNo8rxs1LRrVW8+CDD/oYF+uQDft3LrvsMlukZeS9PYuIxCQjee98+ELstAJjZEDSonalBTjr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' }
     };
     // 部材の絵は比嘉さんの「丸ダクトイメージ」（Rebro）にそろえる：口にはバンド（細い帯）と差し込み部（2026-10-30）
     function icon(type, big) {
@@ -501,6 +509,9 @@
         // NI/SP：最初は NI。分岐は口ごと（前の形の it.fit は全部の口に写す）
         if (TYPES[it.type].br) { if (!it.fits) it.fits = [0, 1, 2, 3].map(function () { return it.fit || 'NI'; }); delete it.fit; }
         else if (TYPES[it.type].fit && !it.fit) it.fit = 'NI';
+        if (TYPES[it.type].net && !it.net) it.net = NETS[0];
+        // T・Y・TY は前は②を入れていなかった（①と同じ）。②を入れてから T↔RT などを決め直す。WE は①だけ
+        if (TYPES[it.type].fam) { if (!num(it.d2)) it.d2 = it.d1; famType(it); }
       });
       return s;
     }
@@ -524,6 +535,7 @@
       if (t.flex) return prodOf(it).n + '　φ' + it.d1 + '　L' + it.flen + 'm' + (prodOf(it).endc ? '　' + (it.endc ? '端末加工あり' : '端末加工なし') : '');
       if (it.type === 'sp') return 'φ' + it.d1 + '　' + (it.len === 'L' ? '長さ指定 ' + (num(it.lenMm) || '') + 'mm' : '定尺 ' + (it.len || '4') + 'm');
       if (t.ot) return 'φ' + it.d1 + '　' + otDim(it);
+      if (t.net) return 'φ' + it.d1 + '　' + (it.net || NETS[0]);
       return 'φ' + it.d1;
     }
     // S管・実管・カラーの寸法の文字
@@ -545,14 +557,11 @@
     function itemErrors(it) {
       var e = [], t = TYPES[it.type], d = function (k) { return num(it[k]); };
       if (!(num(it.qty) > 0)) e.push('数を入れてください。');
-      if (t.rule === 't' && d('d3') > d('d1')) e.push('③（枝）は①より大きくできません。');
-      if ((t.rule === 'r' || t.rule === 'p') && !(d('d2') < d('d1'))) e.push('②は①より小さいサイズにしてください。');
-      if (t.rule === 'r' && it.d3 !== undefined && t.ops.length > 2 && d('d3') > d('d1')) e.push('③（枝）は①より大きくできません。');
-      if (t.rule === 'x') {
+      if (t.rule === 'm') {
         if (d('d2') > d('d1')) e.push('②は①より大きくできません。');
-        if (d('d3') > d('d1') || d('d4') > d('d1')) e.push('③・④（枝）は①より大きくできません。');
+        if (d('d3') > d('d1') || (t.ops.length > 3 && d('d4') > d('d1'))) e.push('枝は①より大きくできません。');
       }
-      if (t.rule === 'w' && (d('d2') > d('d1') || d('d3') > d('d1'))) e.push('②・③は①より大きくできません。');
+      if ((t.rule === 'r' || t.rule === 'p') && !(d('d2') < d('d1'))) e.push('②は①より小さいサイズにしてください。');
       if ((it.type === 's' || it.type === 'jit') && !(d('L') > 0)) e.push('長さ L（mm）を入れてください。');
       if (it.type === 'col' && it.tbOn && !(d('tb') > 0)) e.push('ツバの長さ（mm）を入れてください。');
       if (it.type === 'sp' && it.len === 'L' && !(num(it.lenMm) > 0)) e.push('長さ（mm）を入れてください。');
@@ -632,7 +641,7 @@
 
     /* ===== 部材を選ぶ・入れる ===== */
     function openPicker() {
-      document.getElementById('pickGrid').innerHTML = TYPE_ORDER.map(function (t) {
+      document.getElementById('pickGrid').innerHTML = TYPE_ORDER.filter(function (t) { return PICK_HIDE.indexOf(t) < 0; }).map(function (t) {
         return '<div class="pick" onclick="pickType(\'' + t + '\')">' + icon(t, true) + '<div class="pick-n">' + esc(TYPES[t].name) + '</div></div>';
       }).join('');
       openSheet('pickerBg');
@@ -641,13 +650,11 @@
     function newItem(type) {
       var t = TYPES[type], it = { type: type, d1: 200, d2: '', d3: '', qty: 1 };
       if (type === 'sp') { it.len = '4'; it.lenMm = ''; }
-      if (t.rule === 't') it.d3 = 150;
-      if (t.rule === 'r') { it.d1 = 250; it.d2 = 200; if (t.ops.length > 2) it.d3 = 150; }
+      if (t.rule === 'm') { it.d2 = 200; it.d3 = 150; if (t.ops.length > 3) it.d4 = 150; }   // ②は①と同じ（T・Y・TY・クロス）
       if (type === 'r') { it.d1 = 200; it.d2 = 150; }
-      if (t.rule === 'x') { it.d2 = 200; it.d3 = 150; it.d4 = 150; }
-      if (t.rule === 'w') { it.d2 = 150; it.d3 = 150; }
+      if (t.net) it.net = NETS[0];
       if (t.rule === 'p') { it.d1 = 300; it.d2 = 150; }
-      if (t.br) { it.fits = ['NI', 'NI', 'NI', 'NI']; it.closed = [false, false, false, false]; }   // 口ごとの NI/SP（最初は NI）と閉止板（ユーザー指示 2026-10-30）
+      if (t.br) { it.fits = ['NI', 'NI', 'NI', 'NI']; if (t.cl) it.closed = [false, false, false, false]; }   // 口ごとの NI/SP（最初は NI）と閉止板（T管だけ）
       else if (t.fit) it.fit = 'NI';
       if (type === 's' || type === 'jit') { it.L = ''; it.H = ''; }
       if (type === 'col') it.tb = '';                  // ツバ：空＝標準 6〜8mm
@@ -656,6 +663,8 @@
       return it;
     }
     function pickType(t) { closeSheet('pickerBg'); ED = { it: newItem(t), index: -1 }; openEditor(); }
+    // 部材を追加している途中で、部材の種類を選ぶ画面に戻る（入れかけた内容は捨てる。製作伝票と同じ）
+    function backToPicker() { closeSheet('editorBg'); openPicker(); }
     function editItem(i) { ED = { it: JSON.parse(JSON.stringify(S.items[i])), index: i }; openEditor(); }
     function sizeSel(key, list, label) {
       var it = ED.it;
@@ -680,6 +689,7 @@
       var it = ED.it, t = TYPES[it.type];
       document.getElementById('edTitle').textContent = t.full + (ED.index >= 0 ? '（編集）' : '');
       document.getElementById('edDel').style.display = ED.index >= 0 ? '' : 'none';
+      document.getElementById('edBack').style.display = ED.index < 0 ? '' : 'none';   // 戻るのは追加のときだけ
       var h = '<div class="edbox">', chip = function (k, v, label, on) {
         return '<span class="chip' + (on ? ' on' : '') + '" onclick="edSet(\'' + k + '\',\'' + v + '\')">' + esc(label) + '</span>';
       };
@@ -691,13 +701,15 @@
       if (t.br) {
         h += '<div class="' + (t.inp.length === 2 ? 'g2' : t.inp.length === 3 ? 'g3' : 'g2') + '">' + t.inp.map(function (x) { return sizeSel(x[0], sizeList(it, x[0]), x[1]); }).join('') + '</div>';
         // 口ごとの NI/SP（ピンキーの親ダクトは選ばない）
-        h += '<div class="fg"><span class="lbl">NIサイズ・SPサイズ・閉止板（口ごと）</span>' + t.ops.map(function (k, i) {
+        h += '<div class="fg"><span class="lbl">NIサイズ・SPサイズ' + (t.cl ? '・閉止板' : '') + '（口ごと）</span>' + t.ops.map(function (k, i) {
           if ((t.nf || []).indexOf(i) >= 0) return '';
           return '<div style="display:flex;align-items:center;gap:8px;margin-top:6px;"><b style="width:26px;">' + CIRC[i] + '</b><div class="chips">' +
-            FITS.map(function (f) { return chip('fit' + i, f, f + 'サイズ', opFit(it, i) === f); }).join('') + chip('cl' + i, '1', '閉止板', opClosed(it, i)) + '</div></div>';
+            (opClosed(it, i) ? '' : FITS.map(function (f) { return chip('fit' + i, f, f + 'サイズ', opFit(it, i) === f); }).join('')) +   // 閉止板の口は NI/SP を選ばない
+            (t.cl ? chip('cl' + i, '1', '閉止板', opClosed(it, i)) : '') + '</div></div>';
         }).join('') + '</div>';
       } else {
         h += sizeSel('d1', t.flex ? prodOf(it).sizes : SIZES, 'サイズ');
+        if (t.net) h += '<div class="fg"><span class="lbl">金網の種類</span><div class="chips">' + NETS.map(function (n) { return chip('net', n, n, (it.net || NETS[0]) === n); }).join('') + '</div></div>';
         if (t.fit) h += '<div class="fg"><span class="lbl">NIサイズ・SPサイズ</span><div class="chips">' + FITS.map(function (f) { return chip('fit', f, f + 'サイズ', it.fit === f); }).join('') + '</div></div>';
       }
       if (it.type === 's') h += '<div class="g2">' + mmIn('L', '長さ L（mm）') + mmIn('H', 'ずれ H（mm・分かれば）') + '</div>';
@@ -746,6 +758,7 @@
         if (x[0] === 'd1') return;
         var l = sizeList(ED.it, x[0]); if (l.indexOf(+ED.it[x[0]]) < 0) ED.it[x[0]] = l[l.length - 1];
       });
+      famType(ED.it);   // ②が①より小さければ RT・RY・RTY・Rクロス、同じなら T・Y・TY・クロス
       openEditor();
     }
     function edQty(d) { ED.it.qty = Math.max(0, num(ED.it.qty) + d); document.getElementById('edQty').value = ED.it.qty; refreshEd(); }
@@ -761,7 +774,7 @@
       r: [[0, .5, 'e'], [1, .5, 's']], t: [[0, .25, 'e'], [1, .25, 's'], [.68, .93, 's']], rt: [[0, .25, 'e'], [1, .25, 's'], [.44, .93, 's']],
       y: [[0, .25, 'e'], [1, .25, 's'], [.8, .85, 's']], ry: [[0, .3, 'e'], [1, .3, 's'], [.56, .9, 's']],
       ty: [[0, .2, 'e'], [1, .2, 's'], [.92, .93, 's']], rty: [[0, .2, 'e'], [1, .2, 's'], [.7, .93, 's']],
-      cross: [[0, .5, 'e'], [1, .5, 's'], [.7, .08, 's'], [.7, .93, 's']],
+      cross: [[0, .5, 'e'], [1, .5, 's'], [.7, .08, 's'], [.7, .93, 's']], rcross: [[0, .5, 'e'], [1, .5, 's'], [.5, .07, 's'], [.5, .95, 's']],
       we45: [[0, .5, 'e'], [1, .12, 's'], [1, .88, 's']], we90: [[0, .5, 'e'], [.92, .06, 's'], [.92, .95, 's']],
       tpk: [[1, .2, 's'], [.9, .86, 's']], ypk: [[1, .2, 's'], [1, .85, 's']],
       s: [[0, .25, 'e'], [1, .85, 's']]
@@ -823,7 +836,7 @@
           fx[kf].q += q;
         } else {
           // 列：SP は長さごと、NEC・キャップ・金網は NI・SP ごと。升目の中は圧力ごとの数
-          var col = it.type === 'sp' ? 'sp:' + spKey(it) : t.fit ? it.type + ':' + it.fit : it.type;
+          var col = it.type === 'sp' ? 'sp:' + spKey(it) : t.fit ? it.type + ':' + (t.net ? (it.net || NETS[0]) + ':' : '') + it.fit : it.type;
           cols[col] = true;
           mx[it.d1] = mx[it.d1] || {};
           mx[it.d1][col] = mx[it.d1][col] || {};
@@ -839,8 +852,10 @@
       var colList = (onlyStd4 ? [{ k: 'sp:4', h: 'SP' }] : spCols.map(function (c) { return { k: c, h: spColName(c.slice(3)) }; }))
         .concat([].concat.apply([], MX.slice(1).map(function (t) {
           if (!TYPES[t].fit) return [{ k: t, h: TYPES[t].col }];
-          var used = FITS.filter(function (f) { return cols[t + ':' + f]; });   // 使った NI・SP の列だけ（どちらも無ければ空の列を1つ）
-          return used.length ? used.map(function (f) { return { k: t + ':' + f, h: TYPES[t].col, sub: f }; }) : [{ k: t, h: TYPES[t].col }];
+          // 使った（金網の種類と）NI・SP の列だけ（どれも無ければ空の列を1つ）
+          var vs = TYPES[t].net ? [].concat.apply([], NETS.map(function (n) { return FITS.map(function (f) { return { k: t + ':' + n + ':' + f, sub: n + ' ' + f }; }); })) : FITS.map(function (f) { return { k: t + ':' + f, sub: f }; });
+          var used = vs.filter(function (v) { return cols[v.k]; });
+          return used.length ? used.map(function (v) { return { k: v.k, h: TYPES[t].col, sub: v.sub }; }) : [{ k: t, h: TYPES[t].col }];
         })));
       var sizes = Object.keys(mx).map(Number).sort(function (a, b) { return a - b; });
       var brList = Object.keys(br).map(function (k) { return br[k]; }).sort(function (a, b) { return itemSort({ it: a.it }, { it: b.it }); });
