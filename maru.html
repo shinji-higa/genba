@@ -1466,7 +1466,9 @@
       body.innerHTML = '<div class="empty">保存先のフォルダを読み込んでいます…</div>';
       openSheet('pdfBg');
       SRV.dirty = true;
-      hostSaveNow().catch(noop).then(function () { return HOST.call('getDenpyoFolders', [HOST.site]); }).then(function (r) {
+      // 保存とフォルダ一覧は同時に頼む（順番に待つと倍かかる。2026-10-30）
+      Promise.all([hostSaveNow().catch(noop), HOST.call('getDenpyoFolders', [HOST.site])]).then(function (a) {
+        var r = a[1];
         var fs = r.folders || [], pick = fs.filter(function (f) { return f.id === S.pdfFolderId; })[0] || fs.filter(function (f) { return f.path === '丸ダクト注文書'; })[0];
         body.innerHTML =
           (bad.length ? '<div class="pdf-msg err" style="margin:0 0 10px;">⚠ 入力が足りない部材が ' + bad.length + ' 件あります（部材一覧の赤い字）。その部材は注文書に載りません。</div>' : '') +
