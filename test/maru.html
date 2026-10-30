@@ -121,7 +121,11 @@
     .dp-spec td.k { width: 14mm; }
     .dp-spec td.memo { text-align: left; white-space: normal; line-height: 1.25; }
     .dp-sec { margin-top: 3mm; margin-bottom: 1mm; font-size: 9pt; font-weight: 700; }
-    .dp-mx th { font-size: 9.5pt; }
+    .dp-mx th { font-size: 9.5pt; line-height: 1.05; }
+    .dp-mx th small { display: block; font-size: 7.5pt; }
+    /* 仕様の圧力と違う部材の印（黒地に白。見落とさないように） */
+    .dp .pt { display: inline-block; background: #000; color: #fff; font-weight: 700; font-size: 7pt; line-height: 1.25; padding: 0 0.6mm; border-radius: 0.6mm; margin: 0 0.4mm 0 1.2mm; vertical-align: 0.3mm; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    .dp .pt:first-child { margin-left: 0; }
     .dp-mx td.sz { font-weight: 700; }
     .dp-mx tr:nth-child(even) td { background: #e6f0f5; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
     .dp-mx td.q, .dp-br td.q, .dp-fx td.q { font-size: 10.5pt; }
@@ -173,8 +177,17 @@
           </div>
           <div class="fg"><span class="lbl">搬入先</span><div class="chips" id="cDest"></div></div>
           <div class="fg" id="coAddrRow" style="display:none;"><span class="lbl">会社の住所</span><div class="chips" id="cCoAddr"></div></div>
+          <div class="fg"><label for="fMemo">Memo（注文書のダクト仕様の下に出ます）</label><textarea id="fMemo" data-k="memo"></textarea></div>
+        </div>
+
+        <!-- ダクト仕様（角ダクトの製作伝票と同じ並び。登録した仕様の読み込みはなし。ユーザー指示 2026-10-30） -->
+        <div class="card">
+          <div class="card-h">ダクト仕様</div>
           <div class="fg"><span class="lbl">材質</span><div class="chips" id="cMat"></div></div>
-          <div class="fg"><label for="fMemo">Memo（注文書の材質の横に出ます）</label><textarea id="fMemo" data-k="memo" placeholder="例：キャップ＝NIサイズ　金網＝SPサイズ"></textarea></div>
+          <div class="fg"><span class="lbl">用途</span><div class="chips" id="cUse"></div></div>
+          <div class="fg"><span class="lbl">圧力</span><div class="chips" id="cPress"></div></div>
+          <div class="fg"><span class="lbl">板厚</span><div class="chips" id="cUp"></div></div>
+          <div class="note" id="specNote"></div>
         </div>
 
         <div class="card">
@@ -312,25 +325,71 @@
     var SIZES = (function () { var a = []; for (var d = 100; d <= 400; d += 25) a.push(d); for (d = 450; d <= 1000; d += 50) a.push(d); return a; })();
     var SIZES_AC = [100, 125, 150, 175, 200, 225, 250, 275, 300, 325, 350, 375, 400];
     var SIZES_DEC = [100, 125, 150, 175, 200, 225, 250, 300, 350, 400];
-    var FLEX_LEN = ['0.5', '1', '1.5', '2', '10'];   // m。端末加工ありは 0.5〜2m が標準（10m まで）、加工なしは 10m 巻き
     // 表（直管・継手の数）に並べる部材。列の順番は今の注文書と同じ
     var MX = ['sp', 'e90', 'e45', 'ni', 'nec', 'cap', 'mesh'];
+    // fit＝NIサイズ・SPサイズを選ぶ部材（ユーザー指示 2026-10-30）。noT＝板厚なし
     var TYPES = {
       sp:   { name: 'SP',       full: 'スパイラルダクト', col: 'SP' },
       e90:  { name: '90°',      full: 'エルボ90°',        col: '90°' },
       e45:  { name: '45°',      full: 'エルボ45°',        col: '45°' },
       ni:   { name: 'NI',       full: 'ニップル',         col: 'NI' },
-      nec:  { name: 'NEC',      full: 'NEC',              col: 'NEC' },
-      cap:  { name: 'キャップ', full: 'キャップ',         col: 'キャップ' },
-      mesh: { name: '金網',     full: '金網',             col: '金網' },
-      t:    { name: 'T管',      full: 'T管',              br: true },
-      rt:   { name: 'RT管',     full: 'RT管',             br: true },
-      r:    { name: 'R管',      full: 'R管（レジューサー）', br: true },
-      dec:  { name: 'DEC',      full: 'DEC（ハイホース DEC-M）', flex: true, sizes: SIZES_DEC },
-      ac:   { name: 'AC',       full: '保温付きフレキ（ハイホース AC）', flex: true, sizes: SIZES_AC }
+      nec:  { name: 'NEC',      full: 'NEC',              col: 'NEC', fit: true },
+      cap:  { name: 'キャップ', full: 'キャップ',         col: 'キャップ', fit: true },
+      mesh: { name: '金網',     full: '金網',             col: '金網', fit: true, noT: true },
+      t:    { name: 'T管',      full: 'T管',              br: true, fit: true },
+      rt:   { name: 'RT管',     full: 'RT管',             br: true, fit: true },
+      r:    { name: 'R管',      full: 'R管（レジューサー）', br: true, fit: true },
+      ac:   { name: '保温付きフレキ', full: '保温付きフレキ', flex: true, noT: true },
+      dec:  { name: 'アルミフレキ',   full: 'アルミフレキ',   flex: true, noT: true }
     };
-    var TYPE_ORDER = ['sp', 'e90', 'e45', 'ni', 'nec', 'cap', 'mesh', 't', 'rt', 'r', 'dec', 'ac'];
-    var OPT = { dest: ['会社', '引取', '現場', '伊丹'], mat: ['亜鉛鋼板', 'ガルバリウム鋼板', 'ステンレス', '塩ビ鋼板'] };
+    var TYPE_ORDER = ['sp', 'e90', 'e45', 'ni', 'nec', 'cap', 'mesh', 't', 'rt', 'r', 'ac', 'dec'];
+    var FITS = ['NI', 'SP'];
+    /* フレキは「部材名 → 商品名」の順に選ぶ（ユーザー指示 2026-10-30）。商品が増えたらここに足す。
+       lens＝長さ(m)の選択肢、def＝最初の長さ、endc＝端末加工を選べるか */
+    var PRODUCTS = {
+      ac:  [{ n: 'ハイホース AC', sizes: SIZES_AC, lens: ['0.5', '1', '1.5', '2', '10'], def: '1', endc: true }],
+      dec: [{ n: 'DEC-M', sizes: SIZES_DEC, lens: ['10'], def: '10', endc: false }]
+    };
+    function prodOf(it) { var l = PRODUCTS[it.type] || []; return l.filter(function (p) { return p.n === it.prod; })[0] || l[0]; }
+    var OPT = { dest: ['会社', '引取', '現場', '伊丹'], mat: ['亜鉛鋼板', 'ガルバリウム鋼板', '塩ビ鋼板', 'ステンレス'], use: ['一般', '厨房排気', '排煙'], press: ['低圧', '高圧1', '高圧2'] };
+    var MAT_SHORT = { '亜鉛鋼板': '亜鉛', 'ガルバリウム鋼板': 'ガルバ', '塩ビ鋼板': '塩ビ', 'ステンレス': 'SUS' };
+    var PRESS_TAG = { '低圧': '低', '高圧1': '高1', '高圧2': '高2' };
+
+    /* ===== 板厚（施工要領書 No.15 低圧・No.17 高圧スパイラルダクト。ステンレスは No.84・85）=====
+       SP（直管）は「スパイラルダクトの板厚」を圧力で引く。継手（エルボ・NI・NEC・キャップ・T・RT・R）は「差込み継手の板厚」（低圧・高圧とも同じ）。
+       ガルバリウム鋼板・塩ビ鋼板は専用の表がないため亜鉛鋼板の表（角ダクトの製作伝票と同じ）。1板手UPは1段上げる。[呼称寸法の上限, 板厚] */
+    var T_STEPS = [0.5, 0.6, 0.8, 1.0, 1.2, 1.6], INF = 1e9;
+    var JOINT_ROWS = [[315, 0.6], [710, 0.8], [1000, 1.0], [1250, 1.2]];
+    var THICK = {
+      'Z-SP-低圧': { rows: [[450, 0.5], [710, 0.6], [1000, 0.8], [1250, 1.0]], src: '低圧スパイラルダクト（No.15）' },
+      'Z-SP-高圧': { rows: [[200, 0.5], [560, 0.6], [800, 0.8], [1000, 1.0], [INF, 1.2]], src: '高圧スパイラルダクト（No.17）' },
+      'Z-継手':    { rows: JOINT_ROWS, src: '差込み継手（No.15・17）' },
+      'S-SP-低圧': { rows: [[560, 0.5], [800, 0.6], [1000, 0.8], [INF, 1.0]], src: 'ステンレス低圧スパイラルダクト（No.84）' },
+      'S-SP-高圧': { rows: [[250, 0.5], [560, 0.6], [800, 0.8], [1000, 1.0], [INF, 1.2]], src: 'ステンレス高圧スパイラルダクト（No.85）' },
+      'S-継手':    { rows: JOINT_ROWS, src: '差込み継手（No.84・85）' }
+    };
+    function thickKey(type, pr) { return (S.spec.mat === 'ステンレス' ? 'S' : 'Z') + (type === 'sp' ? '-SP-' + (pr === '低圧' ? '低圧' : '高圧') : '-継手'); }
+    function itemPr(it) { return it.pr || S.spec.press; }
+    function thickOf(it, pr) {
+      var t = TYPES[it.type]; if (!t || t.noT) return 0;
+      var d = Math.max(num(it.d1), num(it.d2), num(it.d3)), rows = THICK[thickKey(it.type, pr || itemPr(it))].rows, v = rows[rows.length - 1][1];
+      for (var i = 0; i < rows.length; i++) if (d <= rows[i][0]) { v = rows[i][1]; break; }
+      if (S.up) v = T_STEPS[Math.min(T_STEPS.length - 1, T_STEPS.indexOf(v) + 1)];
+      return v;
+    }
+    function fmtT(t) { return t ? t.toFixed(1) : ''; }
+    function rowsText(rows) { return rows.map(function (r, i) { return (r[0] === INF ? 'φ' + rows[i - 1][0] + '超' : 'φ' + r[0] + '以下') + ' ' + fmtT(r[1]); }).join('・'); }
+    // 部材で使っている圧力（板厚のある部材だけ）
+    function pressUsed() {
+      var u = [];
+      S.items.forEach(function (it) { if (!TYPES[it.type].noT) { var p = itemPr(it); if (u.indexOf(p) < 0) u.push(p); } });
+      return OPT.press.filter(function (p) { return u.indexOf(p) >= 0; });
+    }
+    // 注文書で印を付けない圧力（ふつうは仕様の圧力。部材が全部ほかの圧力ならそちら）
+    function basePress() { var u = pressUsed(); return !u.length || u.indexOf(S.spec.press) >= 0 ? S.spec.press : u[0]; }
+    // ダクト仕様の圧力の表記：部材に違う圧力が混ざっていれば「低圧・一部高圧1」（角ダクトの「一部1.6t」と同じ考え方）
+    function pressLabel() { var b = basePress(); return [b].concat(pressUsed().filter(function (p) { return p !== b; }).map(function (p) { return '一部' + p; })).join('・'); }
+    function specLabel() { var sp = S.spec; return (MAT_SHORT[sp.mat] || sp.mat) + '・' + sp.use + '・' + pressLabel() + (S.up ? '・1板手UP' : ''); }
 
     /* ===== 消耗品（フカガワ総合カタログ vol.19 p.220〜268 から。2026-10-29）=====
        ユーザー指示：一旦すべて入力できるようにし、あとで使うものに絞っていく。
@@ -504,7 +563,22 @@
     /* ===== 注文書のデータ ===== */
     var STORE = 'maruOrders.v1';
     var S = null;
-    function blank() { return { id: uid(), no: '', orderer: '', site: '', room: '', orderDate: today(), delivDate: '', dest: '現場', mat: '亜鉛鋼板', memo: '', items: [], cons: [], updated: 0 }; }
+    function blank() { return { id: uid(), no: '', orderer: '', site: '', room: '', orderDate: today(), delivDate: '', dest: '現場', spec: { mat: '亜鉛鋼板', use: '一般', press: '低圧' }, up: false, memo: '', items: [], cons: [], updated: 0 }; }
+    // 前の形で保存した注文書を今の形にする（材質→ダクト仕様、DEC・AC→商品名つき。2026-10-30）
+    function normSlip(s) {
+      if (!s.spec) s.spec = { mat: s.mat || '亜鉛鋼板', use: '一般', press: '低圧' };
+      delete s.mat;
+      if (!s.cons) s.cons = [];
+      s.items.forEach(function (it) {
+        if (TYPES[it.type].flex) {
+          if (!it.prod) it.prod = prodOf(it).n;
+          var p = prodOf(it);
+          if (p.lens.indexOf(it.flen) < 0) it.flen = p.def;
+          if (!p.endc) it.endc = false;
+        } else if (!TYPES[it.type].noT && !it.pr) it.pr = s.spec.press;
+      });
+      return s;
+    }
     function loadStore() { try { return JSON.parse(localStorage.getItem(STORE) || '[]'); } catch (e) { return []; } }
     function writeStore(a) { try { localStorage.setItem(STORE, JSON.stringify(a)); } catch (e) { toast('この端末に保存できませんでした'); } }
     function saveSlip(show) {
@@ -524,13 +598,21 @@
       if (it.type === 't') return 'T-' + it.d1 + '×' + it.d3;
       if (it.type === 'rt') return 'RT-' + it.d1 + '×' + it.d2 + '×' + it.d3;
       if (it.type === 'r') return 'R-' + it.d1 + '×' + it.d2;
-      if (t.flex) return 'φ' + it.d1 + '　L' + it.flen + 'm　' + (it.endc ? '端末加工あり' : '端末加工なし');
+      if (t.flex) return prodOf(it).n + '　φ' + it.d1 + '　L' + it.flen + 'm' + (prodOf(it).endc ? '　' + (it.endc ? '端末加工あり' : '端末加工なし') : '');
       if (it.type === 'sp') return 'φ' + it.d1 + '　' + (it.len === 'L' ? '長さ指定 ' + (num(it.lenMm) || '') + 'mm' : '定尺 ' + (it.len || '4') + 'm');
       return 'φ' + it.d1;
+    }
+    // 一覧の2行目：サイズ＋NI/SP＋圧力と板厚
+    function itemSub(it) {
+      var t = TYPES[it.type], a = [sizeText(it)];
+      if (t.fit && it.fit) a.push(it.fit + 'サイズ');
+      if (!t.noT) a.push(itemPr(it) + ' ' + fmtT(thickOf(it)) + 't');
+      return a.join('　');
     }
     function itemErrors(it) {
       var e = [];
       if (!(num(it.qty) > 0)) e.push('数を入れてください。');
+      if (TYPES[it.type].fit && !it.fit) e.push('NIサイズかSPサイズを選んでください。');
       if (it.type === 't' && num(it.d3) > num(it.d1)) e.push('③（枝）は①より大きくできません。');
       if (it.type === 'r' && !(num(it.d2) < num(it.d1))) e.push('②は①より小さいサイズにしてください。');
       if (it.type === 'rt') {
@@ -546,7 +628,7 @@
       if (!S.cons) S.cons = [];
       document.querySelectorAll('[data-k]').forEach(function (el) { if (document.activeElement !== el) el.value = S[el.getAttribute('data-k')] || ''; });
       renderChips('cDest', OPT.dest, 'dest');
-      renderChips('cMat', OPT.mat, 'mat');
+      renderSpec();
       var ads = coAddrs(S).map(function (a) { return a.label; });   // 住所が複数ある会社だけ、伝票ごとに選ぶ
       document.getElementById('coAddrRow').style.display = ads.length > 1 ? '' : 'none';
       if (ads.length > 1) { if (ads.indexOf(S.coAddr) < 0) S.coAddr = ads[0]; renderChips('cCoAddr', ads, 'coAddr'); }
@@ -561,6 +643,31 @@
       }).join('');
     }
     function setOpt(k, v) { S[k] = v; changed(); }
+    // ダクト仕様の選択（材質・用途・圧力・板厚）
+    function renderSpec() {
+      var sp = S.spec, chips = function (id, list, cur, fn) {
+        document.getElementById(id).innerHTML = list.map(function (v) {
+          return '<span class="chip' + (cur === v ? ' on' : '') + '" onclick="' + fn + '(\'' + v + '\')">' + esc(v) + '</span>';
+        }).join('');
+      };
+      chips('cMat', OPT.mat, sp.mat, 'setMat');
+      chips('cUse', OPT.use, sp.use, 'setUse');
+      chips('cPress', OPT.press, sp.press, 'setPress');
+      chips('cUp', ['標準', '1板手UP'], S.up ? '1板手UP' : '標準', 'setUp');
+      var ksp = thickKey('sp', sp.press), kj = thickKey('e90', sp.press);
+      document.getElementById('specNote').innerHTML =
+        '<b>板厚の基準</b>（施工要領書）' + (S.up ? '　＋1板手UP' : '') + '<br>' +
+        'SP：' + esc(THICK[ksp].src) + '　' + esc(rowsText(THICK[ksp].rows)) + '<br>' +
+        '継手：' + esc(THICK[kj].src) + '　' + esc(rowsText(THICK[kj].rows)) +
+        (/ガルバ|塩ビ/.test(sp.mat) ? '<br>※施工要領書に専用の表がないため、亜鉛鋼板の表を使っています' : '') +
+        '<br>部材ごとに圧力を変えられます（部材の入力画面の「板厚」）。違う圧力の部材があると、ダクト仕様に「一部高圧1」などと載ります。';
+    }
+    function setMat(v) { S.spec.mat = v; changed(); }
+    // 用途を選んだときの圧力（角ダクトの製作伝票と同じ：排煙は高圧1、ほかは低圧）
+    function setUse(v) { if (v !== S.spec.use) { S.spec.use = v; setPress(v === '排煙' ? '高圧1' : '低圧'); return; } changed(); }
+    // 仕様の圧力を変えると、部材の圧力も全部その圧力にそろえる（そのあと部材ごとに変えられる）
+    function setPress(v) { S.spec.press = v; S.items.forEach(function (it) { if (!TYPES[it.type].noT) it.pr = v; }); changed(); }
+    function setUp(v) { S.up = v === '1板手UP'; changed(); }
     function renderItems() {
       var el = document.getElementById('items');
       document.getElementById('itemCount').textContent = S.items.length;
@@ -570,7 +677,7 @@
       el.innerHTML = list.map(function (x) {
         var it = x.it, er = itemErrors(it);
         return '<div class="item" onclick="editItem(' + x.i + ')"><div class="item-ic">' + icon(it.type) + '</div>' +
-          '<div class="item-b"><div class="item-t">' + esc(TYPES[it.type].name) + '</div><div class="item-s">' + esc(sizeText(it)) + '</div>' +
+          '<div class="item-b"><div class="item-t">' + esc(TYPES[it.type].name) + '</div><div class="item-s">' + esc(itemSub(it)) + '</div>' +
           (er.length ? '<div class="item-s" style="color:var(--err);font-weight:700;">' + esc(er[0]) + '</div>' : '') + '</div>' +
           '<div class="item-q">× ' + esc(it.qty || 0) + '</div></div>';
       }).join('');
@@ -600,7 +707,9 @@
       if (type === 't') { it.d3 = 150; }
       if (type === 'rt') { it.d1 = 250; it.d2 = 200; it.d3 = 150; }
       if (type === 'r') { it.d2 = 150; }
-      if (TYPES[type].flex) { it.d1 = 150; it.flen = '2'; it.endc = true; }
+      if (TYPES[type].fit) it.fit = '';   // NI・SPは毎回選ぶ（最初はどちらも選んでいない）
+      if (!TYPES[type].noT) it.pr = S.spec.press;
+      if (TYPES[type].flex) { var p = PRODUCTS[type][0]; it.prod = p.n; it.d1 = 150; it.flen = p.def; it.endc = p.endc; }
       return it;
     }
     function pickType(t) { closeSheet('pickerBg'); ED = { it: newItem(t), index: -1 }; openEditor(); }
@@ -614,11 +723,19 @@
       var it = ED.it, t = TYPES[it.type];
       document.getElementById('edTitle').textContent = t.full + (ED.index >= 0 ? '（編集）' : '');
       document.getElementById('edDel').style.display = ED.index >= 0 ? '' : 'none';
-      var h = '<div class="edbox">';
+      var h = '<div class="edbox">', chip = function (k, v, label, on) {
+        return '<span class="chip' + (on ? ' on' : '') + '" onclick="edSet(\'' + k + '\',\'' + v + '\')">' + esc(label) + '</span>';
+      };
+      if (t.flex) {   // 部材名を選んだあと、商品名を選ぶ
+        h += '<div class="fg"><label>商品名</label><select onchange="edSet(\'prod\', this.value)">' + PRODUCTS[it.type].map(function (p) {
+          return '<option' + (p.n === prodOf(it).n ? ' selected' : '') + '>' + esc(p.n) + '</option>';
+        }).join('') + '</select></div>';
+      }
       if (it.type === 't') h += '<div class="g2">' + sizeSel('d1', SIZES, '①②（本管）') + sizeSel('d3', SIZES, '③（枝）') + '</div>';
       else if (it.type === 'rt') h += '<div class="g3">' + sizeSel('d1', SIZES, '①（大きい口）') + sizeSel('d2', SIZES, '②（小さい口）') + sizeSel('d3', SIZES, '③（枝）') + '</div>';
       else if (it.type === 'r') h += '<div class="g2">' + sizeSel('d1', SIZES, '①（大きい口）') + sizeSel('d2', SIZES, '②（小さい口）') + '</div>';
-      else h += sizeSel('d1', t.sizes || SIZES, 'サイズ');
+      else h += sizeSel('d1', t.flex ? prodOf(it).sizes : SIZES, 'サイズ');
+      if (t.fit) h += '<div class="fg"><span class="lbl">NIサイズ・SPサイズ</span><div class="chips">' + FITS.map(function (f) { return chip('fit', f, f + 'サイズ', it.fit === f); }).join('') + '</div></div>';
       if (it.type === 'sp') {
         h += '<div class="fg"><span class="lbl">長さ</span><div class="chips">' +
           [['2', '定尺 2m'], ['4', '定尺 4m'], ['L', '長さを指定']].map(function (o) {
@@ -627,13 +744,16 @@
         if (it.len === 'L') h += '<div class="fg"><label>長さ（mm）</label><input type="number" inputmode="numeric" value="' + esc(it.lenMm) + '" oninput="ED.it.lenMm=this.value; refreshEd(true)"></div>';
       }
       if (t.flex) {
-        h += '<div class="fg"><span class="lbl">長さ</span><div class="chips">' + FLEX_LEN.map(function (v) {
-          return '<span class="chip' + (it.flen === v ? ' on' : '') + '" onclick="edSet(\'flen\',\'' + v + '\')">' + v + 'm</span>';
-        }).join('') + '</div></div>';
-        h += '<div class="fg"><span class="lbl">端末加工</span><div class="chips">' +
-          '<span class="chip' + (it.endc ? ' on' : '') + '" onclick="edSet(\'endc\', true)">あり</span>' +
-          '<span class="chip' + (!it.endc ? ' on' : '') + '" onclick="edSet(\'endc\', false)">なし</span></div>' +
+        var pd = prodOf(it);
+        if (pd.lens.length > 1) h += '<div class="fg"><span class="lbl">長さ</span><div class="chips">' + pd.lens.map(function (v) { return chip('flen', v, v + 'm', it.flen === v); }).join('') + '</div></div>';
+        else h += '<div class="fg"><span class="lbl">長さ</span><div class="note">' + esc(pd.lens[0]) + 'm のみ' + (pd.endc ? '' : '（端末加工なし）') + '</div></div>';
+        if (pd.endc) h += '<div class="fg"><span class="lbl">端末加工</span><div class="chips">' + chip('endc', '1', 'あり', it.endc) + chip('endc', '', 'なし', !it.endc) + '</div>' +
           '<div class="note" style="margin-top:6px;">端末加工ありは 0.5m・1m・1.5m・2m が標準（10m まで作れます）。加工なしは 10m 巻きです。</div></div>';
+      }
+      if (!t.noT) {   // 板厚：部材ごとに圧力を選ぶ（最初は仕様の圧力。ユーザー指示 2026-10-30）
+        h += '<div class="fg"><span class="lbl">板厚</span><div class="chips">' + OPT.press.map(function (p) {
+          return chip('pr', p, p + '　' + fmtT(thickOf(it, p)) + 't', itemPr(it) === p);
+        }).join('') + '</div>' + (itemPr(it) !== S.spec.press ? '<div class="note" style="margin-top:6px;">ダクト仕様（' + esc(S.spec.press) + '）と違う圧力です。注文書の数に「' + PRESS_TAG[itemPr(it)] + '」の印が付きます。</div>' : '') + '</div>';
       }
       h += '<div class="fg"><label>数</label><div class="qty"><button type="button" onclick="edQty(-1)">－</button><input type="number" inputmode="numeric" id="edQty" value="' + esc(it.qty) + '" oninput="ED.it.qty=this.value; refreshEd(true)"><button type="button" onclick="edQty(1)">＋</button></div></div>';
       h += '</div><div id="edErr"></div>';
@@ -642,7 +762,9 @@
       openSheet('editorBg');
     }
     function edSet(k, v) {
+      if (k === 'endc') v = !!v;
       ED.it[k] = v;
+      if (k === 'prod') { var p = prodOf(ED.it); if (p.sizes.indexOf(+ED.it.d1) < 0) ED.it.d1 = p.sizes[0]; ED.it.flen = p.def; ED.it.endc = p.endc; }
       if (k === 'flen' && v === '10') ED.it.endc = false;   // 10m は加工なしが標準
       openEditor();
     }
@@ -777,20 +899,22 @@
       var mx = {}, cols = {}, br = {}, fx = {};
       S.items.forEach(function (it) {
         if (itemErrors(it).length) return;
-        var t = TYPES[it.type], q = num(it.qty);
+        var t = TYPES[it.type], q = num(it.qty), pr = t.noT ? '' : itemPr(it);
         if (t.br) {
-          var k = it.type + '|' + it.d1 + '|' + (it.d2 || '') + '|' + (it.d3 || '');
+          var k = it.type + '|' + it.d1 + '|' + (it.d2 || '') + '|' + (it.d3 || '') + '|' + it.fit + '|' + pr;
           if (!br[k]) br[k] = { it: it, q: 0 };
           br[k].q += q;
         } else if (t.flex) {
-          var kf = it.type + '|' + it.d1 + '|' + it.flen + '|' + (it.endc ? 1 : 0);
+          var kf = it.type + '|' + prodOf(it).n + '|' + it.d1 + '|' + it.flen + '|' + (it.endc ? 1 : 0);
           if (!fx[kf]) fx[kf] = { it: it, q: 0 };
           fx[kf].q += q;
         } else {
-          var col = it.type === 'sp' ? 'sp:' + spKey(it) : it.type;
+          // 列：SP は長さごと、NEC・キャップ・金網は NI・SP ごと。升目の中は圧力ごとの数
+          var col = it.type === 'sp' ? 'sp:' + spKey(it) : t.fit ? it.type + ':' + it.fit : it.type;
           cols[col] = true;
           mx[it.d1] = mx[it.d1] || {};
-          mx[it.d1][col] = (mx[it.d1][col] || 0) + q;
+          mx[it.d1][col] = mx[it.d1][col] || {};
+          mx[it.d1][col][pr] = (mx[it.d1][col][pr] || 0) + q;
         }
       });
       // SP の列：4m を最初に、そのあと 2m、長さ指定
@@ -800,7 +924,11 @@
       });
       var onlyStd4 = !spCols.length || (spCols.length === 1 && spCols[0] === 'sp:4');
       var colList = (onlyStd4 ? [{ k: 'sp:4', h: 'SP' }] : spCols.map(function (c) { return { k: c, h: spColName(c.slice(3)) }; }))
-        .concat(MX.slice(1).map(function (t) { return { k: t, h: TYPES[t].col }; }));
+        .concat([].concat.apply([], MX.slice(1).map(function (t) {
+          if (!TYPES[t].fit) return [{ k: t, h: TYPES[t].col }];
+          var used = FITS.filter(function (f) { return cols[t + ':' + f]; });   // 使った NI・SP の列だけ（どちらも無ければ空の列を1つ）
+          return used.length ? used.map(function (f) { return { k: t + ':' + f, h: TYPES[t].col, sub: f }; }) : [{ k: t, h: TYPES[t].col }];
+        })));
       var sizes = Object.keys(mx).map(Number).sort(function (a, b) { return a - b; });
       var brList = Object.keys(br).map(function (k) { return br[k]; }).sort(function (a, b) { return itemSort({ it: a.it }, { it: b.it }); });
       var fxList = Object.keys(fx).map(function (k) { return fx[k]; }).sort(function (a, b) { return itemSort({ it: a.it }, { it: b.it }) || num(a.it.flen) - num(b.it.flen); });
@@ -822,33 +950,58 @@
         '<div class="dp-line"><span class="k">発注日</span><span class="v">' + esc(jpDate(S.orderDate)) + '</span></div>' +
         '<div class="dp-line"><span class="k">搬入日</span><span class="v">' + esc(jpDate(S.delivDate)) + '　' + esc(S.dest || '') + '</span></div>' +
         '</div>' + coHtml(S) + '</div>' +
-        '<table class="dp-spec"><tr><td class="k">材質</td><td style="width:32mm">' + esc(S.mat) + '</td><td class="k">板厚</td><td style="width:16mm">標準</td><td class="k">Memo</td><td class="memo">' + esc(S.memo || '') + '</td></tr></table>';
+        '<table class="dp-spec"><colgroup><col style="width:22mm"><col><col style="width:14mm"><col style="width:24mm"></colgroup>' +
+        '<tr><td class="k">ダクト仕様</td><td class="memo">' + esc(specLabel()) + '</td><td class="k">板厚</td><td>' + (S.up ? '1板手UP' : '標準') + '</td></tr>' +
+        '<tr><td class="k">Memo</td><td class="memo" colspan="3">' + esc(S.memo || '') + '</td></tr></table>';
+    }
+    // 圧力ごとの数：仕様の圧力はそのまま、違う圧力は黒地の印（低・高1・高2）を付ける
+    function prQty(byPr) {
+      var b = basePress();
+      return Object.keys(byPr || {}).sort(function (x, y) { return (x !== b) - (y !== b) || OPT.press.indexOf(x) - OPT.press.indexOf(y); }).map(function (p) {
+        return (p && p !== b ? '<span class="pt">' + PRESS_TAG[p] + '</span>' : '') + byPr[p];
+      }).join(' ');
+    }
+    // 注文書の下の注意書き：使った表の板厚（施工要領書）と印の意味
+    function footHtml(c) {
+      var a = [], sps = {}, joint = false, b = basePress(), tag = false;
+      S.items.forEach(function (it) {
+        var t = TYPES[it.type]; if (t.noT || itemErrors(it).length) return;
+        if (it.type === 'sp') sps[thickKey('sp', itemPr(it))] = itemPr(it) === '低圧' ? '低圧' : '高圧'; else joint = true;
+        if (itemPr(it) !== b) tag = true;
+      });
+      Object.keys(sps).forEach(function (k) { a.push('SP（' + sps[k] + '）' + rowsText(THICK[k].rows)); });
+      if (joint) a.push('継手 ' + rowsText(THICK[thickKey('e90', '低圧')].rows));
+      var h = a.length ? '※板厚（施工要領書）　' + a.join('　／　') + (S.up ? '　→ 1板手UP（それぞれ1段上げ）' : '') : '';
+      if (tag) h += (h ? '<br>' : '') + '※黒地の「' + pressUsed().filter(function (p) { return p !== b; }).map(function (p) { return PRESS_TAG[p] + '」＝' + p; }).join('、「') + 'の部材の数（印のない数は' + b + '）';
+      return h ? '<div class="dp-foot">' + h + '</div>' : '';
     }
     function contHead(page, pages) {
       return '<div class="dp-cont-head"><h1>注文書（続き）</h1><span class="site">' + esc(S.site) + (S.room ? '　' + esc(S.room) : '') + '</span><span class="no">（NO, ' + esc(S.no || '') + '）　ページNo, ' + page + '／' + pages + '</span></div>';
     }
     function mxTable(c, sizes) {
       return '<table class="dp-mx"><colgroup><col style="width:15mm">' + c.colList.map(function () { return '<col>'; }).join('') + '</colgroup>' +
-        '<tr><th></th>' + c.colList.map(function (x) { return '<th>' + esc(x.h) + '</th>'; }).join('') + '</tr>' +
+        '<tr><th></th>' + c.colList.map(function (x) { return '<th>' + esc(x.h) + (x.sub ? '<small>' + esc(x.sub) + 'サイズ</small>' : '') + '</th>'; }).join('') + '</tr>' +
         sizes.map(function (d) {
-          return '<tr><td class="sz">' + d + '</td>' + c.colList.map(function (x) { var q = (c.mx[d] || {})[x.k]; return '<td class="q">' + (q ? q : '') + '</td>'; }).join('') + '</tr>';
+          return '<tr><td class="sz">' + d + '</td>' + c.colList.map(function (x) { return '<td class="q">' + prQty((c.mx[d] || {})[x.k]) + '</td>'; }).join('') + '</tr>';
         }).join('') + '</table>';
     }
     function brTable(list) {
-      return '<table class="dp-br"><colgroup><col style="width:20mm"><col><col><col><col style="width:14mm"><col style="width:52mm"></colgroup>' +
-        '<tr><th>部材</th><th>①</th><th>②</th><th>③</th><th>数</th><th>書き方</th></tr>' +
+      var b = basePress();
+      return '<table class="dp-br"><colgroup><col style="width:18mm"><col><col><col><col style="width:13mm"><col style="width:17mm"><col style="width:13mm"><col style="width:44mm"></colgroup>' +
+        '<tr><th>部材</th><th>①</th><th>②</th><th>③</th><th>NI/SP</th><th>板厚</th><th>数</th><th>書き方</th></tr>' +
         list.map(function (x) {
-          var it = x.it;
+          var it = x.it, pr = itemPr(it);
           var d2 = it.type === 't' ? it.d1 : (it.d2 || '－'), d3 = it.type === 'r' ? '－' : it.d3;
-          return '<tr><td>' + esc(TYPES[it.type].name) + '</td><td>' + it.d1 + '</td><td>' + d2 + '</td><td>' + d3 + '</td><td class="q">' + x.q + '</td><td>' + esc(sizeText(it)) + '</td></tr>';
+          return '<tr><td>' + esc(TYPES[it.type].name) + '</td><td>' + it.d1 + '</td><td>' + d2 + '</td><td>' + d3 + '</td><td>' + esc(it.fit || '') + '</td>' +
+            '<td>' + (pr !== b ? '<span class="pt">' + PRESS_TAG[pr] + '</span>' : '') + fmtT(thickOf(it)) + '</td><td class="q">' + x.q + '</td><td>' + esc(sizeText(it)) + '</td></tr>';
         }).join('') + '</table>';
     }
     function fxTable(list) {
-      return '<table class="dp-fx"><colgroup><col><col style="width:22mm"><col style="width:22mm"><col style="width:26mm"><col style="width:14mm"></colgroup>' +
-        '<tr><th>部材</th><th>サイズ</th><th>長さ</th><th>端末加工</th><th>数</th></tr>' +
+      return '<table class="dp-fx"><colgroup><col style="width:30mm"><col><col style="width:20mm"><col style="width:18mm"><col style="width:22mm"><col style="width:14mm"></colgroup>' +
+        '<tr><th>部材</th><th>商品名</th><th>サイズ</th><th>長さ</th><th>端末加工</th><th>数</th></tr>' +
         list.map(function (x) {
-          var it = x.it;
-          return '<tr><td>' + esc(TYPES[it.type].full) + '</td><td>φ' + it.d1 + '</td><td>' + esc(it.flen) + 'm</td><td>' + (it.endc ? 'あり' : 'なし') + '</td><td class="q">' + x.q + '</td></tr>';
+          var it = x.it, p = prodOf(it);
+          return '<tr><td>' + esc(TYPES[it.type].full) + '</td><td>' + esc(p.n) + '</td><td>φ' + it.d1 + '</td><td>' + esc(it.flen) + 'm</td><td>' + (p.endc ? (it.endc ? 'あり' : 'なし') : '－') + '</td><td class="q">' + x.q + '</td></tr>';
         }).join('') + '</table>';
     }
     function csTable(list) {
@@ -864,9 +1017,9 @@
       var c = collect(), blocks = [];
       if (c.sizes.length) blocks.push({ kind: 'mx', rows: c.sizes, title: '■ 直管・継手（数）' + (c.onlyStd4 ? '　SP は定尺 4m' : '') });
       if (c.brList.length) blocks.push({ kind: 'br', rows: c.brList, title: '■ 分岐・片落ち（T管・RT管・R管）' });
-      if (c.fxList.length) blocks.push({ kind: 'fx', rows: c.fxList, title: '■ フレキ（DEC・保温付きフレキ AC）' });
+      if (c.fxList.length) blocks.push({ kind: 'fx', rows: c.fxList, title: '■ フレキ（保温付きフレキ・アルミフレキ）' });
       if (c.csList.length) blocks.push({ kind: 'cs', rows: c.csList, title: '■ 消耗品' });
-      var FIRST = 34, NEXT = 40;   // 1枚に入る行数のめやす（見出し・表の頭を含む）
+      var FIRST = 33, NEXT = 40;   // 1枚に入る行数のめやす（見出し・表の頭を含む）
       var pages = [[]], left = FIRST;
       blocks.forEach(function (b) {
         var i = 0;
@@ -888,7 +1041,7 @@
           if (b.kind === 'fx') h += fxTable(b.rows);
           if (b.kind === 'cs') h += csTable(b.rows);
         });
-        if (pi === total - 1) h += '<div class="dp-foot">※板厚はサイズに応じた標準板厚（φ450以下 0.5・φ710以下 0.6・φ1000以下 0.8）</div>';
+        if (pi === total - 1) h += footHtml(c);
         return '<div class="dp">' + h + '</div>';
       });
     }
@@ -922,10 +1075,10 @@
       }).join('') : '<div class="empty">保存した注文書はまだありません。</div>';
       openSheet('slipsBg');
     }
-    function loadSlip(id) { var x = loadStore().filter(function (s) { return s.id === id; })[0]; if (!x) return; S = x; closeSheet('slipsBg'); renderAll(); }
+    function loadSlip(id) { var x = loadStore().filter(function (s) { return s.id === id; })[0]; if (!x) return; S = normSlip(x); closeSheet('slipsBg'); renderAll(); }
     function copySlip(id) {
       var x = loadStore().filter(function (s) { return s.id === id; })[0]; if (!x) return;
-      S = JSON.parse(JSON.stringify(x)); S.id = uid(); S.no = ''; S.orderDate = today(); S.delivDate = '';
+      S = normSlip(JSON.parse(JSON.stringify(x))); S.id = uid(); S.no = ''; S.orderDate = today(); S.delivDate = '';
       if (ME) { S.oi = meSnap(); S.orderer = ME.name; }   // 複製した人が注文者
       saveSlip(false); closeSheet('slipsBg'); renderAll(); toast('複製しました');
     }
@@ -947,7 +1100,7 @@
       var list = loadStore();
       if (HOST) {
         document.body.classList.add('hosted');
-        S = list.filter(function (x) { return x.site === HOST.site; })[0] || blankForHost();
+        S = normSlip(list.filter(function (x) { return x.site === HOST.site; })[0] || blankForHost());
         if (HOST.call) HOST.call('getOrdererInfo', []).then(function (r) {   // 注文者（ログインしている人）
           ME = r.orderer || null;
           if (ME && ME.company && ME.company.logo) LOGOS[ME.company.name] = ME.company.logo;
@@ -955,7 +1108,7 @@
           renderAll();
         }).catch(function () { });
       } else {
-        S = list[0] || blank();
+        S = normSlip(list[0] || blank());
       }
       renderAll();
     })();
