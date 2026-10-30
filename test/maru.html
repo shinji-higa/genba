@@ -109,10 +109,11 @@
     .dp-line { display: flex; border-bottom: 1px solid #000; height: 6.4mm; align-items: flex-end; padding-bottom: 0.6mm; gap: 3mm; white-space: nowrap; overflow: hidden; }
     .dp-line .k { width: 15mm; text-decoration: underline; flex-shrink: 0; }
     .dp-line .v { flex: 1; overflow: hidden; text-overflow: ellipsis; }
-    .dp-co { width: 50%; text-align: right; padding-top: 0.5mm; font-size: 7.5pt; line-height: 1.45; }
+    .dp-co { width: 50%; text-align: right; padding-top: 0; font-size: 7.2pt; line-height: 1.32; }
+    .dp-co .co-who { font-weight: 700; }
     .dp-co img { height: 6mm; vertical-align: middle; }
     .dp-co .nm { font-size: 9.5pt; font-weight: 700; vertical-align: middle; margin-left: 2mm; }
-    .dp-co .co-who { font-size: 8.5pt; font-weight: 700; }
+    .dp-co .nm { display: block; margin: 0.5mm 0 0; }
     @media screen { .co-link { color: #1a56c4; text-decoration: underline; cursor: pointer; } }
     .dp table { width: 100%; border-collapse: collapse; table-layout: fixed; }
     .dp td, .dp th { border: 1px solid #000; text-align: center; font-weight: 400; height: 6.6mm; padding: 0 1mm; white-space: nowrap; overflow: hidden; }
@@ -171,6 +172,7 @@
             <div class="fg"><label for="fDelivDate">搬入日</label><input type="date" id="fDelivDate" data-k="delivDate"></div>
           </div>
           <div class="fg"><span class="lbl">搬入先</span><div class="chips" id="cDest"></div></div>
+          <div class="fg" id="coAddrRow" style="display:none;"><span class="lbl">会社の住所</span><div class="chips" id="cCoAddr"></div></div>
           <div class="fg"><span class="lbl">材質</span><div class="chips" id="cMat"></div></div>
           <div class="fg"><label for="fMemo">Memo（注文書の材質の横に出ます）</label><textarea id="fMemo" data-k="memo" placeholder="例：キャップ＝NIサイズ　金網＝SPサイズ"></textarea></div>
         </div>
@@ -263,14 +265,27 @@
     var COMPANY = { name: 'エクスケアダクト株式会社', addr: '〒661-0961　兵庫県尼崎市戸ノ内町4丁目3-1-110', tel: '(06)6420-4045', fax: '(06)6420-4046' };
     var ME = null, LOGOS = {};
     function meSnap() { if (!ME) return null; var o = JSON.parse(JSON.stringify(ME)); delete o.company.logo; return o; }
+    // 右上は会社の情報だけ。注文者の名前・携帯・googleアカウントは下の表の「注文者」の行（製作伝票と同じ。ユーザー指示 2026-10-29）
+    function coOf(sl) {
+      var co = (sl.oi && sl.oi.company && sl.oi.company.name) ? sl.oi.company : COMPANY;
+      var a = (co.addrs || []).filter(function (x) { return x.label === sl.coAddr; })[0] || (co.addrs || [])[0];
+      return a ? { name: co.name, addr: a.addr, tel: a.tel, fax: a.fax } : co;
+    }
+    function coAddrs(sl) { var co = (sl.oi && sl.oi.company) || {}; return co.addrs || []; }
     function coHtml(sl) {
-      var oi = sl.oi || { name: sl.orderer || '', mobile: '', google: '' }, co = (sl.oi && sl.oi.company && sl.oi.company.name) ? sl.oi.company : COMPANY;
+      var co = coOf(sl);
       var logo = LOGOS[co.name] || (co.name === COMPANY.name ? LOGO : '');
-      var tf = [co.tel ? 'TEL' + co.tel : '', co.fax ? 'FAX' + co.fax : ''].filter(Boolean).join('　');
-      return '<div class="dp-co gt"><div>' + (logo ? '<img src="' + logo + '" alt="">' : '') + '<span class="nm">' + esc(co.name) + '</span></div>' +
-        (co.addr ? '<div>' + esc(co.addr) + '</div>' : '') + (tf ? '<div>' + esc(tf) + '</div>' : '') +
-        '<div class="co-who">注文者　' + esc(oi.name || '') + (oi.mobile ? '　携帯 <span class="co-link" data-tel="' + esc(oi.mobile) + '">' + esc(oi.mobile) + '</span>' : '') + '</div>' +
-        (oi.google ? '<div>google <span class="co-link" data-gchat="' + esc(oi.google) + '">' + esc(oi.google) + '</span></div>' : '') + '</div>';
+      // 「〒」「TEL」「注文者」「携帯」「google」の文字は出さない（製作伝票と同じ。FAX は残す）
+      var tf = [co.tel || '', co.fax ? 'FAX' + co.fax : ''].filter(Boolean).join('　');
+      return '<div class="dp-co gt">' + (logo ? '<div><img src="' + logo + '" alt=""></div>' : '') + '<div class="nm">' + esc(co.name) + '</div>' +
+        (co.addr ? '<div>' + esc(String(co.addr).replace(/^〒\s*/, '')) + '</div>' : '') + (tf ? '<div>' + esc(tf) + '</div>' : '') + ordHtml(sl) + '</div>';
+    }
+    // 右上の下の3段：注文者・携帯・googleアカウント（製作伝票と同じ。ユーザー指示 2026-10-29）
+    function ordHtml(sl) {
+      var oi = sl.oi || {};
+      return '<div class="co-who">' + esc(sl.orderer || oi.name || '') + '</div>' +
+        (oi.mobile ? '<div><span class="co-link" data-tel="' + esc(oi.mobile) + '">' + esc(oi.mobile) + '</span></div>' : '') +
+        (oi.google ? '<div><span class="co-link" data-gchat="' + esc(oi.google) + '">' + esc(oi.google) + '</span></div>' : '');
     }
     function askYes(msg) { var h = window.HOST; return h && h.confirm ? h.confirm(msg) : Promise.resolve(window.confirm(msg)); }
     document.addEventListener('click', function (e) {
@@ -532,6 +547,9 @@
       document.querySelectorAll('[data-k]').forEach(function (el) { if (document.activeElement !== el) el.value = S[el.getAttribute('data-k')] || ''; });
       renderChips('cDest', OPT.dest, 'dest');
       renderChips('cMat', OPT.mat, 'mat');
+      var ads = coAddrs(S).map(function (a) { return a.label; });   // 住所が複数ある会社だけ、伝票ごとに選ぶ
+      document.getElementById('coAddrRow').style.display = ads.length > 1 ? '' : 'none';
+      if (ads.length > 1) { if (ads.indexOf(S.coAddr) < 0) S.coAddr = ads[0]; renderChips('cCoAddr', ads, 'coAddr'); }
       document.getElementById('topTitle').textContent = '丸ダクト注文' + (S.site ? '　' + S.site : '');
       renderItems();
       renderCons();
