@@ -1523,11 +1523,13 @@
       var msg = document.getElementById('pdfMsg'), go = document.getElementById('pdfGo');
       if (!dir && !nf) { msg.className = 'pdf-msg err'; msg.textContent = '保存先のフォルダを選ぶか、新しいフォルダの名前を入れてください'; return; }
       go.disabled = true; msg.className = 'pdf-msg'; msg.textContent = 'PDFを作っています…（部材が多いと少し時間がかかります）';
-      var rev = nextRev();
+      var rev = nextRev(), t0 = Date.now(), t1 = 0;
       makePdfBase64().then(function (b64) {
-        msg.textContent = '保存しています…';
+        msg.textContent = '保存しています…'; t1 = Date.now();
         return HOST.call('saveMaruPdf', [HOST.site, dir, nf, b64, name, S.pdfId || '', rev, S.no]);   // 前の版のPDFは削除フォルダへ（上書き）
       }).then(function (res) {
+        // かかった時間を出す（スマホで遅いところを調べるため。2026-10-31）
+        res.message += '\n（PDF作成 ' + ((t1 - t0) / 1000).toFixed(1) + '秒・保存 ' + ((Date.now() - t1) / 1000).toFixed(1) + '秒）';
         S.pdfFolderId = res.folderId; S.pdfId = res.pdfId; S.pdfUrl = res.url;
         S.status = 'submitted'; S.rev = rev; S.subAt = Date.now(); S.subSnap = slipSnap(S);
         SRV.dirty = true; renderAll(); hostSaveNow().catch(noop);
