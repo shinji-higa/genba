@@ -113,8 +113,8 @@
     @media screen { .co-link { color: #1a56c4; text-decoration: underline; cursor: pointer; } }
     .dp table { width: 100%; border-collapse: collapse; table-layout: fixed; }
     .dp td, .dp th { border: 1px solid #000; text-align: center; font-weight: 400; height: 6.6mm; padding: 0 1mm; white-space: nowrap; overflow: hidden; }
-    /* 接合（差込・FG）はとても大事なのでグレー地に太字（ユーザー指示 2026-10-30。文字の大きさはほかと同じ） */
-    .dp td.join { background: #bdbdbd; color: #000; font-weight: 700; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    /* 接合（差込・FG）はとても大事なので、閉の印のように角の丸い四角（グレー地・太字）で囲む（ユーザー指示 2026-10-30。文字の大きさはほかと同じ） */
+    .dp td.join .jt { display: inline-block; background: #bdbdbd; color: #000; font-weight: 700; border-radius: 1.2mm; padding: 0 2.5mm; line-height: 1.5; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
     /* 表の見出しに色（前は 200φ の行に付けていた色） */
     .dp th, .dp td.k { background: #e6f0f5; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
     /* 長い文字（その他のメモなど）は文字を小さくせずに折り返す */
@@ -962,7 +962,7 @@
         '<div class="dp-line"><span class="k">搬入日</span><span class="v">' + esc(jpDate(S.delivDate)) + '　' + esc(S.dest || '') + '</span></div>' +
         '</div>' + coHtml(S) + '</div>' +
         '<table class="dp-spec"><colgroup><col style="width:22mm"><col><col style="width:14mm"><col style="width:24mm"></colgroup>' +
-        '<tr><td class="k">ダクト仕様</td><td class="memo">' + esc(specLabel()) + '</td><td class="k">接合</td><td class="join">' + esc(S.spec.join || '差込') + '</td></tr>' +
+        '<tr><td class="k">ダクト仕様</td><td class="memo">' + esc(specLabel()) + '</td><td class="k">接合</td><td class="join"><span class="jt">' + esc(S.spec.join || '差込') + '</span></td></tr>' +
         '<tr><td class="k">Memo</td><td class="memo" colspan="3">' + esc(S.memo || '') + '</td></tr></table>';
     }
     // 板厚ごとの数：仕様どおりはそのまま、違う板厚は黒地の印（低・高・UP・1.6）を付ける
