@@ -14,7 +14,7 @@
 (function () {
   var API_URL = 'https://script.google.com/macros/s/AKfycbxmdHzLOVkPWdaOqJeeh4HI6rU7oNIOKIMocslD4_P9Pahip-XBjzHSk603hc-7YMOJww/exec';
   // 画面の版（build.js が「Ver.年月日-その日の何回目」を入れる）。設定画面のいちばん上に出す（ユーザー指示 2026-10-28）
-  var APP_VER = 'Ver.20261030-12';
+  var APP_VER = 'Ver.20261030-13';
   window.GENBA_VER = APP_VER;
   document.addEventListener('DOMContentLoaded', function () {
     var el = document.getElementById('appVer'), card = document.getElementById('appVerCard'), btn = document.getElementById('btnAppRefresh');
@@ -3306,7 +3306,7 @@
 
     // 現場を開いたら、写真・資料・担当のデータも同時に先に読んでおく（2026-10-30 速くする案2）
     // タブを押したときには届いていることが多いので、待たずに出せる。届いた内容は端末にも残す（次回すぐ出る・電波なしでも見られる）
-    var prefetchState = { photo: null, doc: null };
+    var prefetchState = { photo: null, doc: null, staff: null };
     function prefetchSiteTabs(site) {
       [['photo', '写真', 'getSitePhotoExplorerData'], ['doc', '資料', 'getSiteDocExplorerData']].forEach(function(p) {
         var kind = p[0], tabName = p[1];
@@ -3334,12 +3334,23 @@
             }
           })[p[2]](site, cred());
       });
-      // 担当は端末に残すだけ（タブを開いたときに、それをすぐ出してから最新にする）
+      // 担当：先に届いていれば、タブを開いたときにそれを出す。開いたあとに届いたら、その場で描く
+      prefetchState.staff = site;
+      var staffDone = function() { if (prefetchState.staff === site) prefetchState.staff = null; };
+      var staffOpen = function() { return detailSiteName === site && currentActiveTabName.indexOf('担当') !== -1; };
       google.script.run
         .withSuccessHandler(function(res) {
-          if (res && res.success) LS.set(ck('staff', site), { staffList: res.staffList || [], myRole: res.myRole });
+          staffDone();
+          if (res && res.success) {
+            LS.set(ck('staff', site), { staffList: res.staffList || [], myRole: res.myRole });
+            if (staffOpen() && !Object.keys(pendingStaffRoleChanges).length) {
+              siteStaffList = res.staffList || [];
+              myCurrentSiteRole = res.myRole || '一般作業員';
+              renderStaffAssignments();
+            }
+          } else if (staffOpen()) reloadStaffAssignments();
         })
-        .withFailureHandler(function() {})
+        .withFailureHandler(function() { staffDone(); if (staffOpen()) reloadStaffAssignments(); })
         .getSiteStaffAssignments(site, cred());
     }
 
@@ -6482,6 +6493,11 @@
     function initStaffAssignments() {
       if (!currentDetailSite) return;
       pendingStaffRoleChanges = {};
+      // 先読みがまだ届いておらず、前回のデータも無いときは、先読みが届くのを待つ（同じものを2回取りに行かない）
+      if (prefetchState.staff === currentDetailSite.siteName && !LS.get(ck('staff', currentDetailSite.siteName))) {
+        document.getElementById('staffListContainer').innerHTML = '<div class="info-card" style="text-align:center; color:var(--muted);">担当者一覧を読み込んでいます...</div>';
+        return;
+      }
       reloadStaffAssignments();
     }
 
