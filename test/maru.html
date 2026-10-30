@@ -126,6 +126,7 @@
     /* 仕様の圧力と違う部材の印（黒地に白。見落とさないように） */
     .dp .pt { display: inline-block; background: #000; color: #fff; font-weight: 700; font-size: 7pt; line-height: 1.25; padding: 0 0.6mm; border-radius: 0.6mm; margin: 0 0.4mm 0 1.2mm; vertical-align: 0.3mm; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
     .dp .pt:first-child { margin-left: 0; }
+    .dp .vt { display: inline-block; border: 1px solid #000; font-size: 7pt; font-weight: 700; line-height: 1.2; padding: 0 0.6mm; margin-right: 0.8mm; vertical-align: 0.3mm; }   /* SP・防虫の印 */
     .dp-mx td.sz { font-weight: 700; }
     .dp-mx tr:nth-child(even) td { background: #e6f0f5; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
     .dp-mx td.q, .dp-br td.q, .dp-fx td.q { font-size: 10.5pt; }
@@ -909,7 +910,7 @@
     function spKey(it) { return it.len === 'L' ? 'L' + num(it.lenMm) : (it.len || '4'); }
     function spColName(k) { return k.charAt(0) === 'L' ? 'SP L=' + k.slice(1) : 'SP ' + k + 'm'; }
     function collect() {
-      var mx = {}, cols = {}, br = {}, fx = {}, ot = {};
+      var mx = {}, cols = {}, br = {}, fx = {}, ot = {}, spl = {};
       S.items.forEach(function (it) {
         if (itemErrors(it).length) return;
         var t = TYPES[it.type], q = num(it.qty), pr = t.noT ? '' : itemPr(it);
@@ -925,34 +926,32 @@
           var kf = it.type + '|' + kindText(it) + '|' + sizeOf(it) + '|' + flexLen(it) + '|' + (it.endc ? 1 : 0) + '|' + (fxOf(it).memo || '');
           if (!fx[kf]) fx[kf] = { it: it, q: 0 };
           fx[kf].q += q;
+        } else if (it.type === 'sp' && it.len === 'L') {   // 長さ指定の SP は別の表
+          var kl = it.d1 + '|' + num(it.lenMm) + '|' + pr;
+          if (!spl[kl]) spl[kl] = { it: it, q: 0 };
+          spl[kl].q += q;
         } else {
-          // 列：SP は長さごと、NEC・キャップ・金網は NI・SP ごと。升目の中は圧力ごとの数
-          var col = it.type === 'sp' ? 'sp:' + spKey(it) : t.fit ? it.type + ':' + (t.net ? (it.net || NETS[0]) + ':' : '') + it.fit : it.type;
+          /* 列は増やさない（ユーザー指示 2026-10-30：列が細くなって見切れる）。SP は 4m と 2m、ほかは部材ごとに1列。
+             NEC・キャップ・金網の NIサイズ以外（SPサイズ・防虫網）は、同じ升目の中に印を付けて行を分ける */
+          var col = it.type === 'sp' ? 'sp:' + (it.len || '4') : it.type;
+          var v = t.fit ? (t.net && (it.net || NETS[0]) !== NETS[0] ? '防虫' : '') + (it.fit === 'SP' ? 'SP' : '') : '';
           cols[col] = true;
           mx[it.d1] = mx[it.d1] || {};
           mx[it.d1][col] = mx[it.d1][col] || {};
-          mx[it.d1][col][pr] = (mx[it.d1][col][pr] || 0) + q;
+          mx[it.d1][col][v] = mx[it.d1][col][v] || {};
+          mx[it.d1][col][v][pr] = (mx[it.d1][col][v][pr] || 0) + q;
         }
       });
-      // SP の列：4m を最初に、そのあと 2m、長さ指定
-      var spCols = Object.keys(cols).filter(function (c) { return c.indexOf('sp:') === 0; }).sort(function (a, b) {
-        var o = function (c) { return c === 'sp:4' ? 0 : c === 'sp:2' ? 1 : 2 + num(c.slice(4)); };
-        return o(a) - o(b);
-      });
-      var onlyStd4 = !spCols.length || (spCols.length === 1 && spCols[0] === 'sp:4');
-      var colList = (onlyStd4 ? [{ k: 'sp:4', h: 'SP' }] : spCols.map(function (c) { return { k: c, h: spColName(c.slice(3)) }; }))
-        .concat([].concat.apply([], MX.slice(1).map(function (t) {
-          if (!TYPES[t].fit) return [{ k: t, h: TYPES[t].col }];
-          // 使った（金網の種類と）NI・SP の列だけ（どれも無ければ空の列を1つ）
-          var vs = TYPES[t].net ? [].concat.apply([], NETS.map(function (n) { return FITS.map(function (f) { return { k: t + ':' + n + ':' + f, sub: n + ' ' + f }; }); })) : FITS.map(function (f) { return { k: t + ':' + f, sub: f }; });
-          var used = vs.filter(function (v) { return cols[v.k]; });
-          return used.length ? used.map(function (v) { return { k: v.k, h: TYPES[t].col, sub: v.sub }; }) : [{ k: t, h: TYPES[t].col }];
-        })));
+      var onlyStd4 = !cols['sp:2'];
+      var colList = (onlyStd4 ? [{ k: 'sp:4', h: 'SP' }] : [{ k: 'sp:4', h: 'SP 4m' }, { k: 'sp:2', h: 'SP 2m' }])
+        .concat(MX.slice(1).map(function (t) { return { k: t, h: TYPES[t].col }; }));
+      var splList = Object.keys(spl).map(function (k) { return spl[k]; }).sort(function (a, b) { return num(a.it.d1) - num(b.it.d1) || num(a.it.lenMm) - num(b.it.lenMm); });
+      var hasVar = Object.keys(mx).some(function (d) { return Object.keys(mx[d]).some(function (c) { return Object.keys(mx[d][c]).some(function (v) { return v; }); }); });
       var sizes = Object.keys(mx).map(Number).sort(function (a, b) { return a - b; });
       var brList = Object.keys(br).map(function (k) { return br[k]; }).sort(function (a, b) { return itemSort({ it: a.it }, { it: b.it }); });
       var otList = Object.keys(ot).map(function (k) { return ot[k]; }).sort(function (a, b) { return itemSort({ it: a.it }, { it: b.it }); });
       var fxList = Object.keys(fx).map(function (k) { return fx[k]; }).sort(function (a, b) { return itemSort({ it: a.it }, { it: b.it }) || num(a.it.flen) - num(b.it.flen); });
-      return { mx: mx, colList: colList, sizes: sizes, brList: brList, otList: otList, fxList: fxList, onlyStd4: onlyStd4 };
+      return { mx: mx, colList: colList, sizes: sizes, brList: brList, otList: otList, fxList: fxList, splList: splList, hasVar: hasVar, onlyStd4: onlyStd4 };
     }
     function headHtml(page, pages) {
       return '<div class="dp-title"><h1>注 文 書</h1><div class="dp-no">（NO, <b>' + esc(S.no || '') + '</b>）<br>ページNo, ⇒ ' + page + '／' + pages + '</div></div>' +
@@ -991,11 +990,26 @@
     function contHead(page, pages) {
       return '<div class="dp-cont-head"><h1>注文書（続き）</h1><span class="site">' + esc(S.site) + (S.room ? '　' + esc(S.room) : '') + '</span><span class="no">（NO, ' + esc(S.no || '') + '）　ページNo, ' + page + '／' + pages + '</span></div>';
     }
+    var VAR_ORDER = ['', 'SP', '防虫', '防虫SP'];
     function mxTable(c, sizes) {
       return '<table class="dp-mx"><colgroup><col style="width:15mm">' + c.colList.map(function () { return '<col>'; }).join('') + '</colgroup>' +
-        '<tr><th></th>' + c.colList.map(function (x) { return '<th>' + esc(x.h) + (x.sub ? '<small>' + esc(x.sub) + 'サイズ</small>' : '') + '</th>'; }).join('') + '</tr>' +
+        '<tr><th></th>' + c.colList.map(function (x) { return '<th>' + esc(x.h) + '</th>'; }).join('') + '</tr>' +
         sizes.map(function (d) {
-          return '<tr><td class="sz">' + d + '</td>' + c.colList.map(function (x) { return '<td class="q">' + prQty((c.mx[d] || {})[x.k]) + '</td>'; }).join('') + '</tr>';
+          return '<tr><td class="sz">' + d + '</td>' + c.colList.map(function (x) {
+            var byV = (c.mx[d] || {})[x.k] || {};
+            var lines = VAR_ORDER.filter(function (v) { return byV[v]; }).map(function (v) { return (v ? '<span class="vt">' + v + '</span>' : '') + prQty(byV[v]); });
+            return '<td class="q' + (lines.length > 1 ? ' wrap' : '') + '">' + lines.join('<br>') + '</td>';
+          }).join('') + '</tr>';
+        }).join('') + '</table>';
+    }
+    // 長さ指定の SP
+    function splTable(list) {
+      var b = basePress();
+      return '<table class="dp-br"><colgroup><col style="width:30mm"><col style="width:30mm"><col><col style="width:20mm"><col style="width:14mm"></colgroup>' +
+        '<tr><th>部材</th><th>サイズ</th><th>長さ</th><th>板厚</th><th>数</th></tr>' +
+        list.map(function (x) {
+          var it = x.it, pr = itemPr(it);
+          return '<tr><td>SP</td><td>φ' + it.d1 + '</td><td>L=' + num(it.lenMm) + '</td><td>' + (pr !== b ? '<span class="pt">' + PRESS_TAG[pr] + '</span>' : '') + fmtT(thickOf(it)) + '</td><td class="q">' + x.q + '</td></tr>';
         }).join('') + '</table>';
     }
     // 分岐・片落ち：口ごとにサイズと NI/SP（④はクロス管があるときだけ）
@@ -1037,7 +1051,8 @@
     // 用紙に入る行数で、表をページに分ける（1行 6.6mm。1枚目は見出しのぶん少ない）
     function buildPages() {
       var c = collect(), blocks = [];
-      if (c.sizes.length) blocks.push({ kind: 'mx', rows: c.sizes, title: '■ 直管・継手（数）' + (c.onlyStd4 ? '　SP は定尺 4m' : '') });
+      if (c.sizes.length) blocks.push({ kind: 'mx', rows: c.sizes, title: '■ 直管・継手（数）' + (c.onlyStd4 ? '　SP は定尺 4m' : '') + (c.hasVar ? '　印のない数＝NIサイズ（金網は防鳥網）、「SP」＝SPサイズ、「防虫」＝防虫網' : '') });
+      if (c.splList.length) blocks.push({ kind: 'spl', rows: c.splList, title: '■ SP（長さ指定）' });
       if (c.brList.length) blocks.push({ kind: 'br', rows: c.brList, title: '■ 分岐・片落ち（数）　口のサイズの横は NI・SP、黒地の「閉」は閉止板' });
       if (c.otList.length) blocks.push({ kind: 'ot', rows: c.otList, title: '■ S管・実管・カラー・ダンパー' });
       if (c.fxList.length) blocks.push({ kind: 'fx', rows: c.fxList, title: '■ フレキ（保温付きフレキ・フレキ）' });
@@ -1047,9 +1062,12 @@
         var i = 0;
         while (i < b.rows.length) {
           if (left < 4) { pages.push([]); left = NEXT; }
-          var n = Math.min(b.rows.length - i, left - 2);
+          // 直管・継手の行は、升目の中の行数（SP・防虫など）だけ高くなる
+          var cost = function (r) { if (b.kind !== 'mx') return 1; var m = 1; Object.keys(c.mx[r] || {}).forEach(function (k) { m = Math.max(m, Object.keys(c.mx[r][k]).length); }); return 0.3 + 0.7 * m; };
+          var n = 0, used = 0;
+          while (i + n < b.rows.length && (n === 0 || used + cost(b.rows[i + n]) <= left - 2)) { used += cost(b.rows[i + n]); n++; }
           pages[pages.length - 1].push({ kind: b.kind, rows: b.rows.slice(i, i + n), title: b.title + (i > 0 ? '（続き）' : '') });
-          left -= n + 2; i += n;
+          left -= used + 2; i += n;
         }
       });
       var total = pages.length;
@@ -1059,6 +1077,7 @@
         blk.forEach(function (b) {
           h += '<div class="dp-sec gt">' + esc(b.title) + '</div>';
           if (b.kind === 'mx') h += mxTable(c, b.rows);
+          if (b.kind === 'spl') h += splTable(b.rows);
           if (b.kind === 'br') h += brTable(b.rows);
           if (b.kind === 'ot') h += otTable(b.rows);
           if (b.kind === 'fx') h += fxTable(b.rows);
