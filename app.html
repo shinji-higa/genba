@@ -14,7 +14,7 @@
 (function () {
   var API_URL = 'https://script.google.com/macros/s/AKfycbzVlXtdeBEba1Z1qhxOvSi9AOXs0LPfdSK_sXwBDf2eIhJKR6z7CdZ6yGIDiK9IIw7tAw/exec';
   // 画面の版（build.js が「Ver.年月日-その日の何回目」を入れる）。設定画面のいちばん上に出す（ユーザー指示 2026-10-28）
-  var APP_VER = 'Ver.20261029-02';
+  var APP_VER = 'Ver.20261030-01';
   window.GENBA_VER = APP_VER;
   document.addEventListener('DOMContentLoaded', function () {
     var el = document.getElementById('appVer'), card = document.getElementById('appVerCard'), btn = document.getElementById('btnAppRefresh');
@@ -53,7 +53,7 @@
 
   // 角ダクト注文は電波がないと使わない（ユーザー指示 2026-10-28：電波無しで入力はできないに）。前の内容も出さない
   // getDocFile は大きいので、ここではなく下の genbaDocs（資料の取り込み）に入れる
-  var NO_CACHE = { getDenpyoApp: 1, listDenpyo: 1, getDenpyo: 1, getDuctSpecs: 1, getDenpyoPhotos: 1, getDenpyoFolders: 1, getDocFile: 1 };
+  var NO_CACHE = { getDenpyoApp: 1, listDenpyo: 1, getDenpyo: 1, getDuctSpecs: 1, getDenpyoPhotos: 1, getDenpyoFolders: 1, getDocFile: 1, listMaru: 1, getMaru: 1 };   // 丸ダクト注文も同じ（2026-10-30）
   function isRead(fn) { return !NO_CACHE[fn] && /^(get|list|resume|translate)/.test(fn); }
   function newId() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 10); }
 
@@ -1695,7 +1695,7 @@
       <!-- サブビュー: 注文（角ダクト注文だけ使える。ほかは準備中） -->
       <div id="subViewOrder" style="display: none;">
         <div class="order-grid">
-          <button type="button" class="order-btn" disabled><span class="order-ic">◯</span><span class="order-t">丸ダクト注文</span><span class="order-s">準備中</span></button>
+          <button type="button" class="order-btn on" onclick="openMaru()"><span class="order-ic">◯</span><span class="order-t">丸ダクト注文</span><span class="order-s">注文書の入力</span></button>
           <button type="button" class="order-btn on" onclick="openDenpyo()"><span class="order-ic">▢</span><span class="order-t">角ダクト注文</span><span class="order-s">製作伝票の入力</span></button>
           <button type="button" class="order-btn" disabled><span class="order-ic">🧰</span><span class="order-t">消耗品注文</span><span class="order-s">準備中</span></button>
           <button type="button" class="order-btn" disabled><span class="order-ic">🔩</span><span class="order-t">金物注文</span><span class="order-s">準備中</span></button>

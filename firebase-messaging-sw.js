@@ -78,6 +78,8 @@ self.addEventListener('fetch', function (event) {
           if (hit) return hit;
           throw err;
         });
+        // 丸ダクト注文（maru.html）は電波がないと使わないので、いつも新しい方を取る（前の版が出ないように。2026-10-30）
+        if (/\/maru\.html$/.test(url.pathname)) return fresh;
         if (hit) { event.waitUntil(fresh.catch(function () {})); return hit; }
         return fresh;
       });
@@ -90,7 +92,7 @@ self.addEventListener('message', function (event) {
   if (!event.data || !event.data.genbaRefresh) return;
   var scope = self.registration.scope;
   event.waitUntil(caches.open(SHELL_CACHE).then(function (cache) {
-    return Promise.all(['', 'index.html', 'app.html'].map(function (p) {
+    return Promise.all(['', 'index.html', 'app.html', 'maru.html'].map(function (p) {
       return fetch(scope + p, { cache: 'no-cache', credentials: 'same-origin' })
         .then(function (res) { if (res.ok) return cache.put(scope + p, res); })
         .catch(function () {});
