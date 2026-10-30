@@ -1491,7 +1491,8 @@
           return p.then(function () {
             return window.html2canvas(dp, { scale: 2.2, backgroundColor: '#ffffff', logging: false }).then(function (cv) {
               if (i) pdf.addPage();
-              pdf.addImage(cv.toDataURL('image/jpeg', 0.9), 'JPEG', 0, 0, 210, 297);
+              // 圧縮60：細かさ（2.2倍）はそのままで軽くする（角ダクトと同じ。ユーザー指示 2026-10-31）
+              pdf.addImage(cv.toDataURL('image/jpeg', 0.6), 'JPEG', 0, 0, 210, 297);
             });
           });
         }, Promise.resolve()).then(function () { tmp.remove(); return pdf.output('datauristring').split(',')[1]; }, function (e) { tmp.remove(); throw e; });
