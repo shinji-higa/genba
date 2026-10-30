@@ -187,7 +187,8 @@
           <div class="fg"><span class="lbl">用途</span><div class="chips" id="cUse"></div></div>
           <div class="fg"><span class="lbl">圧力</span><div class="chips" id="cPress"></div></div>
           <div class="fg"><span class="lbl">板厚</span><div class="chips" id="cUp"></div></div>
-          <div class="note" id="specNote"></div>
+          <div class="note" id="specNote" style="margin-bottom:10px;"></div>
+          <div class="fg"><span class="lbl">接合</span><div class="chips" id="cJoin"></div></div>
         </div>
 
         <div class="card">
@@ -351,13 +352,17 @@
       dec: [{ n: 'DEC-M', sizes: SIZES_DEC, lens: ['10'], def: '10', endc: false }]
     };
     function prodOf(it) { var l = PRODUCTS[it.type] || []; return l.filter(function (p) { return p.n === it.prod; })[0] || l[0]; }
-    var OPT = { dest: ['会社', '引取', '現場', '伊丹'], mat: ['亜鉛鋼板', 'ガルバリウム鋼板', '塩ビ鋼板', 'ステンレス'], use: ['一般', '厨房排気', '排煙'], press: ['低圧', '高圧1', '高圧2'] };
+    // 圧力は低圧・高圧だけ（高圧1・高圧2は板厚が同じ。ユーザー指示 2026-10-30）。接合は差込・FG（最初は差込）
+    var OPT = { dest: ['会社', '引取', '現場', '伊丹'], mat: ['亜鉛鋼板', 'ガルバリウム鋼板', '塩ビ鋼板', 'ステンレス'], use: ['一般', '厨房排気', '排煙'], press: ['低圧', '高圧'], th: ['標準', '番手アップ', '1.6t'], join: ['差込', 'FG'] };
     var MAT_SHORT = { '亜鉛鋼板': '亜鉛', 'ガルバリウム鋼板': 'ガルバ', '塩ビ鋼板': '塩ビ', 'ステンレス': 'SUS' };
-    var PRESS_TAG = { '低圧': '低', '高圧1': '高1', '高圧2': '高2' };
+    // 部材ごとの板厚の選択肢と、注文書の印（黒地）
+    var TH_OPTS = ['低圧', '高圧', '番手アップ', '1.6t'];
+    var PRESS_TAG = { '低圧': '低', '高圧': '高', '番手アップ': 'UP', '1.6t': '1.6' };
 
     /* ===== 板厚（施工要領書 No.15 低圧・No.17 高圧スパイラルダクト。ステンレスは No.84・85）=====
        SP（直管）は「スパイラルダクトの板厚」を圧力で引く。継手（エルボ・NI・NEC・キャップ・T・RT・R）は「差込み継手の板厚」（低圧・高圧とも同じ）。
-       ガルバリウム鋼板・塩ビ鋼板は専用の表がないため亜鉛鋼板の表（角ダクトの製作伝票と同じ）。1板手UPは1段上げる。[呼称寸法の上限, 板厚] */
+       ガルバリウム鋼板・塩ビ鋼板は専用の表がないため亜鉛鋼板の表（角ダクトの製作伝票と同じ）。
+       番手アップ＝仕様の圧力の表から1段上げる。1.6t＝1.6。[呼称寸法の上限, 板厚] */
     var T_STEPS = [0.5, 0.6, 0.8, 1.0, 1.2, 1.6], INF = 1e9;
     var JOINT_ROWS = [[315, 0.6], [710, 0.8], [1000, 1.0], [1250, 1.2]];
     var THICK = {
@@ -368,28 +373,37 @@
       'S-SP-高圧': { rows: [[250, 0.5], [560, 0.6], [800, 0.8], [1000, 1.0], [INF, 1.2]], src: 'ステンレス高圧スパイラルダクト（No.85）' },
       'S-継手':    { rows: JOINT_ROWS, src: '差込み継手（No.84・85）' }
     };
-    function thickKey(type, pr) { return (S.spec.mat === 'ステンレス' ? 'S' : 'Z') + (type === 'sp' ? '-SP-' + (pr === '低圧' ? '低圧' : '高圧') : '-継手'); }
-    function itemPr(it) { return it.pr || S.spec.press; }
-    function thickOf(it, pr) {
+    function thickKey(type, pr) { return (S.spec.mat === 'ステンレス' ? 'S' : 'Z') + (type === 'sp' ? '-SP-' + (pr === '高圧' ? '高圧' : '低圧') : '-継手'); }
+    // ダクト仕様から決まる部材の板厚（標準なら圧力、番手アップ・1.6t ならそれ）
+    function specTh() { return S.spec.th === '標準' || !S.spec.th ? S.spec.press : S.spec.th; }
+    function itemPr(it) { return it.th || specTh(); }
+    // 表を引く圧力（番手アップは仕様の圧力の表を使う）
+    function tablePress(th) { return th === '低圧' || th === '高圧' ? th : S.spec.press; }
+    function thickOf(it, th) {
       var t = TYPES[it.type]; if (!t || t.noT) return 0;
-      var d = Math.max(num(it.d1), num(it.d2), num(it.d3)), rows = THICK[thickKey(it.type, pr || itemPr(it))].rows, v = rows[rows.length - 1][1];
+      th = th || itemPr(it);
+      if (th === '1.6t') return 1.6;
+      var d = Math.max(num(it.d1), num(it.d2), num(it.d3)), rows = THICK[thickKey(it.type, tablePress(th))].rows, v = rows[rows.length - 1][1];
       for (var i = 0; i < rows.length; i++) if (d <= rows[i][0]) { v = rows[i][1]; break; }
-      if (S.up) v = T_STEPS[Math.min(T_STEPS.length - 1, T_STEPS.indexOf(v) + 1)];
+      if (th === '番手アップ') v = T_STEPS[Math.min(T_STEPS.length - 1, T_STEPS.indexOf(v) + 1)];
       return v;
     }
     function fmtT(t) { return t ? t.toFixed(1) : ''; }
     function rowsText(rows) { return rows.map(function (r, i) { return (r[0] === INF ? 'φ' + rows[i - 1][0] + '超' : 'φ' + r[0] + '以下') + ' ' + fmtT(r[1]); }).join('・'); }
-    // 部材で使っている圧力（板厚のある部材だけ）
+    // 部材で使っている板厚の選択（板厚のある部材だけ）
     function pressUsed() {
       var u = [];
       S.items.forEach(function (it) { if (!TYPES[it.type].noT) { var p = itemPr(it); if (u.indexOf(p) < 0) u.push(p); } });
-      return OPT.press.filter(function (p) { return u.indexOf(p) >= 0; });
+      return TH_OPTS.filter(function (p) { return u.indexOf(p) >= 0; });
     }
-    // 注文書で印を付けない圧力（ふつうは仕様の圧力。部材が全部ほかの圧力ならそちら）
-    function basePress() { var u = pressUsed(); return !u.length || u.indexOf(S.spec.press) >= 0 ? S.spec.press : u[0]; }
-    // ダクト仕様の圧力の表記：部材に違う圧力が混ざっていれば「低圧・一部高圧1」（角ダクトの「一部1.6t」と同じ考え方）
-    function pressLabel() { var b = basePress(); return [b].concat(pressUsed().filter(function (p) { return p !== b; }).map(function (p) { return '一部' + p; })).join('・'); }
-    function specLabel() { var sp = S.spec; return (MAT_SHORT[sp.mat] || sp.mat) + '・' + sp.use + '・' + pressLabel() + (S.up ? '・1板手UP' : ''); }
+    // 注文書で印を付けない板厚（ふつうは仕様どおり。部材が全部ほかのものならそちら）
+    function basePress() { var u = pressUsed(), s = specTh(); return !u.length || u.indexOf(s) >= 0 ? s : u[0]; }
+    // ダクト仕様の表記：違う板厚の部材が混ざっていれば「低圧・一部高圧」「低圧・一部1.6t」（角ダクトの「一部1.6t」と同じ考え方）
+    function pressLabel() {
+      var b = basePress(), head = b === '低圧' || b === '高圧' ? [b] : [S.spec.press, b];
+      return head.concat(pressUsed().filter(function (p) { return p !== b; }).map(function (p) { return '一部' + p; })).join('・');
+    }
+    function specLabel() { var sp = S.spec; return (MAT_SHORT[sp.mat] || sp.mat) + '・' + sp.use + '・' + pressLabel() + '・' + (sp.join || '差込'); }
 
     /* ===== 消耗品（フカガワ総合カタログ vol.19 p.220〜268 から。2026-10-29）=====
        ユーザー指示：一旦すべて入力できるようにし、あとで使うものに絞っていく。
@@ -543,31 +557,41 @@
     function jpDate(s) { var m = String(s || '').match(/^(\d{4})-(\d{2})-(\d{2})$/); return m ? (+m[1]) + '年' + (+m[2]) + '月' + (+m[3]) + '日' : ''; }
 
     /* ===== 部材の絵（一覧・選ぶ画面・入力画面で共通） ===== */
+    // 部材の絵は比嘉さんの「丸ダクトイメージ」（Rebro）にそろえる：口にはバンド（細い帯）と差し込み部（2026-10-30）
     function icon(type, big) {
-      var s = big ? 'stroke-width="2"' : 'stroke-width="2.5"';
+      var s = big ? 'stroke-width="1.8"' : 'stroke-width="2.2"', w = big ? 1.4 : 1.8;
+      var R = function (x, y, ww, hh) { return '<rect x="' + x + '" y="' + y + '" width="' + ww + '" height="' + hh + '" fill="#fff" stroke-width="' + w + '"/>'; };
+      var cv = function (x, y1, y2) { return R(x - 1.5, y1 - 1.5, 3, y2 - y1 + 3); };   // 縦のバンド
+      var ch = function (y, x1, x2) { return R(x1 - 1.5, y - 1.5, x2 - x1 + 3, 3); };   // 横のバンド
       var g = { sp: '<rect x="8" y="16" width="84" height="18" ' + s + '/><path d="M28 16l-6 18M48 16l-6 18M68 16l-6 18" stroke-width="1.2"/>',
-        e90: '<path d="M10 12h30a30 30 0 0 1 30 30v6H52v-6a12 12 0 0 0-12-12H10z" ' + s + '/>',
-        e45: '<path d="M8 14h36l26 26-13 13-21-21H8z" ' + s + '/>',
-        ni: '<rect x="30" y="16" width="40" height="18" ' + s + '/><line x1="50" y1="13" x2="50" y2="37" ' + s + '/>',
+        e90: R(8, 9, 6.5, 22) + R(43, 45.5, 22, 4) + '<path d="M16 6H40A28 28 0 0 1 68 34V44H40V40A6 6 0 0 0 34 34H16Z" ' + s + '/>' + cv(16, 6, 34) + ch(44, 40, 68),
+        e45: R(8, 9, 6.5, 22) + '<path d="M16 6H36Q52 6 64 18L72 26L52 46L40 34H16Z" ' + s + '/>' + cv(16, 6, 34) + '<path d="M72 26L75 29L55 49L52 46Z" fill="#fff" stroke-width="' + w + '"/>',
+        ni: '<rect x="32" y="11" width="36" height="28" ' + s + '/>' + cv(50, 11, 39),
         nec: '<rect x="20" y="10" width="10" height="30" ' + s + '/><rect x="30" y="16" width="44" height="18" ' + s + '/>',
-        cap: '<path d="M34 16h30v18H34z" ' + s + '/><path d="M64 12v26" ' + s + '/>',
-        mesh: '<rect x="30" y="12" width="40" height="26" ' + s + '/><path d="M30 20h40M30 28h40M40 12v26M50 12v26M60 12v26" stroke-width="1.2"/>',
-        t: '<path d="M8 10h84v16H8zM38 26h24v18H38z" ' + s + '/>',
-        rt: '<path d="M6 10h40l12 4h36v10H58l-12 4H6zM16 28h18v16H16z" ' + s + '/>',
-        r: '<path d="M8 10h34l18 6h32v18H60l-18 6H8z" ' + s + '/>',
+        cap: '<rect x="42" y="13" width="14" height="24" ' + s + '/><path d="M58 9V41" ' + s + '/>',
+        mesh: '<rect x="42" y="13" width="14" height="24" ' + s + '/><path d="M58 9V41" ' + s + ' stroke-dasharray="3 2.2"/>',
+        t: R(8, 9, 6.5, 18) + R(85.5, 9, 6.5, 18) + R(39, 41.5, 22, 6.5) + '<path d="M16 6H84V30H64V40H36V30H16Z" ' + s + '/>' + cv(16, 6, 30) + cv(84, 6, 30) + ch(40, 36, 64),
+        rt: R(8, 9, 6.5, 18) + R(73.5, 14, 6.5, 8) + R(27, 41.5, 18, 6.5) + '<path d="M16 6H56L72 12V24L56 30H48V40H24V30H16Z M56 6V30" ' + s + '/>' + cv(16, 6, 30) + cv(72, 12, 24) + ch(40, 24, 48),
+        r: R(7, 10, 5.5, 30) + R(67.5, 17, 8.5, 16) + '<path d="M14 7H40L66 15V35L40 43H14Z M40 7V43" ' + s + '/>' + cv(14, 7, 43) + cv(66, 15, 35),
         dec: '<path d="M8 25c6-11 11 11 17 0s11 11 17 0 11 11 17 0 11 11 17 0 6-7 8-4" ' + s + '/>',
         ac: '<path d="M8 25c6-11 11 11 17 0s11 11 17 0 11 11 17 0 11 11 17 0 6-7 8-4" stroke-width="6" stroke="#9a9a9a"/><path d="M8 25c6-11 11 11 17 0s11 11 17 0 11 11 17 0 11 11 17 0 6-7 8-4" ' + s + '/>' };
       return '<svg viewBox="0 0 100 50" fill="none" stroke="#111" stroke-linejoin="round">' + (g[type] || '') + '</svg>';
     }
-
     /* ===== 注文書のデータ ===== */
     var STORE = 'maruOrders.v1';
     var S = null;
-    function blank() { return { id: uid(), no: '', orderer: '', site: '', room: '', orderDate: today(), delivDate: '', dest: '現場', spec: { mat: '亜鉛鋼板', use: '一般', press: '低圧' }, up: false, memo: '', items: [], cons: [], updated: 0 }; }
+    function blank() { return { id: uid(), no: '', orderer: '', site: '', room: '', orderDate: today(), delivDate: '', dest: '現場', spec: { mat: '亜鉛鋼板', use: '一般', press: '低圧', th: '標準', join: '差込' }, memo: '', items: [], cons: [], updated: 0 }; }
     // 前の形で保存した注文書を今の形にする（材質→ダクト仕様、DEC・AC→商品名つき。2026-10-30）
     function normSlip(s) {
       if (!s.spec) s.spec = { mat: s.mat || '亜鉛鋼板', use: '一般', press: '低圧' };
       delete s.mat;
+      // 高圧1・高圧2 → 高圧、1板手UP → 番手アップ、部材の圧力 pr → 板厚 th（2026-10-30）
+      var hi = function (p) { return /^高圧/.test(p || '') ? '高圧' : p; };
+      s.spec.press = hi(s.spec.press) || '低圧';
+      if (!s.spec.th) s.spec.th = s.up ? '番手アップ' : '標準';
+      if (!s.spec.join) s.spec.join = '差込';
+      delete s.up;
+      s.items.forEach(function (it) { if (it.pr) { if (!it.th) it.th = hi(it.pr); delete it.pr; } });
       if (!s.cons) s.cons = [];
       s.items.forEach(function (it) {
         if (TYPES[it.type].flex) {
@@ -575,7 +599,7 @@
           var p = prodOf(it);
           if (p.lens.indexOf(it.flen) < 0) it.flen = p.def;
           if (!p.endc) it.endc = false;
-        } else if (!TYPES[it.type].noT && !it.pr) it.pr = s.spec.press;
+        } else if (!TYPES[it.type].noT && !it.th) it.th = s.spec.th === '標準' ? s.spec.press : s.spec.th;
       });
       return s;
     }
@@ -606,7 +630,7 @@
     function itemSub(it) {
       var t = TYPES[it.type], a = [sizeText(it)];
       if (t.fit && it.fit) a.push(it.fit + 'サイズ');
-      if (!t.noT) a.push(itemPr(it) + ' ' + fmtT(thickOf(it)) + 't');
+      if (!t.noT) a.push(itemPr(it) === '1.6t' ? '1.6t' : itemPr(it) + ' ' + fmtT(thickOf(it)) + 't');
       return a.join('　');
     }
     function itemErrors(it) {
@@ -653,21 +677,24 @@
       chips('cMat', OPT.mat, sp.mat, 'setMat');
       chips('cUse', OPT.use, sp.use, 'setUse');
       chips('cPress', OPT.press, sp.press, 'setPress');
-      chips('cUp', ['標準', '1板手UP'], S.up ? '1板手UP' : '標準', 'setUp');
+      chips('cUp', OPT.th, sp.th, 'setUp');
+      chips('cJoin', OPT.join, sp.join, 'setJoin');
       var ksp = thickKey('sp', sp.press), kj = thickKey('e90', sp.press);
       document.getElementById('specNote').innerHTML =
-        '<b>板厚の基準</b>（施工要領書）' + (S.up ? '　＋1板手UP' : '') + '<br>' +
+        '<b>板厚の基準</b>（施工要領書）' + (sp.th === '番手アップ' ? '　＋番手アップ（1段上げる）' : sp.th === '1.6t' ? '　→ すべて1.6t' : '') + '<br>' +
         'SP：' + esc(THICK[ksp].src) + '　' + esc(rowsText(THICK[ksp].rows)) + '<br>' +
         '継手：' + esc(THICK[kj].src) + '　' + esc(rowsText(THICK[kj].rows)) +
         (/ガルバ|塩ビ/.test(sp.mat) ? '<br>※施工要領書に専用の表がないため、亜鉛鋼板の表を使っています' : '') +
-        '<br>部材ごとに圧力を変えられます（部材の入力画面の「板厚」）。違う圧力の部材があると、ダクト仕様に「一部高圧1」などと載ります。';
+        '<br>部材ごとに板厚を変えられます（部材の入力画面の「板厚」）。違う板厚の部材があると、ダクト仕様に「一部高圧」「一部1.6t」などと載ります。';
     }
     function setMat(v) { S.spec.mat = v; changed(); }
-    // 用途を選んだときの圧力（角ダクトの製作伝票と同じ：排煙は高圧1、ほかは低圧）
-    function setUse(v) { if (v !== S.spec.use) { S.spec.use = v; setPress(v === '排煙' ? '高圧1' : '低圧'); return; } changed(); }
-    // 仕様の圧力を変えると、部材の圧力も全部その圧力にそろえる（そのあと部材ごとに変えられる）
-    function setPress(v) { S.spec.press = v; S.items.forEach(function (it) { if (!TYPES[it.type].noT) it.pr = v; }); changed(); }
-    function setUp(v) { S.up = v === '1板手UP'; changed(); }
+    // 用途を選んだときの圧力（角ダクトの製作伝票と同じ：排煙は高圧、ほかは低圧）
+    function setUse(v) { if (v !== S.spec.use) { S.spec.use = v; setPress(v === '排煙' ? '高圧' : '低圧'); return; } changed(); }
+    // 仕様の圧力・板厚を変えると、部材の板厚も全部それにそろえる（そのあと部材ごとに変えられる）
+    function syncTh() { var t = specTh(); S.items.forEach(function (it) { if (!TYPES[it.type].noT) it.th = t; }); changed(); }
+    function setPress(v) { S.spec.press = v; syncTh(); }
+    function setUp(v) { S.spec.th = v; syncTh(); }
+    function setJoin(v) { S.spec.join = v; changed(); }
     function renderItems() {
       var el = document.getElementById('items');
       document.getElementById('itemCount').textContent = S.items.length;
@@ -708,7 +735,7 @@
       if (type === 'rt') { it.d1 = 250; it.d2 = 200; it.d3 = 150; }
       if (type === 'r') { it.d2 = 150; }
       if (TYPES[type].fit) it.fit = '';   // NI・SPは毎回選ぶ（最初はどちらも選んでいない）
-      if (!TYPES[type].noT) it.pr = S.spec.press;
+      if (!TYPES[type].noT) it.th = specTh();
       if (TYPES[type].flex) { var p = PRODUCTS[type][0]; it.prod = p.n; it.d1 = 150; it.flen = p.def; it.endc = p.endc; }
       return it;
     }
@@ -751,9 +778,9 @@
           '<div class="note" style="margin-top:6px;">端末加工ありは 0.5m・1m・1.5m・2m が標準（10m まで作れます）。加工なしは 10m 巻きです。</div></div>';
       }
       if (!t.noT) {   // 板厚：部材ごとに圧力を選ぶ（最初は仕様の圧力。ユーザー指示 2026-10-30）
-        h += '<div class="fg"><span class="lbl">板厚</span><div class="chips">' + OPT.press.map(function (p) {
-          return chip('pr', p, p + '　' + fmtT(thickOf(it, p)) + 't', itemPr(it) === p);
-        }).join('') + '</div>' + (itemPr(it) !== S.spec.press ? '<div class="note" style="margin-top:6px;">ダクト仕様（' + esc(S.spec.press) + '）と違う圧力です。注文書の数に「' + PRESS_TAG[itemPr(it)] + '」の印が付きます。</div>' : '') + '</div>';
+        h += '<div class="fg"><span class="lbl">板厚</span><div class="chips">' + TH_OPTS.map(function (p) {
+          return chip('th', p, (p === '1.6t' ? p : p + '　' + fmtT(thickOf(it, p)) + 't'), itemPr(it) === p);
+        }).join('') + '</div>' + (itemPr(it) !== specTh() ? '<div class="note" style="margin-top:6px;">ダクト仕様（' + esc(specTh()) + '）と違う板厚です。注文書の数に「' + PRESS_TAG[itemPr(it)] + '」の印が付きます。</div>' : '') + '</div>';
       }
       h += '<div class="fg"><label>数</label><div class="qty"><button type="button" onclick="edQty(-1)">－</button><input type="number" inputmode="numeric" id="edQty" value="' + esc(it.qty) + '" oninput="ED.it.qty=this.value; refreshEd(true)"><button type="button" onclick="edQty(1)">＋</button></div></div>';
       h += '</div><div id="edErr"></div>';
@@ -779,9 +806,11 @@
     function edFigure(it) {
       var tx = function (x, y, s, a) { return '<text x="' + x + '" y="' + y + '" font-size="11" text-anchor="' + (a || 'middle') + '" fill="#1a6fd1" font-weight="700">' + esc(s) + '</text>'; };
       var body = '', p = 'fill="none" stroke="#111" stroke-width="2"';
-      if (it.type === 't') body = '<path d="M30 20h140v26H30zM82 46h36v34H82z" ' + p + '/>' + tx(20, 37, '①', 'end') + tx(180, 37, '②', 'start') + tx(100, 94, '③') + tx(100, 14, 'φ' + it.d1) + tx(126, 68, 'φ' + it.d3, 'start');
-      else if (it.type === 'rt') body = '<path d="M20 20h70l22 6h68v14h-68l-22 6H20zM40 46h28v34H40z" ' + p + '/>' + tx(12, 37, '①', 'end') + tx(188, 37, '②', 'start') + tx(54, 94, '③') + tx(55, 14, 'φ' + it.d1) + tx(146, 20, 'φ' + it.d2) + tx(76, 68, 'φ' + it.d3, 'start');
-      else if (it.type === 'r') body = '<path d="M30 18h55l30 10h55v30h-55l-30 10H30z" ' + p + '/>' + tx(20, 47, '①', 'end') + tx(180, 47, '②', 'start') + tx(57, 12, 'φ' + it.d1) + tx(142, 22, 'φ' + it.d2);
+      // T・RT・R は一覧の絵を 1.6倍にして、①②③とサイズを書き込む
+      var big = function (t) { return icon(t, true).replace('<svg viewBox="0 0 100 50"', '<svg x="20" y="0" width="160" height="80" viewBox="0 0 100 50"'); };
+      if (it.type === 't') body = big('t') + tx(28, 34, '①', 'end') + tx(172, 34, '②', 'start') + tx(100, 94, '③') + tx(100, 34, 'φ' + it.d1) + tx(128, 72, 'φ' + it.d3, 'start');
+      else if (it.type === 'rt') body = big('rt') + tx(28, 34, '①', 'end') + tx(152, 34, '②', 'start') + tx(77, 94, '③') + tx(78, 34, 'φ' + it.d1) + tx(126, 56, 'φ' + it.d2, 'start') + tx(102, 72, 'φ' + it.d3, 'start');
+      else if (it.type === 'r') body = big('r') + tx(26, 44, '①', 'end') + tx(146, 44, '②', 'start') + tx(64, 44, 'φ' + it.d1) + tx(146, 62, 'φ' + it.d2, 'start');
       else body = '<g transform="translate(50 15) scale(1)">' + icon(it.type, true).replace('<svg viewBox="0 0 100 50"', '<svg x="0" y="0" width="100" height="60" viewBox="0 0 100 50"') + '</g>' + tx(100, 92, sizeText(it));
       return '<svg viewBox="0 0 200 100">' + body + '</svg>';
     }
@@ -951,27 +980,28 @@
         '<div class="dp-line"><span class="k">搬入日</span><span class="v">' + esc(jpDate(S.delivDate)) + '　' + esc(S.dest || '') + '</span></div>' +
         '</div>' + coHtml(S) + '</div>' +
         '<table class="dp-spec"><colgroup><col style="width:22mm"><col><col style="width:14mm"><col style="width:24mm"></colgroup>' +
-        '<tr><td class="k">ダクト仕様</td><td class="memo">' + esc(specLabel()) + '</td><td class="k">板厚</td><td>' + (S.up ? '1板手UP' : '標準') + '</td></tr>' +
+        '<tr><td class="k">ダクト仕様</td><td class="memo">' + esc(specLabel()) + '</td><td class="k">板厚</td><td>' + esc(S.spec.th || '標準') + '</td></tr>' +
         '<tr><td class="k">Memo</td><td class="memo" colspan="3">' + esc(S.memo || '') + '</td></tr></table>';
     }
-    // 圧力ごとの数：仕様の圧力はそのまま、違う圧力は黒地の印（低・高1・高2）を付ける
+    // 板厚ごとの数：仕様どおりはそのまま、違う板厚は黒地の印（低・高・UP・1.6）を付ける
     function prQty(byPr) {
       var b = basePress();
-      return Object.keys(byPr || {}).sort(function (x, y) { return (x !== b) - (y !== b) || OPT.press.indexOf(x) - OPT.press.indexOf(y); }).map(function (p) {
+      return Object.keys(byPr || {}).sort(function (x, y) { return (x !== b) - (y !== b) || TH_OPTS.indexOf(x) - TH_OPTS.indexOf(y); }).map(function (p) {
         return (p && p !== b ? '<span class="pt">' + PRESS_TAG[p] + '</span>' : '') + byPr[p];
       }).join(' ');
     }
     // 注文書の下の注意書き：使った表の板厚（施工要領書）と印の意味
     function footHtml(c) {
-      var a = [], sps = {}, joint = false, b = basePress(), tag = false;
+      var a = [], sps = {}, joint = false, up = false, b = basePress(), tag = false;
       S.items.forEach(function (it) {
-        var t = TYPES[it.type]; if (t.noT || itemErrors(it).length) return;
-        if (it.type === 'sp') sps[thickKey('sp', itemPr(it))] = itemPr(it) === '低圧' ? '低圧' : '高圧'; else joint = true;
-        if (itemPr(it) !== b) tag = true;
+        var t = TYPES[it.type], th = itemPr(it); if (t.noT || itemErrors(it).length) return;
+        if (th !== '1.6t') { if (it.type === 'sp') sps[thickKey('sp', tablePress(th))] = tablePress(th); else joint = true; }
+        if (th === '番手アップ') up = true;
+        if (th !== b) tag = true;
       });
       Object.keys(sps).forEach(function (k) { a.push('SP（' + sps[k] + '）' + rowsText(THICK[k].rows)); });
       if (joint) a.push('継手 ' + rowsText(THICK[thickKey('e90', '低圧')].rows));
-      var h = a.length ? '※板厚（施工要領書）　' + a.join('　／　') + (S.up ? '　→ 1板手UP（それぞれ1段上げ）' : '') : '';
+      var h = a.length ? '※板厚（施工要領書）　' + a.join('　／　') + (up ? '　→ 番手アップは1段上げ' : '') : '';
       if (tag) h += (h ? '<br>' : '') + '※黒地の「' + pressUsed().filter(function (p) { return p !== b; }).map(function (p) { return PRESS_TAG[p] + '」＝' + p; }).join('、「') + 'の部材の数（印のない数は' + b + '）';
       return h ? '<div class="dp-foot">' + h + '</div>' : '';
     }
