@@ -63,14 +63,19 @@ import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/fireba
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, sendPasswordResetEmail, signOut } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
 import { initializeFirestore, persistentLocalCache, collection, query, where, doc, getDoc, getDocs, setDoc, updateDoc, writeBatch, onSnapshot } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
-/* 現場管理ポータル（試作）：ログインと保存はポータルの中。写真・資料のファイルは Google ドライブ */
+import { getStorage, ref as stRef, uploadBytesResumable, getDownloadURL } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-storage.js';
+
+/* 現場管理ポータル（試作）：ログインと保存はポータルの中。写真・資料のファイルは Cloud Storage（東京）。
+   2026-10-31 より前に入れたテスト用の600個だけ Google ドライブにある（url が無く driveId がある） */
 const T0 = performance.now();
 const app = initializeApp({
   apiKey: 'AIzaSyDVR4p4DO4s9h70uPlXUVlhNcMP9-YkQ5Q',
   authDomain: 'genba-portal-9077b.firebaseapp.com',
   projectId: 'genba-portal-9077b',
-  appId: '1:1005411376335:web:0129ce73c9988973e56bba'
+  appId: '1:1005411376335:web:0129ce73c9988973e56bba',
+  storageBucket: 'genba-portal-9077b.firebasestorage.app'
 });
+const storage = getStorage(app);
 const auth = getAuth(app);
 auth.languageCode = 'ja';   // パスワード再設定のメールと画面を日本語にする
 const db = initializeFirestore(app, { localCache: persistentLocalCache() });
@@ -417,7 +422,7 @@ function xShell() {
   $('xSelBtn').onclick = () => { X.selMode = !X.selMode; X.sel.clear(); xBulk(); xList(); };
   $('xEnd').onclick = () => { X.selMode = false; X.sel.clear(); xBulk(); xList(); };
   $('xAll').onclick = () => { const l = xItems(); if (X.sel.size === l.length) X.sel.clear(); else l.forEach(i => X.sel.add(i.id)); xBulk(); xList(); };
-  $('xDl').onclick = () => { xItems().filter(i => X.sel.has(i.id) && i.driveId).forEach(i => window.open('https://drive.google.com/uc?export=download&id=' + i.driveId, '_blank')); };
+  $('xDl').onclick = () => { xItems().filter(i => X.sel.has(i.id) && (i.url || i.driveId)).forEach(i => window.open(i.url || 'https://drive.google.com/uc?export=download&id=' + i.driveId, '_blank')); };
   $('xMv').onclick = () => xMove([...X.sel]);
   $('xRm').onclick = () => xRemove([...X.sel]);
 }
@@ -500,7 +505,14 @@ function xList() {
   });
 }
 function xView(it) {
-  if (!it.driveId) { alert('まだ送信中です。'); return; }
+  if (!it.driveId && !it.url) { alert('まだ送信中です。'); return; }
+  if (it.kind === 'doc' && it.url) {
+    // PDF は端末の標準の表示で開く（複数ページも見られる）。Excel・CAD などはダウンロードになる
+    const a = document.createElement('a');
+    a.href = it.url; a.target = '_blank'; a.rel = 'noopener noreferrer';
+    document.body.appendChild(a); a.click(); a.remove();
+    return;
+  }
   if (it.kind === 'doc') {
     // iPhone で別窓にするとドライブのアプリに飛んでエラーになったため、画面の中で開く（今の現場管理と同じ）
     const v = document.createElement('div');
@@ -517,7 +529,7 @@ function xView(it) {
   // 先に手元の見本画像を出し、大きい画像が届いたら差し替える（iPhone で drive.google.com の画像が出ないことがあったため、2つの入口を順に試す）
   o.innerHTML = '<img style="width:100%; height:100%; object-fit:contain;" alt="" src="' + esc(it.thumb || '') + '"><div id="xViewMsg" style="position:absolute; left:12px; bottom:16px; color:#fff; font-size:0.8rem;">大きい写真を読み込んでいます…</div><button type="button" class="btn btn-sub" style="position:absolute; top:12px; right:12px;">閉じる</button>';
   const shown = o.querySelector('img'), msg = o.querySelector('#xViewMsg'), big = new Image();
-  const tries = ['https://lh3.googleusercontent.com/d/' + it.driveId + '=w2000', 'https://drive.google.com/thumbnail?id=' + it.driveId + '&sz=w2000'];
+  const tries = it.url ? [it.url] : ['https://lh3.googleusercontent.com/d/' + it.driveId + '=w2000', 'https://drive.google.com/thumbnail?id=' + it.driveId + '&sz=w2000'];
   let k = 0;
   big.onload = () => { shown.src = big.src; msg.remove(); };
   big.onerror = () => { k++; if (k < tries.length) big.src = tries[k]; else msg.textContent = '大きい写真を表示できませんでした。'; };
@@ -620,12 +632,15 @@ function upNext() {
     const t = performance.now();
     (async () => {
       try {
-        const idToken = await auth.currentUser.getIdToken();
-        const d = await fetch(PORTAL_API, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ fn: 'upload', idToken, data: { siteId: j.siteId, name: j.name, mime: j.mime, data: j.data } }) }).then(r => r.json());
-        if (!d || !d.ok) throw new Error((d && d.m) || '送信できませんでした。');
-        await updateDoc(j.ref, { driveId: d.v.id, uploading: false, sendMs: Math.round(performance.now() - t) });
+        // iPhone から Cloud Storage へ直接送る（途中で電波が切れても、つながれば続きから送る）
+        const bytes = Uint8Array.from(atob(j.data), c => c.charCodeAt(0));
+        const path = 'sites/' + j.siteId + '/' + j.ref.id + '/' + j.name;
+        await uploadBytesResumable(stRef(storage, path), bytes, { contentType: j.mime });
+        const url = await getDownloadURL(stRef(storage, path));
+        await updateDoc(j.ref, { url, path, uploading: false, sendMs: Math.round(performance.now() - t) });
         window.portalLastSend = sec(t);
       } catch (e) {
+        window.portalLastError = e && (e.code || e.message);
         try { await updateDoc(j.ref, { uploading: false, failed: true }); } catch (e2) {}
       }
       upBusy--; upNext();
@@ -642,7 +657,7 @@ async function xUpload(kind, folder, files) {
   }
 }
 window.portalTest = {
-  queue: () => ({ waiting: upQueue.length, busy: upBusy, last: window.portalLastSend || '' }),
+  queue: () => ({ waiting: upQueue.length, busy: upBusy, last: window.portalLastSend || '', error: window.portalLastError || '' }),
   /* テスト用データ：開いている現場に、フォルダと 写真30・資料30 を入れる（テスト現場だけ） */
   async seed() {
     if (!X || !X.s.isTest) throw new Error('テスト現場を開いてください。');
