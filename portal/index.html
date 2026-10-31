@@ -86,7 +86,7 @@ storage.maxUploadRetryTime = 60000;   // 電波が切れたら1分で一度あ�
 const auth = getAuth(app);
 auth.languageCode = 'ja';   // パスワード再設定のメールと画面を日本語にする
 const db = initializeFirestore(app, { localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }) });
-const APP_VER = 'Ver.20261031-05';
+const APP_VER = 'Ver.20261031-06';
 
 /* ---------- 電波なしでも使う（今の現場管理と同じ考え方） ----------
    ・保存は押した瞬間に完了の形。電波が戻ったら自動で送る（データは Firestore が端末に貯める）
@@ -287,7 +287,7 @@ onAuthStateChanged(auth, async user => {
   const key = 'portalMe:' + user.uid;
   let c = {};
   try { c = JSON.parse(localStorage.getItem(key) || '{}'); } catch (e) {}
-  me = { uid: user.uid, name: c.name || '', isMaster: c.isMaster === true, canAddSite: c.canAddSite === true };
+  me = { uid: user.uid, name: c.name || '', group: c.group || '', isMaster: c.isMaster === true, canAddSite: c.canAddSite === true };
   $('admin').style.display = me.isMaster ? '' : 'none';
   showList();
   setTimeout(upPump, 1500);
@@ -295,8 +295,8 @@ onAuthStateChanged(auth, async user => {
     const d = await getDoc(doc(db, 'users', user.uid));
     const x = d.exists() ? d.data() : {};
     const isMaster = x.isMaster === true, canAddSite = isMaster || x.canAddSite === true;
-    me.name = x.name || '';
-    localStorage.setItem(key, JSON.stringify({ isMaster, canAddSite, name: me.name }));
+    me.name = x.name || ''; me.group = x.group || '';
+    localStorage.setItem(key, JSON.stringify({ isMaster, canAddSite, name: me.name, group: me.group }));
     if (isMaster !== me.isMaster || canAddSite !== me.canAddSite) {
       me.isMaster = isMaster; me.canAddSite = canAddSite;
       $('admin').style.display = isMaster ? '' : 'none';
@@ -383,7 +383,7 @@ function renderSites() {
 }
 
 /* ---------- 現場詳細 ---------- */
-const TABS = ['現場詳細', '報告', '写真', '資料', '注文', '担当'];
+const tabsOf = s => ['現場詳細', '報告', '写真', '資料', '注文'].concat(isManagerOf(s) ? ['担当'] : []);   // 担当はマスターと現場管理者だけ
 const isManagerOf = s => me.isMaster || (s.roles || {})[me.uid] === '現場管理者';
 const canDelete = s => me.isMaster || (me.canAddSite && isManagerOf(s));
 const person = (co, n, t) => {
@@ -413,6 +413,7 @@ function showDetail(id, saved) {
     $('title').textContent = s.siteName;
     // 写真・資料タブを開いているときは作り直さない（ファイルを選んでいる最中に入力欄が消えるため）
     if (($('xRoot') || $('rRoot')) && X) X.s = s;
+    else if ($('sRoot')) sSite = s;
     else if (!rulesEditing) renderDetail(s);
   }, e => { $('panelDetail').innerHTML = banner('読み込めませんでした：' + e.message, true); });
 }
@@ -420,8 +421,8 @@ function renderDetail(s) {
   const addr = s.address ? '<a class="address-map-link" href="https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(s.address) + '" target="_blank" rel="noopener noreferrer">📍 ' + esc(s.address) + '</a>' : '未設定';
   const nearby = s.address ? '<div class="nearby-row" style="display:grid;">' + ['コンビニ', 'トイレ', '駐車場', 'ホームセンター'].map(k => '<button type="button" class="nearby-btn" data-k="' + k + '"><span>' + k + '</span></button>').join('') + '</div>' : '';
   $('panelDetail').innerHTML =
-    '<nav class="nav-tabs" style="margin: -16px -16px 14px -16px;">' + TABS.map(n => '<button type="button" class="nav-tab-item' + (n === detailTab ? ' active' : '') + '" data-t="' + n + '">' + n + '</button>').join('') + '</nav>' +
-    (detailTab === '報告' ? '<div id="rRoot"></div>' : detailTab === '写真' || detailTab === '資料' ? '<div id="xRoot"></div>' :
+    '<nav class="nav-tabs" style="margin: -16px -16px 14px -16px;">' + tabsOf(s).map(n => '<button type="button" class="nav-tab-item' + (n === detailTab ? ' active' : '') + '" data-t="' + n + '">' + n + '</button>').join('') + '</nav>' +
+    (detailTab === '担当' ? '<div id="sRoot"></div>' : detailTab === '報告' ? '<div id="rRoot"></div>' : detailTab === '写真' || detailTab === '資料' ? '<div id="xRoot"></div>' :
      detailTab !== '現場詳細' ? '<div class="info-card" style="text-align:center; color:var(--muted);">「' + detailTab + '」はこれから作ります。</div>' :
     '<div style="margin-bottom: 14px; display: flex; gap: 8px; align-items: center;">' +
       (isManagerOf(s) ? '<button type="button" id="edit" class="btn btn-dark" style="flex: 1;">✏️ 現場情報編集</button>'
@@ -451,6 +452,7 @@ function renderDetail(s) {
       ruleFields(s, true) +
     '</div>');
   $('panelDetail').querySelectorAll('.nav-tab-item').forEach(b => { b.onclick = () => { detailTab = b.dataset.t; renderDetail(s); }; });
+  if (detailTab === '担当') { sOpen(s); return; }
   if (detailTab === '報告') { rOpen(s); return; }
   if (detailTab === '写真' || detailTab === '資料') { xOpen(s, detailTab === '写真' ? 'photo' : 'doc'); return; }
   if (detailTab !== '現場詳細') return;
@@ -521,6 +523,53 @@ function xEnsure(s, kind) {
     xUnsub.push(onSnapshot(xSub('reports'), { includeMetadataChanges: true }, q => { if (!X) return; X.reports = q.docs.map(d => ({ id: d.id, ...d.data() })); draw(q); }));
   }
   X.s = s;
+}
+
+/* ---------- 担当（見た目と操作は今の現場管理と同じ）----------
+   マスターは現場管理者も付けられる。現場管理者は一般作業員まで。マスター本人と自分は一覧に出さない。
+   エクスケア社員とマスターは全員、ほかの人は同じグループの人だけ見える（ルールでも断る） */
+let sSite = null, sPeople = [], sPending = {};
+async function sOpen(s) {
+  sSite = s; sPending = {};
+  $('sRoot').innerHTML = '<div style="margin-bottom: 12px;"><button type="button" id="sSave" class="btn btn-dark">編集を完了</button></div><div id="sBox" style="display: flex; flex-direction: column; gap: 8px;"><div class="info-card" style="text-align: center; color: var(--muted);">担当者一覧を読み込んでいます...</div></div>';
+  $('sSave').onclick = sSubmit;
+  try {
+    const c = collection(db, 'users'), seeAll = me.isMaster || me.group === 'エクスケア社員';
+    const q = seeAll ? c : query(c, where('home', '==', (me.group === 'マルトク' || me.group === 'NAFA') ? me.group : 'エクスケア'));
+    const snap = await getDocs(q);
+    sPeople = snap.docs.map(d => ({ id: d.id, ...d.data() })).filter(u => !u.isMaster && u.id !== me.uid).sort((a, b) => String(a.name).localeCompare(String(b.name), 'ja'));
+    sList();
+  } catch (e) { if ($('sBox')) $('sBox').innerHTML = banner('読み込めませんでした（電波がないか、権限がありません）。', true); }
+}
+function sList() {
+  const box = $('sBox');
+  if (!box) return;
+  if (!sPeople.length) { box.innerHTML = '<div class="info-card" style="text-align:center; color:var(--muted);">登録者が存在しません。</div>'; return; }
+  const roles = sSite.roles || {};
+  box.innerHTML = sPeople.map(u => {
+    const base = roles[u.id] || '担当なし', cur = sPending[u.id] !== undefined ? sPending[u.id] : base;
+    const color = cur === '現場管理者' ? 'background:#111111; color:#ffffff;' : cur === '一般作業員' ? 'background:#e8f0fe; color:#1967d2;' : 'background:#f0f0f2; color:#333;';
+    const sel = '<select class="action-control-select" data-u="' + esc(u.id) + '" style="height:32px; font-size:0.8rem;">' + opts(me.isMaster ? ['担当なし', '一般作業員', '現場管理者'] : ['担当なし', '一般作業員'], cur) + '</select>';
+    return '<div class="info-card" style="display:flex; justify-content:space-between; align-items:center; padding:10px 14px; margin-bottom:0;"><div style="overflow:hidden; padding-right:8px;"><div style="font-weight:700; font-size:0.92rem; display:flex; align-items:center;"><span>' + esc(u.name || u.id) + '</span><span style="font-size:0.7rem; font-weight:700; padding:2px 6px; border-radius:3px; margin-left:6px; ' + color + '">' + esc(cur) + '</span>' + (cur !== base ? '<span style="font-size:0.74rem; color:#b06000; font-weight:700; margin-left:4px;">[変更中]</span>' : '') + '</div><div style="font-size:0.75rem; color:var(--muted); margin-top:2px;">' + esc(u.id) + '</div></div><div style="flex-shrink:0;">' +
+      (!me.isMaster && base === '現場管理者' ? '<span style="font-size:0.8rem; font-weight:700; padding:4px 8px; background:#eee; border-radius:4px;">現場管理者</span>' : sel) + '</div></div>';
+  }).join('');
+  box.querySelectorAll('select').forEach(e => { e.onchange = () => { sPending[e.dataset.u] = e.value; sList(); }; });
+}
+function sSubmit() {
+  const ids = Object.keys(sPending).filter(k => sPending[k] !== ((sSite.roles || {})[k] || '担当なし'));
+  if (!ids.length) { alert('変更された権限はありません。'); return; }
+  const roles = { ...(sSite.roles || {}) };
+  let members = (sSite.members || []).slice(), managers = (sSite.managers || []).slice();
+  ids.forEach(u => {
+    const r = sPending[u];
+    members = members.filter(x => x !== u); managers = managers.filter(x => x !== u); delete roles[u];
+    if (r !== '担当なし') { members.push(u); roles[u] = r; if (r === '現場管理者') managers.push(u); }
+  });
+  const data = { members, roles };
+  if (me.isMaster) data.managers = managers;
+  fire(updateDoc(doc(db, 'sites', sSite.id), data), '担当の変更');
+  sSite = { ...sSite, ...data }; sPending = {};
+  sList();
 }
 
 /* ---------- 報告（見た目と操作は今の現場管理と同じ） ---------- */
@@ -1162,7 +1211,7 @@ function showSiteForm(s) {
     data.workContent = $('f_workContent').value; data.notes = $('f_notes').value;
     if (isNew) {
       const ref = doc(collection(db, 'sites'));
-      fire(setDoc(ref, { ...data, imageUrl1: '', imageUrl2: '', order: Date.now(), members: [me.uid], roles: { [me.uid]: '現場管理者' } }), data.siteName);
+      fire(setDoc(ref, { ...data, imageUrl1: '', imageUrl2: '', order: Date.now(), members: [me.uid], roles: { [me.uid]: '現場管理者' }, managers: [me.uid] }), data.siteName);
       showDetail(ref.id);
     } else {
       fire(updateDoc(doc(db, 'sites', s.id), data), data.siteName);
@@ -1210,7 +1259,7 @@ function showAddUser() {
     $('save').disabled = true; $('err').textContent = '追加しています…';
     try {
       await admin('create', { email, password: $('p').value });
-      await setDoc(doc(db, 'users', email), { name, isMaster: $('m').checked });
+      await setDoc(doc(db, 'users', email), { name, isMaster: $('m').checked, group: '', home: 'エクスケア' });
       showUser(email, '追加しました。担当現場を選んで保存してください。');
     } catch (e) { $('save').disabled = false; $('err').textContent = e.message; }
   };
@@ -1227,7 +1276,8 @@ async function showUser(uid, note) {
       '<div style="font-size:0.8rem; color:var(--muted); margin-bottom: 8px;">' + esc(uid) + '</div>' +
       '<div class="form-group"><label>名前</label><input type="text" id="n" value="' + esc(d.name) + '"></div>' +
       '<label class="check-row"><input id="m" type="checkbox"' + (d.isMaster ? ' checked' : '') + (uid === me.uid ? ' disabled' : '') + '>マスター</label>' +
-      '<label class="check-row" style="margin-top: 8px;"><input id="ca" type="checkbox"' + (d.canAddSite ? ' checked' : '') + '>新規現場追加者</label></div>' +
+      '<label class="check-row" style="margin-top: 8px;"><input id="ca" type="checkbox"' + (d.canAddSite ? ' checked' : '') + '>新規現場追加者</label>' +
+      '<div class="form-group" style="margin-top: 10px;"><label>グループ</label><select id="g">' + ['', 'エクスケア社員', 'エクスケア', 'マルトク', 'NAFA'].map(g => '<option value="' + g + '"' + ((d.group || '') === g ? ' selected' : '') + '>' + (g || '（空欄：エクスケアとして扱う）') + '</option>').join('') + '</select></div></div>' +
       '<div class="info-card"><div class="card-header-row"><span style="font-weight: 700;">担当現場</span></div>' + list.map(s => {
         const role = (s.roles || {})[uid], on = (s.members || []).indexOf(uid) !== -1;
         return '<div class="site-row"><label class="check-row"><input type="checkbox" data-s="' + esc(s.id) + '"' + (on ? ' checked' : '') + '>' + esc(s.siteName) + '</label>' +
@@ -1240,13 +1290,16 @@ async function showUser(uid, note) {
       $('err').textContent = '保存しています…';
       try {
         const b = writeBatch(db);
-        b.update(doc(db, 'users', uid), { name: $('n').value.trim(), isMaster: $('m').checked, canAddSite: $('ca').checked });
+        const g = $('g').value;
+        b.update(doc(db, 'users', uid), { name: $('n').value.trim(), isMaster: $('m').checked, canAddSite: $('ca').checked, group: g, home: (g === 'マルトク' || g === 'NAFA') ? g : 'エクスケア' });
         list.forEach(s => {
           const on = P.querySelector('[data-s="' + s.id + '"]').checked, role = P.querySelector('[data-r="' + s.id + '"]').value;
           const members = (s.members || []).filter(x => x !== uid), roles = { ...(s.roles || {}) };
           delete roles[uid];
           if (on) { members.push(uid); roles[uid] = role; }
-          if (on !== ((s.members || []).indexOf(uid) !== -1) || (on && (s.roles || {})[uid] !== role)) b.update(doc(db, 'sites', s.id), { members, roles });
+          const managers = (s.managers || []).filter(x => x !== uid);
+          if (on && role === '現場管理者') managers.push(uid);
+          if (on !== ((s.members || []).indexOf(uid) !== -1) || (on && (s.roles || {})[uid] !== role)) b.update(doc(db, 'sites', s.id), { members, roles, managers });
         });
         await b.commit();
         showUsers('保存しました。');
@@ -1266,7 +1319,7 @@ async function showUser(uid, note) {
         list.forEach(s => {
           if ((s.members || []).indexOf(uid) === -1) return;
           const roles = { ...(s.roles || {}) }; delete roles[uid];
-          b.update(doc(db, 'sites', s.id), { members: s.members.filter(x => x !== uid), roles });
+          b.update(doc(db, 'sites', s.id), { members: s.members.filter(x => x !== uid), roles, managers: (s.managers || []).filter(x => x !== uid) });
         });
         b.delete(doc(db, 'users', uid));
         await b.commit();
