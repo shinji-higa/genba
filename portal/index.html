@@ -190,15 +190,15 @@ function sitesQuery() { const c = collection(db, 'sites'); return me.isMaster ? 
 function showList() {
   stopWatch();
   const t = performance.now();
-  let first = true;
+  let first = true, firstServer = false;
   show('panelPortal', '現場選択');
   $('addSite').style.display = me.canAddSite ? '' : 'none';
   $('noAdd').style.display = me.canAddSite ? 'none' : '';
   stop = onSnapshot(sitesQuery(), { includeMetadataChanges: true }, snap => {
     allSites = snap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => a.order - b.order);
     const server = !snap.metadata.fromCache;
-    if (first || server) $('speed').textContent = (server ? '最新を表示：' : '端末の控えを表示：') + sec(t) + '（開いてから ' + sec(T0) + '）';
-    first = false;
+    if (first || (server && !firstServer)) $('speed').textContent = (server ? '最新を表示：' : '端末の控えを表示：') + sec(t) + '（開いてから ' + sec(T0) + '）';
+    first = false; firstServer = firstServer || server;
     if (allSites.length || server) renderSites();
   }, e => { $('siteCardsContainer').innerHTML = banner('読み込めませんでした：' + e.message, true); });
 }
@@ -239,15 +239,15 @@ let detailTab = '現場詳細', rulesEditing = false;
 function showDetail(id, saved) {
   stopWatch();
   const t = performance.now();
-  let first = true;
+  let first = true, firstServer = false;
   rulesEditing = false;
   detailTab = '現場詳細';
   show('panelDetail', '', showList);
   stop = onSnapshot(doc(db, 'sites', id), { includeMetadataChanges: true }, d => {
     if (!d.exists()) { if (!d.metadata.fromCache) $('panelDetail').innerHTML = banner('この現場は見られません。', true); return; }
     const s = { id, ...d.data() }, server = !d.metadata.fromCache;
-    if (first || server) $('speed').textContent = (saved ? saved + '　' : '') + (server ? '最新を表示：' : '端末の控えを表示：') + sec(t);
-    first = false;
+    if (first || (server && !firstServer)) $('speed').textContent = (saved ? saved + '　' : '') + (server ? '最新を表示：' : '端末の控えを表示：') + sec(t);
+    first = false; firstServer = firstServer || server;
     $('title').textContent = s.siteName;
     if (!rulesEditing) renderDetail(s);
   }, e => { $('panelDetail').innerHTML = banner('読み込めませんでした：' + e.message, true); });
