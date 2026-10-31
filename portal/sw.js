@@ -15,7 +15,7 @@ self.addEventListener('activate', e => {
     .then(() => self.clients.claim()));
 });
 
-async function shell(req) {
+async function shell(req, ev) {
   const c = await caches.open(SHELL);
   const key = req.mode === 'navigate' ? './' : new URL(req.url).pathname;
   const hit = await c.match(key, { ignoreSearch: true });
@@ -30,7 +30,8 @@ async function shell(req) {
     }
     return r;
   });
-  if (hit) { net.catch(() => {}); return hit; }
+  // 控えを先に返しても、新しい版を受け取り終わるまで保存係を止めない（iPhone は待たせないと途中で打ち切る）
+  if (hit) { ev.waitUntil(net.catch(() => {})); return hit; }
   return net;
 }
 async function cacheFirst(name, req, max) {
@@ -50,7 +51,7 @@ self.addEventListener('fetch', e => {
   const u = new URL(req.url);
   if (u.origin === self.location.origin) {
     if (u.searchParams.has('check')) return;   // 新しい版の確認は、端末の控えを通さない
-    if (u.pathname.startsWith('/portal/') && !u.pathname.endsWith('/sw.js')) e.respondWith(shell(req));
+    if (u.pathname.startsWith('/portal/') && !u.pathname.endsWith('/sw.js')) e.respondWith(shell(req, e));
     return;
   }
   if (u.hostname === 'www.gstatic.com' && u.pathname.startsWith('/firebasejs/')) { e.respondWith(cacheFirst(LIB, req)); return; }
