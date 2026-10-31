@@ -65,6 +65,8 @@
       <div class="portal-actions" style="margin-bottom: 12px;">
         <button type="button" id="addSite" class="btn btn-dark" style="display: none;">＋ 現場新規追加</button>
         <div id="noAdd" style="display:none; padding:12px; background:#f7f7f9; color:#555; font-size:0.82rem; font-weight:600; border:1px dashed var(--border); border-radius:4px; text-align:center;">新規に現場を追加する場合は、EXD担当者に連絡</div>
+        <button type="button" id="btnGoDaily" class="btn btn-outline" style="display: none;">日報</button>
+        <button type="button" id="btnGoHealth" class="btn btn-outline" style="display: none;">体調<span id="healthDot" class="hl-dot" style="display: none;" title="今日の体調チェックがまだです"></span></button>
       </div>
       <div class="search-row">
         <div class="search-box"><span class="search-icon">🔍</span><input type="text" id="inputSearchSite" placeholder="現場名で検索..."></div>
@@ -78,6 +80,8 @@
   <div id="panelDetail" class="view-panel"></div>
   <div id="panelSettings" class="view-panel"></div>
   <div id="panelNotices" class="view-panel"></div>
+  <div id="panelDaily" class="view-panel"></div>
+  <div id="panelHealth" class="view-panel"></div>
   <div id="appFooter" class="app-footer">
     <button type="button" id="btnFooterNotices" class="footer-notice-btn"><span>🔔 お知らせ通知</span><span id="noticeBadge" class="notice-badge">0</span></button>
   </div>
@@ -86,7 +90,7 @@
 <script type="module">
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, sendPasswordResetEmail, signOut } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
-import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager, collection, query, where, doc, getDoc, getDocs, getDocFromCache, getDocsFromCache, setDoc, updateDoc, writeBatch, onSnapshot, disableNetwork, enableNetwork, orderBy, limit, waitForPendingWrites, runTransaction } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
+import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager, collection, query, where, doc, getDoc, getDocs, getDocFromCache, getDocsFromCache, setDoc, updateDoc, writeBatch, onSnapshot, disableNetwork, enableNetwork, deleteDoc, orderBy, limit, waitForPendingWrites, runTransaction } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
 import { getStorage, ref as stRef, uploadBytesResumable, getDownloadURL } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-storage.js';
 
@@ -105,7 +109,7 @@ storage.maxUploadRetryTime = 60000;   // 電波が切れたら1分で一度あ�
 const auth = getAuth(app);
 auth.languageCode = 'ja';   // パスワード再設定のメールと画面を日本語にする
 const db = initializeFirestore(app, { localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }) });
-const APP_VER = 'Ver.20261031-14';
+const APP_VER = 'Ver.20261031-15';
 
 /* ---------- 電波なしでも使う（今の現場管理と同じ考え方） ----------
    ・保存は押した瞬間に完了の形。電波が戻ったら自動で送る（データは Firestore が端末に貯める）
@@ -279,7 +283,7 @@ const RULES = [
   ['ruleToilet', 'トイレ', ['未確認', '敷地内or仮設', '無し']],
   ['ruleGuard', '守衛手続', ['未確認', '無し', '有り']]
 ];
-const PANELS = ['panelLogin', 'panelPortal', 'panelNewSite', 'panelDetail', 'panelSettings', 'panelNotices'];
+const PANELS = ['panelLogin', 'panelPortal', 'panelNewSite', 'panelDetail', 'panelSettings', 'panelNotices', 'panelDaily', 'panelHealth'];
 let me = null, stop = null, backTo = null;
 
 function show(panel, title, back, backLabel) {
@@ -319,7 +323,7 @@ onAuthStateChanged(auth, async user => {
   const key = 'portalMe:' + user.uid;
   let c = {};
   try { c = JSON.parse(localStorage.getItem(key) || '{}'); } catch (e) {}
-  me = { uid: user.uid, name: c.name || '', group: c.group || '', isMaster: c.isMaster === true, canAddSite: c.canAddSite === true };
+  me = { uid: user.uid, name: c.name || '', group: c.group || '', isMaster: c.isMaster === true, canAddSite: c.canAddSite === true, canDaily: c.canDaily === true, isSenior: c.isSenior === true };
   $('admin').style.display = me.isMaster ? '' : 'none';
   showList();
   nStart();
@@ -328,9 +332,10 @@ onAuthStateChanged(auth, async user => {
     const d = await getDoc(doc(db, 'users', user.uid));
     const x = d.exists() ? d.data() : {};
     const isMaster = x.isMaster === true, canAddSite = isMaster || x.canAddSite === true;
-    me.name = x.name || ''; me.group = x.group || '';
-    localStorage.setItem(key, JSON.stringify({ isMaster, canAddSite, name: me.name, group: me.group }));
-    if (isMaster !== me.isMaster || canAddSite !== me.canAddSite) {
+    const canDaily = isMaster || x.canDaily === true, isSenior = x.isSenior === true, moved = canDaily !== me.canDaily || isSenior !== me.isSenior;
+    me.name = x.name || ''; me.group = x.group || ''; me.canDaily = canDaily; me.isSenior = isSenior;
+    localStorage.setItem(key, JSON.stringify({ isMaster, canAddSite, canDaily, isSenior, name: me.name, group: me.group }));
+    if (isMaster !== me.isMaster || canAddSite !== me.canAddSite || moved) {
       me.isMaster = isMaster; me.canAddSite = canAddSite;
       $('admin').style.display = isMaster ? '' : 'none';
       showList(); nStart();
@@ -389,12 +394,17 @@ function showList() {
   show('panelPortal', '現場選択');
   $('addSite').style.display = me.canAddSite ? '' : 'none';
   $('noAdd').style.display = me.canAddSite ? 'none' : '';
+  $('btnGoDaily').style.display = me.canDaily ? '' : 'none';
+  $('btnGoDaily').onclick = dOpen;
+  $('btnGoHealth').onclick = hOpen;
+  let hChecked = false;
   stop = onSnapshot(sitesQuery(), { includeMetadataChanges: true }, snap => {
     allSites = snap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => a.order - b.order);
     const server = !snap.metadata.fromCache;
     if (first || (server && !firstServer)) $('speed').textContent = (server ? '最新を表示：' : '端末の控えを表示：') + sec(t) + '（開いてから ' + sec(T0) + '）';
     first = false; firstServer = firstServer || server;
     if (allSites.length || server) renderSites();
+    if (!hChecked && (allSites.length || server)) { hChecked = true; hPortal(); }
   }, e => { $('siteCardsContainer').innerHTML = banner('読み込めませんでした：' + e.message, true); });
 }
 function renderSites() {
@@ -1688,10 +1698,517 @@ function oHost(s, k) {
   };
 }
 
+/* ---------- 日報（今の現場管理と同じ。本人が1日ずつ入力。電波なしでも保存できる）----------
+   daily/{本人}/days/{yyyyMMdd}。計算：8:00〜12:00・13:00〜17:00 の8時間。超えた分が時間外、足りない分が早退（平日のみ）。夜勤は休憩なし
+   給与への受け渡しはまだ。受け渡すときは出勤・退勤の時刻から計算し直す */
+const pad2 = n => ('0' + n).slice(-2);
+const dsOf = d => d.getFullYear() + '/' + pad2(d.getMonth() + 1) + '/' + pad2(d.getDate());
+const dsId = ds => String(ds).replace(/\//g, '');
+const dsIso = ds => String(ds).replace(/\//g, '-'), isoDs = v => String(v).replace(/-/g, '/');
+const DOW = ['日', '月', '火', '水', '木', '金', '土'];
+const STD_HOURS = 8;
+const holCache = {};
+let companyDays = {};   // 会社休日（meta/companyDays の days。{ 'yyyy/MM/dd': { type, name } }）
+function jpHolidays(year) {
+  if (holCache[year]) return holCache[year];
+  const key = dt => dsOf(dt), base = {};
+  const add = (m, d, name) => { base[year + '/' + pad2(m) + '/' + pad2(d)] = name; };
+  const nthMonday = (m, n) => { const dow = new Date(year, m - 1, 1).getDay(); return 1 + ((8 - dow) % 7) + (n - 1) * 7; };
+  const eq = c => Math.floor(c + 0.242194 * (year - 1980) - Math.floor((year - 1980) / 4));
+  add(1, 1, '元日'); add(1, nthMonday(1, 2), '成人の日'); add(2, 11, '建国記念の日'); add(2, 23, '天皇誕生日');
+  add(3, eq(20.8431), '春分の日'); add(4, 29, '昭和の日'); add(5, 3, '憲法記念日'); add(5, 4, 'みどりの日'); add(5, 5, 'こどもの日');
+  add(7, nthMonday(7, 3), '海の日'); add(8, 11, '山の日'); add(9, nthMonday(9, 3), '敬老の日'); add(9, eq(23.2488), '秋分の日');
+  add(10, nthMonday(10, 2), 'スポーツの日'); add(11, 3, '文化の日'); add(11, 23, '勤労感謝の日');
+  const out = { ...base };
+  for (let dt = new Date(year, 0, 2); dt.getFullYear() === year; dt.setDate(dt.getDate() + 1)) {   // 国民の休日：祝日にはさまれた平日
+    const k = key(dt);
+    if (base[k] || dt.getDay() === 0) continue;
+    const p = new Date(dt), n = new Date(dt); p.setDate(dt.getDate() - 1); n.setDate(dt.getDate() + 1);
+    if (base[key(p)] && base[key(n)]) out[k] = '国民の休日';
+  }
+  Object.keys(base).sort().forEach(k => {   // 振替休日：日曜の祝日の後の、最初の祝日でない日
+    const a = k.split('/').map(Number), dt = new Date(a[0], a[1] - 1, a[2]);
+    if (dt.getDay() !== 0) return;
+    const n = new Date(dt);
+    do { n.setDate(n.getDate() + 1); } while (out[key(n)]);
+    out[key(n)] = '振替休日';
+  });
+  return (holCache[year] = out);
+}
+function dayType(ds) {
+  const p = ds.split('/').map(Number), dow = new Date(p[0], p[1] - 1, p[2]).getDay(), c = companyDays[ds];
+  if (c && c.type === '出勤日') return { date: ds, day: p[2], type: '平日', name: c.name || '', dow };
+  if (c && (c.type === '所定休日' || c.type === '法定休日')) return { date: ds, day: p[2], type: c.type, name: c.name || '', dow };
+  const hn = jpHolidays(p[0])[ds];
+  if (dow === 0 || hn) return { date: ds, day: p[2], type: '法定休日', name: hn || '', dow };
+  return { date: ds, day: p[2], type: dow === 6 ? '所定休日' : '平日', name: '', dow };
+}
+function payCalc(kubun, start, end, night, type) {
+  const r = { brk: 0, hours: 0, ot: 0, early: 0, night: 0 };
+  if (kubun !== '出勤') return r;
+  const s = Number(start);
+  let e = Number(end);
+  if (e <= s) e += 24;
+  r.brk = night ? 0 : (s <= 12 && e >= 13 ? 1 : 0);
+  r.hours = Math.max(0, e - s - r.brk);
+  r.ot = Math.max(0, r.hours - STD_HOURS);
+  if (type === '平日') r.early = Math.max(0, STD_HOURS - r.hours);
+  r.night = night ? 1 : 0;
+  return r;
+}
+const typeBadge = t => '<span class="dt-badge' + (t === '所定休日' ? ' sat' : t === '法定休日' ? ' hol' : '') + '">' + esc(t) + '</span>';
+let D = null;
+const dCol = () => collection(db, 'daily', me.uid, 'days');
+function dOpen() {
+  stopWatch();
+  show('panelDaily', '日報', showList);
+  $('speed').textContent = '';
+  const t = new Date(), hours = Array.from({ length: 24 }, (_, h) => '<option value="' + h + '">' + h + ':00</option>').join('');
+  D = { y: t.getFullYear(), m: t.getMonth() + 1, entries: {}, sel: dsOf(t), kubun: '出勤', sites: [] };
+  $('panelDaily').innerHTML =
+    '<div class="info-card"><div class="card-header-row"><span style="font-weight: 700;">📝 日報入力</span><span id="dType" class="daily-daytype"></span></div>' +
+    '<div class="form-group"><label for="dDate">日付</label><input type="date" id="dDate" class="date-input"></div>' +
+    '<div class="form-group"><label>区分</label><div id="dKubun" class="daily-kb-row">' + ['出勤', '欠勤', '有給'].map(k => '<button type="button" class="daily-kb" data-k="' + k + '">' + k + '</button>').join('') + '</div></div>' +
+    '<div id="dTime" class="grid-two-col form-group"><div><label for="dStart">出勤時刻</label><select id="dStart">' + hours + '</select></div><div><label for="dEnd">退勤時刻</label><select id="dEnd">' + hours + '</select></div></div>' +
+    '<label id="dNightW" class="daily-check"><input type="checkbox" id="dNight"> <span>夜勤</span></label>' +
+    '<div class="form-group"><label for="dSite">現場</label><div id="dChips" class="daily-chips"></div><div class="daily-site-add"><input type="text" id="dSite" list="dSites" placeholder="現場名を入力して「追加」" autocomplete="off"><button type="button" class="btn btn-sub" id="dAdd">追加</button></div><datalist id="dSites">' + allSites.map(s => '<option value="' + esc(s.siteName) + '"></option>').join('') + '</datalist></div>' +
+    '<div class="form-group"><label for="dMemo">メモ</label><textarea id="dMemo" class="auto-expand" placeholder="作業内容など（任意）"></textarea></div>' +
+    '<div class="daily-save-row" style="display: flex; gap: 8px;"><button type="button" id="dSave" class="btn btn-dark" style="flex: 1;">この内容で保存</button><button type="button" id="dDel" class="btn btn-sub" style="display: none;">削除</button></div></div>' +
+    '<div class="daily-month"><button type="button" class="dp-nav" id="dPrev" aria-label="前の月">‹</button><div id="dLabel" class="daily-month-label"></div><button type="button" class="dp-nav" id="dNext" aria-label="次の月">›</button></div>' +
+    '<div class="info-card"><div class="card-header-row"><span style="font-weight: 700;">🗓 この月の日報</span></div><div id="dList"></div></div>';
+  autoGrow($('panelDaily'));
+  $('dDate').onchange = () => { if (!$('dDate').value) { $('dDate').value = dsIso(D.sel); return; } dSelect(isoDs($('dDate').value)); };
+  $('dKubun').querySelectorAll('[data-k]').forEach(b => { b.onclick = () => { if (b.dataset.k !== '出勤' && dayType(D.sel).type !== '平日') return; D.kubun = b.dataset.k; dKubun(); }; });
+  $('dPrev').onclick = () => dMove(-1);
+  $('dNext').onclick = () => dMove(1);
+  $('dAdd').onclick = dAddSite;
+  $('dSite').onkeydown = e => { if (e.key === 'Enter') { e.preventDefault(); dAddSite(); } };
+  $('dSite').onchange = () => { const v = $('dSite').value.trim(); if (v && allSites.some(s => s.siteName === v)) dAddSite(); };
+  $('dSave').onclick = dSave;
+  $('dDel').onclick = () => {
+    if (!confirm('この日の日報を削除しますか？')) return;
+    fire(deleteDoc(doc(dCol(), dsId(D.sel))), '日報の削除');
+  };
+  const m = doc(db, 'meta', 'companyDays');
+  oRead(() => getDoc(m), () => getDocFromCache(m)).then(d => { companyDays = (d.exists() && d.data().days) || {}; if (D) dRender(); }).catch(() => {});
+  dLoad();
+}
+function dLoad() {
+  if (stop) stop();
+  const pre = D.y + '/' + pad2(D.m) + '/';
+  $('dLabel').textContent = D.y + '年' + D.m + '月';
+  D.entries = {};
+  dRender();
+  stop = onSnapshot(query(dCol(), where('date', '>=', pre + '01'), where('date', '<=', pre + '31')), s => {
+    D.entries = {};
+    s.docs.forEach(d => { D.entries[d.data().date] = d.data(); });
+    dRender();
+  }, e => { $('dList').innerHTML = banner('読み込めませんでした：' + e.message, true); });
+}
+function dMove(diff) {
+  const t = D.y * 12 + (D.m - 1) + diff, today = dsOf(new Date());
+  D.y = Math.floor(t / 12); D.m = t % 12 + 1;
+  const pre = D.y + '/' + pad2(D.m);
+  D.sel = today.indexOf(pre) === 0 ? today : pre + '/01';
+  dLoad();
+}
+function dSelect(ds) {
+  const p = ds.split('/').map(Number);
+  D.sel = ds;
+  if (p[0] !== D.y || p[1] !== D.m) { D.y = p[0]; D.m = p[1]; dLoad(); return; }
+  dRender();
+}
+function dRender() {
+  if (!$('dList')) return;
+  const today = dsOf(new Date()), last = new Date(D.y, D.m, 0).getDate(), rows = [];
+  for (let n = 1; n <= last; n++) {
+    const d = dayType(D.y + '/' + pad2(D.m) + '/' + pad2(n)), e = D.entries[d.date];
+    let body = '';
+    if (e) {
+      if (e.kubun === '出勤') {
+        const sub = [];
+        if (e.ot) sub.push('時間外 ' + e.ot + '時間');
+        if (e.early) sub.push('<span class="ds-missing">早退 ' + e.early + '時間</span>');
+        if (e.night) sub.push('🌙夜勤');
+        if (e.site) sub.push(esc(e.site));
+        body = '<div>' + e.start + ':00〜' + e.end + ':00</div>' + (sub.length ? '<div class="dl-sub">' + sub.join(' · ') + '</div>' : '');
+      } else body = '<b>' + esc(e.kubun) + '</b>';
+    } else if (d.type === '平日' && d.date <= today) body = '<span class="dl-miss">未入力</span>';
+    rows.push('<div class="dl-row' + (d.date === D.sel ? ' sel' : '') + (d.type === '所定休日' ? ' sat' : d.type === '法定休日' ? ' hol' : '') + '" data-d="' + d.date + '"><div class="dl-date">' + d.day + '<small>(' + DOW[d.dow] + ')</small></div>' +
+      '<div class="dl-type">' + (d.type !== '平日' ? typeBadge(d.type) : '') + (d.name ? '<div class="dl-hname">' + esc(d.name) + '</div>' : '') + '</div><div class="dl-body">' + body + '</div></div>');
+  }
+  $('dList').innerHTML = rows.join('');
+  $('dList').querySelectorAll('[data-d]').forEach(r => { r.onclick = () => dSelect(r.dataset.d); });
+  const info = dayType(D.sel), e = D.entries[D.sel];
+  $('dDate').value = dsIso(D.sel);
+  $('dType').innerHTML = '(' + DOW[info.dow] + ') ' + typeBadge(info.type) + (info.name ? ' <small>' + esc(info.name) + '</small>' : '');
+  D.kubun = e ? e.kubun : '出勤';
+  $('dStart').value = String(e && e.start != null && e.start !== '' ? e.start : 8);
+  $('dEnd').value = String(e && e.end != null && e.end !== '' ? e.end : 17);
+  $('dNight').checked = !!(e && e.night);
+  $('dMemo').value = e ? (e.memo || '') : '';
+  // 保存済みの日はその現場。新しく入れる日は、前回入れた現場（無ければ担当の最初の現場）
+  let lastS = [];
+  try { lastS = JSON.parse(localStorage.getItem('portalDailySites:' + me.uid) || '[]') || []; } catch (x) {}
+  D.sites = e ? String(e.site || '').split('、').map(x => x.trim()).filter(Boolean) : (lastS.length ? lastS.slice() : (allSites[0] ? [allSites[0].siteName] : []));
+  $('dSite').value = '';
+  dChips();
+  $('dDel').style.display = e ? '' : 'none';
+  dKubun();
+}
+function dChips() {
+  $('dChips').innerHTML = D.sites.map((s, i) => '<span class="daily-chip">' + esc(s) + '<button type="button" data-i="' + i + '" aria-label="削除">×</button></span>').join('');
+  $('dChips').style.display = D.sites.length ? '' : 'none';
+  $('dChips').querySelectorAll('[data-i]').forEach(b => { b.onclick = () => { D.sites.splice(+b.dataset.i, 1); dChips(); }; });
+}
+function dAddSite() {
+  const v = $('dSite').value.trim();
+  if (!v) return;
+  if (!D.sites.includes(v)) D.sites.push(v);
+  $('dSite').value = '';
+  dChips();
+}
+function dKubun() {
+  const info = dayType(D.sel);
+  if (D.kubun !== '出勤' && info.type !== '平日') D.kubun = '出勤';
+  $('dKubun').querySelectorAll('.daily-kb').forEach(b => { b.classList.toggle('active', b.dataset.k === D.kubun); b.disabled = b.dataset.k !== '出勤' && info.type !== '平日'; });
+  const w = D.kubun === '出勤';
+  $('dTime').style.display = w ? '' : 'none';
+  $('dNightW').style.display = w ? '' : 'none';
+}
+function dSave() {
+  const k = D.kubun, work = k === '出勤', start = +$('dStart').value, end = +$('dEnd').value, night = work && $('dNight').checked;
+  if (work && end <= start && !night) { alert('退勤が出勤より前になっています（夜勤のときは「夜勤」にチェックしてください）。'); return; }
+  dAddSite();
+  try { if (D.sites.length) localStorage.setItem('portalDailySites:' + me.uid, JSON.stringify(D.sites)); } catch (x) {}
+  const t = dayType(D.sel), c = payCalc(k, start, end, night, t.type);
+  fire(setDoc(doc(dCol(), dsId(D.sel)), { date: D.sel, dow: DOW[t.dow], type: t.type, kubun: k, start: work ? start : '', end: work ? end : '', brk: c.brk, hours: c.hours, ot: c.ot, early: c.early, night: !!c.night, site: D.sites.join('、').slice(0, 500), memo: $('dMemo').value.trim().slice(0, 500), at: Date.now(), by: me.uid, byName: me.name || me.uid }), '日報');
+  const b = $('dSave');
+  b.textContent = '保存しました ✓';
+  setTimeout(() => { if ($('dSave')) $('dSave').textContent = 'この内容で保存'; }, 1500);
+}
+
+/* ---------- 体調チェック（今の現場管理と同じ）----------
+   health/{yyyyMMdd:本人}。対象は 60歳以上（users の isSenior）とマスター。入力は今日の分だけ（同じ日は書き換え、確認済みは外れる）。
+   見られるのは本人・マスター・本人の担当現場の現場管理者（保存のときに viewers へ入れる）。判定は画面で行う（電波なしでも結果が出る）。
+   要確認・作業不可は、音の出る通知がまだ無いので、お知らせに出す */
+const H_RULE = { stopSys: 180, stopDia: 110, lowSys: 90, warnSys: 160, warnDia: 100, pulseLow: 50, pulseHigh: 100 };
+const H_Q = [
+  { k: 'sleep', label: '睡眠', opts: ['よく眠れた', '普通', '眠れていない'] }, { k: 'condition', label: '今日の体調', opts: ['良い', '普通', '悪い'] },
+  { k: 'breakfast', label: '朝食', opts: ['食べた', '食べていない'] }, { k: 'alcohol', label: '前日の飲酒', opts: ['なし', '適量', '多め'] },
+  { k: 'medicine', label: 'いつもの薬', opts: ['飲んだ', '飲み忘れ', '服薬なし'] },
+  { k: 'fatigue', label: '前日の疲れ', opts: ['残っていない', '少し残っている', 'かなり残っている'], summer: true }, { k: 'urine', label: '尿の色', opts: ['薄い', '普通', '濃い'], summer: true }
+];
+const H_SYM = ['頭痛', 'めまい', '動悸', '胸の痛み', '息苦しさ', '発熱', 'だるさ', '吐き気', '腰や関節の痛み'], H_SYM_STOP = ['胸の痛み', '息苦しさ'];
+const H_LV = { ok: { icon: '🟢', label: '通常', rank: 0 }, warn: { icon: '🟡', label: '要確認', rank: 1 }, stop: { icon: '🔴', label: '作業不可', rank: 2 } };
+const hSummer = () => [5, 6, 7, 8, 9].includes(new Date().getMonth() + 1);
+const hId = (ds, uid) => dsId(ds) + ':' + uid;
+const hBp = r => r.sys + '/' + r.dia + (r.pulse !== '' && r.pulse != null ? ' · 脈拍 ' + r.pulse : '');
+const hDate = ds => { const p = ds.split('/').map(Number); return p[1] + '月' + p[2] + '日(' + DOW[new Date(p[0], p[1] - 1, p[2]).getDay()] + ')'; };
+const hBadge = l => l ? '<span class="hl-badge ' + l + '">' + H_LV[l].icon + ' ' + H_LV[l].label + '</span>' : '<span class="hl-badge none">未入力</span>';
+const hAt = t => { const d = new Date(t || 0); return (d.getMonth() + 1) + '/' + d.getDate() + ' ' + d.getHours() + ':' + pad2(d.getMinutes()); };
+const hChecks = c => c && c.length ? '<span class="hl-checked">✓ 確認済み：' + c.map(x => esc(x.by) + ' ' + hAt(x.at)).join('、') + '</span>' : '';
+function hJudge(h, summer) {
+  const R = H_RULE, stop = [], warn = [], bp = h.sys + '/' + h.dia;
+  if (h.sys >= R.stopSys || h.dia >= R.stopDia) stop.push('血圧が高い（' + bp + '）');
+  else if (h.sys >= R.warnSys || h.dia >= R.warnDia) warn.push('血圧が高め（' + bp + '）');
+  if (h.sys < R.lowSys) stop.push('血圧が低い（' + bp + '）');
+  if (h.pulse !== '') { if (h.pulse < R.pulseLow) warn.push('脈拍が少ない（' + h.pulse + '）'); else if (h.pulse > R.pulseHigh) warn.push('脈拍が多い（' + h.pulse + '）'); }
+  (h.symptoms || []).forEach(s => (H_SYM_STOP.includes(s) ? stop : warn).push(s));
+  if (h.condition === '悪い') warn.push('体調が悪い');
+  if (h.medicine === '飲み忘れ') warn.push('薬の飲み忘れ');
+  if (summer) { if (h.fatigue === 'かなり残っている') warn.push('疲れが残っている'); if (h.urine === '濃い') warn.push('尿の色が濃い'); }
+  return { level: stop.length ? 'stop' : (warn.length ? 'warn' : 'ok'), reasons: stop.concat(warn) };
+}
+/* 自分が見る人の一覧（60歳以上）：マスターは全員、現場管理者は自分が管理する現場の人。ほかのグループの人は users を読めないので、記録があるときだけ出る */
+let hPeopleCache = null;
+async function hPeople() {
+  if (hPeopleCache && Date.now() - hPeopleCache.t < 60000) return hPeopleCache.list;
+  let list = [];
+  const q = query(collection(db, 'users'), where('isSenior', '==', true));
+  if (me.isMaster) list = (await oRead(() => getDocs(q), () => getDocsFromCache(q))).docs.map(d => ({ uid: d.id, ...d.data() }));
+  else {
+    const ids = [...new Set(allSites.filter(s => (s.managers || []).includes(me.uid)).flatMap(s => s.members || []))];
+    const got = await Promise.allSettled(ids.map(id => { const r = doc(db, 'users', id); return oRead(() => getDoc(r), () => getDocFromCache(r)); }));
+    list = got.filter(g => g.status === 'fulfilled' && g.value.exists() && g.value.data().isSenior === true).map(g => ({ uid: g.value.id, ...g.value.data() }));
+  }
+  hPeopleCache = { t: Date.now(), list };
+  return list;
+}
+async function hPortal() {
+  const b = $('btnGoHealth'), mine = me.isMaster || me.isSenior;
+  let show_ = mine;
+  if (!show_ && allSites.some(s => (s.managers || []).includes(me.uid))) { try { show_ = (await hPeople()).length > 0; } catch (e) {} }
+  b.style.display = show_ ? 'inline-flex' : 'none';
+  if (!mine) { $('healthDot').style.display = 'none'; return; }
+  const today = dsOf(new Date()), key = 'portalHealthDone:' + me.uid;
+  if (localStorage.getItem(key) === today) { $('healthDot').style.display = 'none'; return; }
+  $('healthDot').style.display = 'inline-block';
+  try {
+    const q = query(collection(db, 'health'), where('uid', '==', me.uid), where('date', '==', today));
+    if (!(await oRead(() => getDocs(q), () => getDocsFromCache(q))).empty) { localStorage.setItem(key, today); $('healthDot').style.display = 'none'; }
+  } catch (e) {}
+}
+let H = null;
+function hOpen() {
+  stopWatch();
+  show('panelHealth', '体調チェック', showList);
+  $('speed').textContent = '';
+  const mine = me.isMaster || me.isSenior;
+  H = { view: mine ? 'mine' : 'team', canMine: mine, canTeam: false, list: [], consent: !mine, editing: false, dirty: false, second: false, ans: {}, sym: [], teamDate: dsOf(new Date()), team: [], open: {}, person: {}, cm: {} };
+  const bp = (n, ph1, ph2, ph3) => '<div class="hl-bp"><div><small>上（最高）</small><input type="tel" inputmode="numeric" maxlength="3" id="hS' + n + '"' + ph1 + ' autocomplete="off"></div><div><small>下（最低）</small><input type="tel" inputmode="numeric" maxlength="3" id="hD' + n + '"' + ph2 + ' autocomplete="off"></div><div><small>脈拍（任意）</small><input type="tel" inputmode="numeric" maxlength="3" id="hP' + n + '"' + ph3 + ' autocomplete="off"></div></div>';
+  let summerHead = false;
+  $('panelHealth').innerHTML =
+    '<div id="hTabs" class="hl-tabs" style="display: none;"><button type="button" class="daily-kb" data-v="mine">自分の記録</button><button type="button" class="daily-kb" data-v="team">みんなの体調</button></div>' +
+    '<div id="hMine"><div id="hConsent" class="info-card" style="display: none;"><div class="card-header-row"><span style="font-weight: 700;">🩺 体調チェックを始める前に</span></div><div class="hl-howto"><ul><li>記録した血圧・体調・症状は、現場での事故やけがを防ぐために使います。</li><li>記録を見られるのは、あなたと、マスター、あなたの担当現場の現場管理者だけです。</li><li>「要確認」「作業不可」になったときは、その人たちに通知が届きます。</li></ul></div><button type="button" id="hAgree" class="btn btn-dark">同意して始める</button></div>' +
+    '<div id="hResult" style="display: none;"></div>' +
+    '<div id="hForm" class="info-card"><div class="card-header-row"><span style="font-weight: 700;">🩺 今朝の体調チェック</span><span id="hDateL" class="daily-daytype"></span></div>' +
+    '<div class="hl-howto"><b>測り方</b><ul><li>起きてから1時間以内（トイレの後、朝食と薬の前）</li><li>座って1〜2分休んでから測る</li><li>できれば2回測って、2回とも入力する</li></ul></div>' +
+    '<div class="form-group"><label for="hHour">測定時刻</label><div class="hl-time"><select id="hHour" aria-label="時">' + Array.from({ length: 24 }, (_, i) => '<option value="' + i + '">' + i + '</option>').join('') + '</select><span>:</span><select id="hMin" aria-label="分">' + Array.from({ length: 60 }, (_, i) => '<option value="' + pad2(i) + '">' + pad2(i) + '</option>').join('') + '</select></div></div>' +
+    '<div class="form-group"><label>血圧・脈拍（1回目）</label>' + bp(1, ' placeholder="例 130"', ' placeholder="例 85"', ' placeholder="例 70"') + '</div>' +
+    '<button type="button" id="hAdd2" class="btn btn-sub hl-add2">＋ 2回目も入力する</button>' +
+    '<div id="hSecond" class="form-group" style="display: none;"><label>血圧・脈拍（2回目）<button type="button" class="hl-link" id="hNo2">やめる</button></label>' + bp(2, '', '', '') + '</div>' +
+    '<div id="hQ">' + H_Q.map(q => {
+      const head = q.summer && !summerHead ? (summerHead = true, '<div class="hl-summer-head" data-summer="1">☀️ 夏の項目（熱中症対策）</div>') : '';
+      return head + '<div class="form-group hl-q" data-q="' + q.k + '"' + (q.summer ? ' data-summer="1"' : '') + '><label>' + q.label + '</label><div class="hl-opts c' + q.opts.length + '">' + q.opts.map(v => '<button type="button" class="daily-kb" data-v="' + v + '">' + v + '</button>').join('') + '</div></div>';
+    }).join('') + '</div>' +
+    '<div class="form-group"><label>気になる症状（あてはまるものを全部）</label><div id="hSym" class="hl-sym">' + ['なし'].concat(H_SYM).map(v => '<button type="button" class="hl-chip' + (H_SYM_STOP.includes(v) ? ' danger' : '') + '" data-v="' + v + '">' + v + '</button>').join('') + '</div></div>' +
+    '<div class="form-group"><label for="hMemo">メモ</label><textarea id="hMemo" class="auto-expand" placeholder="気になることがあれば（任意）"></textarea></div>' +
+    '<div style="display: flex; gap: 8px;"><button type="button" id="hSave" class="btn btn-dark" style="flex: 1;">記録する</button><button type="button" id="hCancel" class="btn btn-sub" style="display: none;">やめる</button></div></div>' +
+    '<div class="info-card"><div class="card-header-row"><span style="font-weight: 700;">🗓 最近の記録</span></div><div id="hHist"></div></div></div>' +
+    '<div id="hTeam" style="display: none;"><div class="daily-month"><button type="button" class="dp-nav" id="hPrev" aria-label="前の日">‹</button><div id="hTeamDate" class="daily-month-label"></div><button type="button" class="dp-nav" id="hNext" aria-label="次の日">›</button></div><div id="hSum" class="hl-sum"></div><div class="info-card"><div id="hTeamList"></div></div></div>';
+  autoGrow($('panelHealth'));
+  $('hTabs').querySelectorAll('[data-v]').forEach(b => { b.onclick = () => hView(b.dataset.v); });
+  $('hQ').querySelectorAll('.hl-q').forEach(g => g.querySelectorAll('.daily-kb').forEach(b => { b.onclick = () => { H.ans[g.dataset.q] = b.dataset.v; H.dirty = true; hSync(); }; }));
+  $('hSym').querySelectorAll('.hl-chip').forEach(b => { b.onclick = () => {
+    const v = b.dataset.v;
+    if (v === 'なし') H.sym = ['なし'];
+    else { const s = H.sym.filter(x => x !== 'なし'), i = s.indexOf(v); if (i < 0) s.push(v); else s.splice(i, 1); H.sym = s; }
+    H.dirty = true; hSync();
+  }; });
+  ['hS1', 'hD1', 'hP1', 'hS2', 'hD2', 'hP2'].forEach(id => { $(id).oninput = () => { $(id).value = $(id).value.replace(/[０-９]/g, c => String.fromCharCode(c.charCodeAt(0) - 0xFEE0)).replace(/\D/g, '').slice(0, 3); H.dirty = true; }; });
+  ['hHour', 'hMin', 'hMemo'].forEach(id => { $(id).addEventListener('input', () => { H.dirty = true; }); });
+  $('hAdd2').onclick = () => hSecond(true);
+  $('hNo2').onclick = () => hSecond(false);
+  $('hAgree').onclick = () => { H.consent = true; fire(setDoc(doc(db, 'healthConsent', me.uid), { at: Date.now() }), '体調記録の同意'); hRender(); };
+  $('hSave').onclick = hSave;
+  $('hCancel').onclick = () => { H.editing = false; hFill(hTodayRec()); hRender(); window.scrollTo(0, 0); };
+  $('hPrev').onclick = () => hTeamMove(-1);
+  $('hNext').onclick = () => hTeamMove(1);
+  hFill(null);
+  const off = [];
+  if (H.canMine) {
+    off.push(onSnapshot(query(collection(db, 'health'), where('uid', '==', me.uid)), s => {
+      H.list = s.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => a.date < b.date ? 1 : -1).slice(0, 30);
+      if (hTodayRec()) localStorage.setItem('portalHealthDone:' + me.uid, dsOf(new Date()));
+      if (!H.dirty && !H.editing) hFill(hTodayRec());
+      hRender();
+    }, () => {}));
+    off.push(onSnapshot(doc(db, 'healthConsent', me.uid), d => { if (d.exists()) H.consent = true; else if (!d.metadata.fromCache) H.consent = false; hRender(); }, () => {}));
+  }
+  stop = () => { off.forEach(f => f()); if (H) { if (H.teamOff) H.teamOff(); Object.values(H.cm).forEach(c => c.off && c.off()); } };
+  hPeople().then(list => { if (!H) return; H.canTeam = me.isMaster || list.length > 0; H.people = list; hRender(); if (H.view === 'team') hTeamLoad(); }).catch(() => {});
+  hRender();
+}
+const hTodayRec = () => H.list.find(r => r.date === dsOf(new Date())) || null;
+function hSecond(on) {
+  H.second = !!on;
+  $('hSecond').style.display = on ? '' : 'none';
+  $('hAdd2').style.display = on ? 'none' : '';
+  if (!on) ['hS2', 'hD2', 'hP2'].forEach(id => { $(id).value = ''; });
+}
+function hFill(r) {
+  const n = new Date(), t = r && /^\d{1,2}:\d{2}$/.test(r.time) ? r.time.split(':') : [String(n.getHours()), pad2(n.getMinutes())];
+  $('hHour').value = String(+t[0]); $('hMin').value = pad2(t[1]);
+  [['hS1', 'sys1'], ['hD1', 'dia1'], ['hP1', 'pulse1'], ['hS2', 'sys2'], ['hD2', 'dia2'], ['hP2', 'pulse2']].forEach(a => { $(a[0]).value = r && r[a[1]] !== '' && r[a[1]] != null ? String(r[a[1]]) : ''; });
+  H.ans = {};
+  H_Q.forEach(q => { if (r && r[q.k]) H.ans[q.k] = r[q.k]; });
+  H.sym = r ? (r.symptoms && r.symptoms.length ? r.symptoms.slice() : ['なし']) : [];
+  $('hMemo').value = r ? (r.memo || '') : '';
+  hSecond(!!(r && r.sys2 !== '' && r.sys2 != null));
+  hSync();
+  H.dirty = false;
+}
+function hSync() {
+  $('hQ').querySelectorAll('.hl-q').forEach(g => g.querySelectorAll('.daily-kb').forEach(b => b.classList.toggle('active', H.ans[g.dataset.q] === b.dataset.v)));
+  $('hSym').querySelectorAll('.hl-chip').forEach(b => b.classList.toggle('active', H.sym.includes(b.dataset.v)));
+  const s = hSummer();
+  $('hQ').querySelectorAll('[data-summer]').forEach(el => { el.style.display = s ? '' : 'none'; });
+}
+function hView(v) {
+  if (v === 'team' && !H.canTeam) v = 'mine';
+  H.view = v;
+  $('hMine').style.display = v === 'mine' ? '' : 'none';
+  $('hTeam').style.display = v === 'team' ? '' : 'none';
+  $('hTabs').querySelectorAll('[data-v]').forEach(b => b.classList.toggle('active', b.dataset.v === v));
+  if (v === 'team') hTeamLoad();
+}
+function hRender() {
+  if (!H || !$('hMine')) return;
+  if (!H.canMine && H.view === 'mine') { if (H.canTeam) hView('team'); else { $('hMine').style.display = 'none'; } }
+  $('hTabs').style.display = H.canMine && H.canTeam ? '' : 'none';
+  $('hTabs').querySelectorAll('[data-v]').forEach(b => b.classList.toggle('active', b.dataset.v === H.view));
+  $('hDateL').textContent = hDate(dsOf(new Date()));
+  let rec = hTodayRec();
+  const need = H.consent === false;
+  $('hConsent').style.display = need ? '' : 'none';
+  if (need) rec = null;
+  $('hResult').style.display = rec && !H.editing ? '' : 'none';
+  $('hResult').innerHTML = rec && !H.editing ? hResultHtml(rec) : '';
+  if ($('hFix')) $('hFix').onclick = () => { H.editing = true; hFill(hTodayRec()); hRender(); window.scrollTo(0, 0); };
+  $('hForm').style.display = !need && (!rec || H.editing) ? '' : 'none';
+  $('hCancel').style.display = rec && H.editing ? '' : 'none';
+  $('hSave').textContent = rec ? 'この内容で書き直す' : '記録する';
+  hSync();
+  if (!$('hHist').querySelector('[data-cmbox]:not(:empty)')) {
+    $('hHist').innerHTML = H.list.length ? hRows(H.list, true) : '<div style="color: var(--muted); font-size: 0.85rem;">まだ記録はありません。</div>';
+    hCmWire($('hHist'));
+  }
+}
+function hResultHtml(r) {
+  const lv = H_LV[r.level] || H_LV.ok, msg = { ok: '問題ありません。今日も安全に作業しましょう。', warn: '職長（現場の責任者）に伝えてください。高所作業・重機の作業は見合わせてください。', stop: '今日は作業をしないでください。職長に連絡し、早めに医療機関を受診してください。' }[r.level];
+  const sos = r.level === 'stop' && (r.symptoms || []).some(s => H_SYM_STOP.includes(s));
+  return '<div class="hl-result ' + r.level + '"><div class="hl-result-icon">' + lv.icon + '</div><div class="hl-result-title">' + lv.label + '</div><div class="hl-result-msg">' + msg + '</div>' +
+    (sos ? '<div class="hl-result-sos">胸の痛み・息苦しさが強いときは、すぐに119番に電話してください。</div>' : '') +
+    (r.reasons && r.reasons.length ? '<ul class="hl-reasons">' + r.reasons.map(x => '<li>• ' + esc(x) + '</li>').join('') + '</ul>' : '') +
+    '<div class="hl-result-vals">' + esc(r.time + ' 測定 · 血圧 ' + hBp(r)) + '</div>' + ((r.checks || []).length ? '<div style="margin-top: 6px;">' + hChecks(r.checks) + '</div>' : '') +
+    '<button type="button" class="btn btn-sub" id="hFix">修正する</button></div>';
+}
+const hCmHtml = id => '<div class="hl-cm"><button type="button" class="btn btn-sub" data-cm="' + esc(id) + '" style="padding: 2px 8px; font-size: 0.75rem;">💬 コメント ' + (H.cm[id] && H.cm[id].open ? '▲' : '▼') + '</button><div data-cmbox="' + esc(id) + '"></div></div>';
+const hRows = (list, cm) => list.map(r => '<div class="hl-hist"><div class="hl-row"><div class="hl-row-date">' + esc(hDate(r.date)) + '<div class="dl-sub">' + esc(r.time) + '</div></div><div class="hl-row-body">' + esc(hBp(r)) + (r.reasons && r.reasons.length ? '<div class="dl-sub">' + esc(r.reasons.join('、')) + '</div>' : '') + '</div>' + hBadge(r.level) + '</div>' + (cm ? hCmHtml(r.id) : '') + '</div>').join('');
+/* 記録ごとのコメント（health/{id}/comments） */
+function hCmWire(root) {
+  root.querySelectorAll('[data-cm]').forEach(b => { b.onclick = () => hCmToggle(b.dataset.cm, root); });
+  root.querySelectorAll('[data-cmbox]').forEach(x => { if (H.cm[x.dataset.cmbox] && H.cm[x.dataset.cmbox].open) hCmDraw(x.dataset.cmbox, root); });
+}
+function hCmToggle(id, root) {
+  const c = H.cm[id] || (H.cm[id] = { open: false, items: [] });
+  c.open = !c.open;
+  root.querySelector('[data-cm="' + CSS.escape(id) + '"]').textContent = '💬 コメント ' + (c.open ? '▲' : '▼');
+  if (c.off) { c.off(); c.off = null; }
+  if (c.open) c.off = onSnapshot(collection(db, 'health', id, 'comments'), s => { c.items = s.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => (a.at || 0) - (b.at || 0)); hCmDraw(id, root); }, e => { c.items = []; hCmDraw(id, root); });
+  hCmDraw(id, root);
+}
+function hCmDraw(id, root) {
+  const box = root.querySelector('[data-cmbox="' + CSS.escape(id) + '"]'), c = H.cm[id];
+  if (!box) return;
+  if (!c.open) { box.innerHTML = ''; return; }
+  const keep = box.querySelector('textarea') ? box.querySelector('textarea').value : '';
+  box.innerHTML = '<div style="margin-top: 6px;">' + c.items.map(m => '<div style="font-size: 0.82rem; padding: 4px 0; border-bottom: 1px solid #eee;"><b>' + esc(m.byName) + '</b> <small style="color: var(--muted);">' + hAt(m.at) + '</small><div style="white-space: pre-wrap;">' + esc(m.text) + '</div></div>').join('') + '</div>' +
+    '<div style="display: flex; gap: 6px; margin-top: 6px;"><textarea rows="1" style="flex: 1;" placeholder="コメントを入力"></textarea><button type="button" class="btn btn-dark" style="padding: 4px 12px;">送信</button></div>';
+  const ta = box.querySelector('textarea');
+  ta.value = keep;
+  box.querySelector('button').onclick = () => {
+    const text = ta.value.trim();
+    if (!text) return;
+    if (text.length > 1000) { alert('コメントは1000文字以内で入力してください。'); return; }
+    fire(setDoc(doc(collection(db, 'health', id, 'comments')), { text, by: me.uid, byName: me.name || me.uid, at: Date.now() }), 'コメント');
+    ta.value = '';
+    const r = H.list.concat(H.team).find(x => x.id === id);
+    if (r) hNotice(r, '「' + hDate(r.date) + ' ' + (r.name || '') + 'の体調」にコメント：' + clip(text, 80), id);
+  };
+}
+function hNotice(r, text, target) {
+  const members = [...new Set([r.uid].concat(r.viewers || []))].filter(x => x !== me.uid);
+  fire(setDoc(doc(collection(db, 'notices')), { site: '', siteName: '体調チェック', type: 'health', text, by: me.uid, byName: me.name || me.uid, at: Date.now(), members, mentions: [], target: target || '' }), 'お知らせ');
+}
+function hSave() {
+  const v = id => $(id).value.trim(), summer = hSummer(), today = dsOf(new Date());
+  const f = { time: $('hHour').value + ':' + $('hMin').value, memo: v('hMemo').slice(0, 300), symptoms: H.sym.filter(s => s !== 'なし') };
+  const miss = [];
+  if (!v('hS1') || !v('hD1')) miss.push('血圧（上・下）');
+  H_Q.forEach(q => { f[q.k] = q.summer && !summer ? '' : (H.ans[q.k] || ''); if (!f[q.k] && !(q.summer && !summer)) miss.push(q.label); });
+  if (!H.sym.length) miss.push('気になる症状');
+  if (miss.length) { alert('まだ入力していない項目があります：' + miss.join('、')); return; }
+  const num = (id, lo, hi, label) => { const s = v(id); if (!s) return ''; const x = Number(s); if (!(x % 1 === 0 && x >= lo && x <= hi)) throw new Error(label + 'の数字を確認してください（' + lo + '〜' + hi + '）。'); return x; };
+  try {
+    Object.assign(f, { sys1: num('hS1', 60, 260, '血圧（上）'), dia1: num('hD1', 30, 180, '血圧（下）'), pulse1: num('hP1', 30, 220, '脈拍'), sys2: H.second ? num('hS2', 60, 260, '2回目の血圧（上）') : '', dia2: H.second ? num('hD2', 30, 180, '2回目の血圧（下）') : '', pulse2: H.second ? num('hP2', 30, 220, '2回目の脈拍') : '' });
+    if (f.dia1 >= f.sys1) throw new Error('血圧の上と下が逆になっていないか確認してください。');
+    if ((f.sys2 === '') !== (f.dia2 === '')) throw new Error('2回目の血圧は、上と下の両方を入力してください。');
+    if (f.sys2 !== '' && f.dia2 >= f.sys2) throw new Error('2回目の血圧の上と下が逆になっていないか確認してください。');
+    if (f.sys2 === '' && f.pulse2 !== '') throw new Error('2回目の脈拍だけを入力することはできません。');
+  } catch (e) { alert(e.message); return; }
+  const avg = l => { const a = l.filter(x => x !== ''); return a.length ? Math.round(a.reduce((s, x) => s + x, 0) / a.length) : ''; };
+  f.sys = avg([f.sys1, f.sys2]); f.dia = avg([f.dia1, f.dia2]); f.pulse = avg([f.pulse1, f.pulse2]);
+  const j = hJudge(f, summer), prev = hTodayRec(), id = hId(today, me.uid);
+  const viewers = [...new Set(allSites.filter(s => (s.members || []).includes(me.uid)).flatMap(s => s.managers || []))].filter(x => x !== me.uid);
+  // 書き換えたときは「確認済み」を外す（内容が変わったため）
+  const rec = { ...f, uid: me.uid, name: me.name || me.uid, date: today, level: j.level, reasons: j.reasons, savedAt: Date.now(), checks: [], viewers };
+  fire(setDoc(doc(db, 'health', id), rec), '体調チェック');
+  localStorage.setItem('portalHealthDone:' + me.uid, today);
+  // 要確認・作業不可になった（または前より悪くなった）ときだけ知らせる
+  if (j.level !== 'ok' && H_LV[j.level].rank > H_LV[(prev && prev.level) || 'ok'].rank) hNotice(rec, H_LV[j.level].icon + ' ' + H_LV[j.level].label + '：' + clip(j.reasons.join('、'), 80), id);
+  H.editing = false; H.dirty = false;
+  window.scrollTo(0, 0);
+}
+function hTeamLoad() {
+  if (!H || !$('hTeamDate')) return;
+  if (H.teamOff) H.teamOff();
+  const ds = H.teamDate, c = collection(db, 'health');
+  const p = ds.split('/').map(Number);
+  $('hTeamDate').textContent = p[0] + '年' + hDate(ds);
+  H.teamOff = onSnapshot(me.isMaster ? query(c, where('date', '==', ds)) : query(c, where('date', '==', ds), where('viewers', 'array-contains', me.uid)), s => {
+    H.team = s.docs.map(d => ({ id: d.id, ...d.data() })).filter(r => r.uid !== me.uid || me.isSenior);
+    hTeamDraw();
+  }, e => { $('hTeamList').innerHTML = banner('読み込めませんでした：' + e.message, true); });
+}
+function hTeamMove(diff) {
+  const p = H.teamDate.split('/').map(Number), ds = dsOf(new Date(p[0], p[1] - 1, p[2] + diff));
+  if (ds > dsOf(new Date())) return;
+  H.teamDate = ds; H.open = {};
+  hTeamLoad();
+}
+function hTeamDraw() {
+  const map = {};
+  (H.people || []).forEach(u => { map[u.uid] = { uid: u.uid, name: u.name || u.uid, company: u.group || '', r: null }; });
+  H.team.forEach(r => { map[r.uid] = { ...(map[r.uid] || { uid: r.uid, company: '' }), name: r.name || r.uid, r }; });
+  const order = { stop: 0, warn: 1, ok: 2 }, rank = x => x.r ? order[x.r.level] : 3;
+  const list = Object.values(map).sort((a, b) => rank(a) - rank(b) || String(a.name).localeCompare(String(b.name), 'ja'));
+  const cnt = { stop: 0, warn: 0, ok: 0, none: 0 };
+  list.forEach(x => { cnt[x.r ? x.r.level : 'none']++; });
+  $('hSum').innerHTML = [['stop', '🔴', '作業不可'], ['warn', '🟡', '要確認'], ['ok', '🟢', '通常'], ['none', '⚪', '未入力']].map(a => '<div><b>' + cnt[a[0]] + '</b>' + a[1] + ' ' + a[2] + '</div>').join('');
+  const box = $('hTeamList');
+  if (!list.length) { box.innerHTML = '<div style="color: var(--muted); font-size: 0.85rem;">対象の人がいません。</div>'; return; }
+  box.innerHTML = list.map(x => {
+    const r = x.r, open = !!H.open[x.uid], ph = H.person[x.uid];
+    let act = '', detail = '';
+    if (r && r.level !== 'ok') act = hChecks(r.checks) + ((r.checks || []).some(c => c.uid === me.uid) ? '' : '<button type="button" class="btn btn-dark" data-ok="' + esc(r.id) + '">本人に確認した</button>');
+    if (open) {
+      const kv = [];
+      if (r) {
+        kv.push(['血圧', r.sys1 + '/' + r.dia1 + (r.sys2 !== '' ? ' , ' + r.sys2 + '/' + r.dia2 : '')]);
+        if (r.pulse !== '') kv.push(['脈拍', String(r.pulse)]);
+        H_Q.forEach(q => { if (r[q.k]) kv.push([q.label, r[q.k]]); });
+        kv.push(['気になる症状', (r.symptoms || []).length ? r.symptoms.join('、') : 'なし']);
+        if (r.memo) kv.push(['メモ', r.memo]);
+      }
+      detail = '<div class="hl-detail">' + (kv.length ? '<dl class="hl-kv">' + kv.map(a => '<dt>' + esc(a[0]) + '</dt><dd>' + esc(a[1]) + '</dd>').join('') + '</dl>' : '') +
+        (ph && ph.list ? '<div style="margin-top: 8px;">' + (ph.list.length ? hRows(ph.list) : 'まだ記録はありません。') + '</div>' : '<div class="hl-tact"><button type="button" class="btn btn-sub" data-more="' + esc(x.uid) + '"' + (ph ? ' disabled' : '') + '>' + (ph ? '読み込んでいます...' : '最近の記録を見る') + '</button></div>') + '</div>';
+    }
+    return '<div class="hl-trow"><div class="hl-thead" data-p="' + esc(x.uid) + '">' + hBadge(r ? r.level : '') + '<div class="hl-tname"><span>' + esc(x.name) + '</span>' + (x.company ? '<small>' + esc(x.company) + '</small>' : '') + (r ? '<div class="dl-sub">' + esc(r.time + ' · ' + hBp(r)) + ((r.reasons || []).length ? ' · ' + esc(r.reasons.join('、')) : '') + '</div>' : '') + '</div><span style="color: var(--muted);">' + (open ? '▲' : '▼') + '</span></div>' +
+      (act ? '<div class="hl-tact">' + act + '</div>' : '') + detail + (r ? hCmHtml(r.id) : '') + '</div>';
+  }).join('');
+  box.querySelectorAll('[data-p]').forEach(b => { b.onclick = () => { H.open[b.dataset.p] = !H.open[b.dataset.p]; hTeamDraw(); }; });
+  box.querySelectorAll('[data-ok]').forEach(b => { b.onclick = () => {
+    const r = H.team.find(x => x.id === b.dataset.ok);
+    fire(updateDoc(doc(db, 'health', r.id), { checks: (r.checks || []).concat([{ uid: me.uid, by: me.name || me.uid, at: Date.now() }]) }), '体調の確認');
+  }; });
+  box.querySelectorAll('[data-more]').forEach(b => { b.onclick = async () => {
+    const u = b.dataset.more, c = collection(db, 'health');
+    H.person[u] = { loading: true }; hTeamDraw();
+    try {
+      const s = await getDocs(me.isMaster ? query(c, where('uid', '==', u)) : query(c, where('uid', '==', u), where('viewers', 'array-contains', me.uid)));
+      H.person[u] = { list: s.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => a.date < b.date ? 1 : -1).slice(0, 30) };
+    } catch (e) { H.person[u] = null; alert('読み込めませんでした。'); }
+    hTeamDraw();
+  }; });
+  hCmWire(box);
+}
+
 /* ---------- お知らせ（見た目は今の現場管理と同じ）----------
    現場の人とマスターに届く。自分の操作は自分には出さない。30日より古いものは出さない。未読は現場カードにも出す（案 E）。
    音の出る通知（アプリを閉じていても届くもの）はまだ入れていない */
-const N_TYPES = { report: '報告', photo: '写真', doc: '資料', site: '現場情報' };
+const N_TYPES = { report: '報告', photo: '写真', doc: '資料', site: '現場情報', health: '体調' };
 const clip = (s, n) => { s = String(s || ''); return s.length > n ? s.slice(0, n) + '…' : s; };
 let nItems = [], nReads = { all: 0, ids: {} }, nUnsub = [], nFilter = 'all', nSort = 'date', nAsc = false, nLimit = 30, nActor = '';
 const nIsRead = it => (it.at || 0) <= (nReads.all || 0) || !!(nReads.ids || {})[it.id];
@@ -1768,13 +2285,13 @@ function nRender() {
     html += '<div class="notice-card' + (read ? '' : ' unread') + '" data-n="' + esc(it.id) + '"><div class="notice-card-top">' + (read ? '' : '<span class="notice-new">未読</span>') +
       '<span class="notice-type t-' + esc(it.type) + '">' + esc(N_TYPES[it.type] || 'お知らせ') + '</span>' + ((it.mentions || []).includes(me.uid) ? '<span class="notice-mention">@あなた</span>' : '') +
       '<span style="flex:1;"></span><span>' + esc(rWhen(it.at)) + '</span></div>' + (nSort === 'site' ? '' : '<div class="notice-site">' + esc(it.siteName) + '</div>') +
-      '<div class="notice-text">' + esc(it.text) + '</div><div class="notice-foot"><span>👤 ' + esc(it.byName) + '</span><span style="flex:1;"></span><button type="button" class="btn btn-sub" data-open="' + esc(it.site) + '" style="padding:2px 8px; font-size:0.75rem;">現場を開く</button></div></div>';
+      '<div class="notice-text">' + esc(it.text) + '</div><div class="notice-foot"><span>👤 ' + esc(it.byName) + '</span><span style="flex:1;"></span><button type="button" class="btn btn-sub" data-open="' + esc(it.site) + '" style="padding:2px 8px; font-size:0.75rem;">' + (it.type === 'health' ? '体調を開く' : '現場を開く') + '</button></div></div>';
   });
   if (rest > 0) html += '<button type="button" class="btn btn-sub" id="nMore" style="width:100%; margin-top:8px;">▼ 以前のお知らせを表示（残り' + rest + '件）</button>';
   $('nBox').innerHTML = html;
   $('nBox').querySelectorAll('[data-n]').forEach(c => { c.onclick = () => nRead(c.dataset.n); });
   $('nBox').querySelectorAll('[data-open]').forEach(b => {
-    b.onclick = e => { e.stopPropagation(); nRead(b.closest('[data-n]').dataset.n); showDetail(b.dataset.open); };
+    b.onclick = e => { e.stopPropagation(); nRead(b.closest('[data-n]').dataset.n); if (b.dataset.open) showDetail(b.dataset.open); else hOpen(); };
   });
   if ($('nMore')) $('nMore').onclick = () => { nLimit += 30; nRender(); };
 }
@@ -1835,6 +2352,9 @@ async function showUser(uid, note) {
       '<div class="form-group"><label>名前</label><input type="text" id="n" value="' + esc(d.name) + '"></div>' +
       '<label class="check-row"><input id="m" type="checkbox"' + (d.isMaster ? ' checked' : '') + (uid === me.uid ? ' disabled' : '') + '>マスター</label>' +
       '<label class="check-row" style="margin-top: 8px;"><input id="ca" type="checkbox"' + (d.canAddSite ? ' checked' : '') + '>新規現場追加者</label>' +
+      '<label class="check-row" style="margin-top: 8px;"><input id="cd" type="checkbox"' + (d.canDaily ? ' checked' : '') + '>日報</label>' +
+      '<label class="check-row" style="margin-top: 8px;"><input id="sn" type="checkbox"' + (d.isSenior ? ' checked' : '') + '>60歳以上</label>' +
+      '<div class="form-group" style="margin-top: 10px;"><label>携帯番号（伝票・注文書の注文者の欄に出ます）</label><input type="tel" id="mb" value="' + esc(d.mobile) + '" placeholder="例: 090-1234-5678"></div>' +
       '<div class="form-group" style="margin-top: 10px;"><label>グループ</label><select id="g">' + ['', 'エクスケア社員', 'エクスケア', 'マルトク', 'NAFA'].map(g => '<option value="' + g + '"' + ((d.group || '') === g ? ' selected' : '') + '>' + (g || '（空欄：エクスケアとして扱う）') + '</option>').join('') + '</select></div></div>' +
       '<div class="info-card"><div class="card-header-row"><span style="font-weight: 700;">担当現場</span></div>' + list.map(s => {
         const role = (s.roles || {})[uid], on = (s.members || []).indexOf(uid) !== -1;
@@ -1849,7 +2369,7 @@ async function showUser(uid, note) {
       try {
         const b = writeBatch(db);
         const g = $('g').value;
-        b.update(doc(db, 'users', uid), { name: $('n').value.trim(), isMaster: $('m').checked, canAddSite: $('ca').checked, group: g, home: (g === 'マルトク' || g === 'NAFA') ? g : 'エクスケア' });
+        b.update(doc(db, 'users', uid), { name: $('n').value.trim(), isMaster: $('m').checked, canAddSite: $('ca').checked, canDaily: $('cd').checked, isSenior: $('sn').checked, mobile: $('mb').value.trim(), group: g, home: (g === 'マルトク' || g === 'NAFA') ? g : 'エクスケア' });
         list.forEach(s => {
           const on = P.querySelector('[data-s="' + s.id + '"]').checked, role = P.querySelector('[data-r="' + s.id + '"]').value;
           const members = (s.members || []).filter(x => x !== uid), roles = { ...(s.roles || {}) };
