@@ -4,7 +4,13 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>現場管理ポータル</title>
-<link rel="preconnect" href="https://drive.google.com">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="現場ポータル">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<link rel="preconnect" href="https://firebasestorage.googleapis.com">
 <!-- 見た目は今の現場管理と同じ（app.css は現場管理の style をそのまま写したもの） -->
 <link rel="stylesheet" href="app.css?v=1">
 <style>
@@ -61,7 +67,7 @@
 <script type="module">
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, sendPasswordResetEmail, signOut } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
-import { initializeFirestore, persistentLocalCache, collection, query, where, doc, getDoc, getDocs, setDoc, updateDoc, writeBatch, onSnapshot } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
+import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager, collection, query, where, doc, getDoc, getDocs, setDoc, updateDoc, writeBatch, onSnapshot, disableNetwork, enableNetwork } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
 import { getStorage, ref as stRef, uploadBytesResumable, getDownloadURL } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-storage.js';
 
@@ -76,9 +82,137 @@ const app = initializeApp({
   storageBucket: 'genba-portal-9077b.firebasestorage.app'
 });
 const storage = getStorage(app);
+storage.maxUploadRetryTime = 60000;   // 電波が切れたら1分で一度あきらめ、端末に貯めたまま後で送り直す
 const auth = getAuth(app);
 auth.languageCode = 'ja';   // パスワード再設定のメールと画面を日本語にする
-const db = initializeFirestore(app, { localCache: persistentLocalCache() });
+const db = initializeFirestore(app, { localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }) });
+const APP_VER = 'Ver.20261031-01';
+
+/* ---------- 電波なしでも使う（今の現場管理と同じ考え方） ----------
+   ・保存は押した瞬間に完了の形。電波が戻ったら自動で送る（データは Firestore が端末に貯める）
+   ・写真・資料は端末（IndexedDB）に貯めて、電波が戻ったら Cloud Storage へ送る。画面を閉じても消えない
+   ・iPhone は裏で送り続けられないので、ポータルを開いているときに送る */
+let fireN = 0, netDown = navigator.onLine === false, badgeUp = 0, badgeEl = null;
+let failures = [];
+try { failures = JSON.parse(localStorage.getItem('portalFailures') || '[]') || []; } catch (e) {}
+function fail(label, msg) {
+  failures.push({ label, msg, t: Date.now() });
+  try { localStorage.setItem('portalFailures', JSON.stringify(failures)); } catch (e) {}
+  badge();
+}
+/** 保存を始めて、結果を待たずに進む。断られたときだけ一覧に残す */
+function fire(p, label) {
+  fireN++; badge();
+  return p.catch(e => { fail(label, (e && e.code) === 'permission-denied' ? '権限がありません' : '送れませんでした'); })
+    .finally(() => { fireN--; badge(); });
+}
+function badge() {
+  if (!document.body) return;
+  if (!badgeEl) {
+    badgeEl = document.createElement('button');
+    badgeEl.type = 'button'; badgeEl.id = 'offlineBadge';
+    badgeEl.style.cssText = 'position:fixed;left:50%;transform:translateX(-50%);bottom:calc(128px + env(safe-area-inset-bottom,0px));z-index:3500;border:0;border-radius:18px;padding:8px 14px;font:700 13px -apple-system,BlinkMacSystemFont,"Hiragino Sans",Meiryo,sans-serif;color:#fff;box-shadow:0 2px 8px rgba(0,0,0,.3);display:none;max-width:92vw;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;';
+    badgeEl.onclick = showPending;
+    document.body.appendChild(badgeEl);
+  }
+  const n = fireN + badgeUp, txt = [];
+  if (netDown) txt.push('電波なし');
+  if (n) txt.push('未送信 ' + n + '件');
+  if (failures.length) txt.push('送れなかったもの ' + failures.length + '件');
+  badgeEl.style.display = txt.length ? 'block' : 'none';
+  badgeEl.style.background = failures.length ? '#c62828' : (n ? '#b35c00' : '#444');
+  badgeEl.textContent = txt.join('・') + (txt.length ? '（押すと詳しく）' : '');
+}
+function showPending() {
+  const bg = document.createElement('div');
+  bg.style.cssText = 'position:fixed;inset:0;z-index:3600;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;padding:16px;';
+  bg.innerHTML = '<div class="info-card" style="max-width:420px;width:100%;max-height:80vh;overflow:auto;margin:0;">' +
+    (netDown ? '<p style="margin:0 0 10px;"><b>電波がありません。</b><br>前に見た内容を表示しています。最新ではないことがあります。</p>' : '') +
+    '<p style="margin:0 0 10px;font-weight:700;">未送信（電波が戻ったら自動で送ります）：' + (fireN + badgeUp) + '件</p>' +
+    (failures.length ? '<p style="margin:0 0 6px;font-weight:700;color:#c62828;">送れなかったもの：' + failures.length + '件</p><ul style="margin:0 0 10px 18px;padding:0;color:#c62828;">' +
+      failures.map(f => '<li>' + esc(f.label) + '：' + esc(f.msg) + '</li>').join('') + '</ul>' : '') +
+    '<div style="display:flex;gap:8px;">' + (failures.length ? '<button type="button" data-a="clear" class="btn btn-sub" style="flex:1;">確認した</button>' : '') +
+    '<button type="button" data-a="close" class="btn btn-sub" style="flex:1;">閉じる</button></div>' +
+    '<p style="margin:10px 0 0;font-size:11px;color:#666;text-align:right;">' + APP_VER + '</p></div>';
+  bg.onclick = e => {
+    const a = e.target.getAttribute && e.target.getAttribute('data-a');
+    if (e.target === bg || a === 'close') bg.remove();
+    else if (a === 'clear') { failures = []; localStorage.removeItem('portalFailures'); badge(); bg.remove(); }
+  };
+  document.body.appendChild(bg);
+}
+window.addEventListener('online', () => { netDown = false; badge(); upPump(); });
+window.addEventListener('offline', () => { netDown = true; badge(); });
+document.addEventListener('visibilitychange', () => { if (!document.hidden) upPump(); });
+setInterval(() => upPump(), 30000);
+
+/* 新しい版の知らせ */
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('sw.js').catch(() => {});
+  navigator.serviceWorker.addEventListener('message', e => {
+    if (!e.data || e.data.type !== 'portal-update' || document.getElementById('updBar')) return;
+    const b = document.createElement('button');
+    b.type = 'button'; b.id = 'updBar'; b.textContent = '新しいVerがあります（押すと入れ替え）';
+    b.style.cssText = 'position:fixed;left:50%;transform:translateX(-50%);top:calc(8px + env(safe-area-inset-top,0px));z-index:3700;border:0;border-radius:18px;padding:9px 16px;background:#111;color:#fff;font:700 13px -apple-system,BlinkMacSystemFont,"Hiragino Sans",Meiryo,sans-serif;box-shadow:0 2px 8px rgba(0,0,0,.3);';
+    b.onclick = () => location.reload();
+    document.body.appendChild(b);
+  });
+}
+
+/* 写真・資料の貯め場所 */
+function idb() {
+  return new Promise((ok, ng) => {
+    const r = indexedDB.open('portal-offline', 1);
+    r.onupgradeneeded = () => r.result.createObjectStore('up', { keyPath: 'id' });
+    r.onsuccess = () => ok(r.result);
+    r.onerror = () => ng(r.error);
+  });
+}
+async function upTx(mode, fn) {
+  const d = await idb();
+  return new Promise((ok, ng) => {
+    const q = fn(d.transaction('up', mode).objectStore('up'));
+    q.onsuccess = () => ok(q.result);
+    q.onerror = () => ng(q.error);
+  });
+}
+const upRun = new Set();
+async function upPump() {
+  if (!auth.currentUser) return;
+  let list = [];
+  try { list = await upTx('readonly', s => s.getAll()); } catch (e) { return; }
+  badgeUp = list.length; badge();
+  if (navigator.onLine === false || window.portalTestOffline) return;
+  list.sort((a, b) => a.t - b.t);
+  for (const j of list) {
+    if (upRun.size >= 3) break;
+    if (upRun.has(j.id)) continue;
+    upRun.add(j.id);
+    upOne(j).finally(() => { upRun.delete(j.id); upPump(); });
+  }
+}
+async function upOne(j) {
+  const t = performance.now(), file = doc(db, 'sites', j.siteId, 'files', j.id), path = 'sites/' + j.siteId + '/' + j.id + '/' + j.name, r = stRef(storage, path);
+  try {
+    await uploadBytesResumable(r, j.blob, { contentType: j.mime });
+  } catch (e) {
+    if (e && e.code === 'storage/unauthorized') {
+      // 前の回で本体は届いていて、記録だけ残らなかった場合は成功として続ける
+      try { await getDownloadURL(r); } catch (e2) {
+        fire(updateDoc(file, { uploading: false, failed: true }), j.name);
+        await upTx('readwrite', s => s.delete(j.id));
+        fail(j.name, '権限がありません');
+        return;
+      }
+    } else { window.portalLastError = e && e.code; return; }   // 電波の問題：貯めたまま、あとで送り直す
+  }
+  try {
+    const url = await getDownloadURL(r);
+    fire(updateDoc(file, { url, path, uploading: false, sendMs: Math.round(performance.now() - t) }), j.name);
+    await upTx('readwrite', s => s.delete(j.id));
+    window.portalLastSend = sec(t);
+  } catch (e) { window.portalLastError = e && e.code; }
+}
 const PORTAL_API = 'https://script.google.com/macros/s/AKfycbyW2hFHqIQuu-TsflPk_0zv7gquhoepspuvRG9-bMStPDSWSc2blcDFBtWs7MisP3f_/exec';
 
 const $ = id => document.getElementById(id);
@@ -136,6 +270,7 @@ onAuthStateChanged(auth, async user => {
   me = { uid: user.uid, name: c.name || '', isMaster: c.isMaster === true, canAddSite: c.canAddSite === true };
   $('admin').style.display = me.isMaster ? '' : 'none';
   showList();
+  setTimeout(upPump, 1500);
   try {
     const d = await getDoc(doc(db, 'users', user.uid));
     const x = d.exists() ? d.data() : {};
@@ -313,11 +448,11 @@ function renderDetail(s) {
     $('rEdit').style.display = 'none'; $('rSave').style.display = 'inline-block'; $('rCancel').style.display = 'inline-block';
   };
   $('rCancel').onclick = () => { rulesEditing = false; renderDetail(s); };
-  $('rSave').onclick = async () => {
-    const data = readRules(), t = performance.now();
-    $('rSave').disabled = true;
-    try { await updateDoc(doc(db, 'sites', s.id), data); rulesEditing = false; $('speed').textContent = '保存 ' + sec(t); renderDetail({ ...s, ...data }); }
-    catch (e) { $('rSave').disabled = false; alert('保存できませんでした（権限がないか、通信できません）。'); }
+  $('rSave').onclick = () => {
+    const data = readRules();
+    fire(updateDoc(doc(db, 'sites', s.id), data), '注意事項');
+    rulesEditing = false;
+    renderDetail({ ...s, ...data });
   };
 }
 function ruleFields(v, locked) {
@@ -397,7 +532,7 @@ function xShell() {
   $('xFile').onchange = e => { const fs = [...e.target.files]; e.target.value = ''; if (fs.length) xUpload(X.kind, X.pending, fs); };
   $('xFAdd').onclick = async () => {
     const name = (prompt('「' + xNameOf(X.active[X.kind]) + '」内に作成するフォルダ名を入力してください:') || '').trim();
-    if (name) await xNewFolder(name, X.active[X.kind]);
+    if (name) xNewFolder(name, X.active[X.kind]);
   };
   $('xFMove').onclick = async () => {
     if (!X.selF.size) { alert('移動するフォルダにチェックを入れてください。'); return; }
@@ -406,7 +541,7 @@ function xShell() {
     if ([...X.selF].some(id => id === to || xDescendants(id).includes(to))) { alert('自分の中には移動できません。'); return; }
     const b = writeBatch(db);
     X.selF.forEach(id => b.update(doc(xSub('folders'), id), { parent: to }));
-    await b.commit(); X.selF.clear();
+    fire(b.commit(), 'フォルダの移動'); X.selF.clear();
   };
   $('xFDel').onclick = async () => {
     if (!X.selF.size) { alert('削除するフォルダにチェックを入れてください。'); return; }
@@ -415,7 +550,7 @@ function xShell() {
     X.selF.forEach(id => { ids.add(id); xDescendants(id).forEach(x => ids.add(x)); });
     const files = xFiles().filter(f => ids.has(f.folder));
     if (files.some(f => !xMayRemove(f)) || [...ids].some(id => !xMayRemove(X.folders.find(f => f.id === id) || {}))) { alert('削除できるのは、マスター・現場管理者、または自分が追加したものだけです。'); return; }
-    await xBatch([...[...ids].map(id => ['folders', id]), ...files.map(f => ['files', f.id])], { deleted: true });
+    xBatch([...[...ids].map(id => ['folders', id]), ...files.map(f => ['files', f.id])], { deleted: true });
     X.selF.clear();
     if (ids.has(X.active[X.kind])) X.active[X.kind] = '';
   };
@@ -468,8 +603,7 @@ function xList() {
     box.innerHTML = '<div class="info-card" style="grid-column: 1/-1; width:100%; text-align:center; color:var(--muted);">' + (sub ? 'このフォルダ直下には' + L + 'がありません（サブフォルダを選択してください）。' : L + 'がありません。「' + L + 'を追加」から保存してください。') + '</div>';
     return;
   }
-  // 送信中に画面を閉じると続きが送れないので、3分たっても終わらないものは失敗として見せる
-  const state = it => (it.failed || (it.uploading && Date.now() - (it.at || 0) > 180000)) ? '<span style="color:var(--error-text); font-size:0.74rem;"> 送信できませんでした</span>' : it.uploading ? '<span style="color:var(--muted); font-size:0.74rem;"> 送信中</span>' : '';
+  const state = it => it.failed ? '<span style="color:var(--error-text); font-size:0.74rem;"> 送信できませんでした</span>' : it.uploading ? '<span style="color:var(--muted); font-size:0.74rem;"> 未送信</span>' : '';
   box.innerHTML = items.map(it => {
     const id = esc(it.id), chk = X.sel.has(it.id), del = xMayRemove(it) ? '<button type="button" class="ACT" data-a="del" style="color:var(--error-text);">削除</button>' : '';
     const acts = c => ('<button type="button" class="ACT" data-a="move">移動</button><button type="button" class="ACT" data-a="edit">編集</button>' + del).replace(/class="ACT"/g, c);
@@ -504,49 +638,218 @@ function xList() {
     });
   });
 }
+/* ---------- 画面の中で開く（写真・PDF。今の現場管理の表示と同じ作り） ---------- */
+const PDFJS_URL = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js';
+const PDFJS_WORKER = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+let VW = null, pdfjsP = null, pdfRepaintTimer = null;
+const isOffline = () => navigator.onLine === false || !!window.portalTestOffline;
 function xView(it) {
-  if (!it.driveId && !it.url) { alert('まだ送信中です。'); return; }
-  if (it.kind === 'doc' && it.url) {
-    // PDF は端末の標準の表示で開く（複数ページも見られる）。Excel・CAD などはダウンロードになる
-    const a = document.createElement('a');
-    a.href = it.url; a.target = '_blank'; a.rel = 'noopener noreferrer';
-    document.body.appendChild(a); a.click(); a.remove();
-    return;
-  }
-  if (it.kind === 'doc') {
-    // iPhone で別窓にするとドライブのアプリに飛んでエラーになったため、画面の中で開く（今の現場管理と同じ）
-    const v = document.createElement('div');
-    v.style.cssText = 'position:fixed; inset:0; background:#000; z-index:100; display:flex; flex-direction:column;';
-    v.innerHTML = '<div style="display:flex; gap:8px; align-items:center; padding:8px; background:#111;"><span style="flex:1; color:#fff; font-size:0.85rem; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">' + esc(it.name) + '</span>' +
-      '<a class="btn btn-sub" style="padding:4px 10px;" target="_blank" rel="noopener noreferrer" href="https://drive.google.com/file/d/' + esc(it.driveId) + '/view">ドライブで開く</a><button type="button" class="btn btn-sub" style="padding:4px 10px;">閉じる</button></div>' +
-      '<iframe style="flex:1; width:100%; border:0; background:#fff;" allow="autoplay" src="https://drive.google.com/file/d/' + esc(it.driveId) + '/preview"></iframe>';
-    v.querySelector('button').onclick = () => v.remove();
-    document.body.appendChild(v);
-    return;
-  }
-  const o = document.createElement('div');
-  o.style.cssText = 'position:fixed; inset:0; background:rgba(0,0,0,.9); z-index:100; display:flex; align-items:center; justify-content:center;';
-  // 先に手元の見本画像を出し、大きい画像が届いたら差し替える（iPhone で drive.google.com の画像が出ないことがあったため、2つの入口を順に試す）
-  o.innerHTML = '<img style="width:100%; height:100%; object-fit:contain;" alt="" src="' + esc(it.thumb || '') + '"><div id="xViewMsg" style="position:absolute; left:12px; bottom:16px; color:#fff; font-size:0.8rem;">大きい写真を読み込んでいます…</div><button type="button" class="btn btn-sub" style="position:absolute; top:12px; right:12px;">閉じる</button>';
-  const shown = o.querySelector('img'), msg = o.querySelector('#xViewMsg'), big = new Image();
-  const tries = it.url ? [it.url] : ['https://lh3.googleusercontent.com/d/' + it.driveId + '=w2000', 'https://drive.google.com/thumbnail?id=' + it.driveId + '&sz=w2000'];
-  let k = 0;
-  big.onload = () => { shown.src = big.src; msg.remove(); };
-  big.onerror = () => { k++; if (k < tries.length) big.src = tries[k]; else msg.textContent = '大きい写真を表示できませんでした。'; };
-  big.src = tries[0];
-  o.onclick = () => o.remove();
-  document.body.appendChild(o);
+  const list = xItems();
+  viewerOpen(list, list.indexOf(it));
 }
-async function xBatch(rows, data) {
+function viewerOpen(list, index) {
+  if (!list.length) return;
+  let v = $('fileViewer');
+  if (!v) {
+    v = document.createElement('div');
+    v.id = 'fileViewer';
+    v.innerHTML =
+      '<div class="fv-bar"><button type="button" class="fv-btn" id="fvClose" aria-label="閉じる">✕</button>' +
+      '<div class="fv-title" id="fvTitle"></div><span class="fv-count" id="fvCount"></span>' +
+      '<a class="fv-btn" id="fvExt" target="_blank" rel="noopener noreferrer">保存</a></div>' +
+      '<div class="fv-body" id="fvBody"></div>' +
+      '<button type="button" class="fv-nav fv-prev" id="fvPrev" aria-label="前へ">‹</button>' +
+      '<button type="button" class="fv-nav fv-next" id="fvNext" aria-label="次へ">›</button>' +
+      '<div class="fv-zoom"><button type="button" id="fvOut" aria-label="縮小">－</button><button type="button" id="fvIn" aria-label="拡大">＋</button></div>' +
+      '<div class="fv-info" id="fvInfo"></div>';
+    document.body.appendChild(v);
+    $('fvClose').onclick = () => viewerClose();
+    $('fvPrev').onclick = () => viewerStep(-1);
+    $('fvNext').onclick = () => viewerStep(1);
+    $('fvOut').onclick = () => viewerSetScale(VW.scale / 1.5);
+    $('fvIn').onclick = () => viewerSetScale(VW.scale * 1.5);
+    viewerTouch($('fvBody'));
+  }
+  const wasOpen = !!VW;
+  VW = { list, index: Math.max(0, index), scale: 1 };
+  v.classList.add('open');
+  document.body.style.overflow = 'hidden';
+  document.body.classList.add('fv-open');
+  if (!wasOpen) { try { history.pushState({ fileViewer: 1 }, ''); } catch (e) {} }   // 端末の「戻る」で閉じる
+  viewerShow();
+}
+function viewerClose(fromBack) {
+  if (!VW) return;
+  $('fileViewer').classList.remove('open'); $('fvBody').innerHTML = '';
+  document.body.style.overflow = '';
+  document.body.classList.remove('fv-open');
+  if (VW.pdf) { try { VW.pdf.destroy(); } catch (e) {} }
+  VW = null;
+  if (!fromBack && history.state && history.state.fileViewer) { try { history.back(); } catch (e) {} }
+}
+window.addEventListener('popstate', () => { if (VW) viewerClose(true); });
+window.addEventListener('resize', () => { if (VW) viewerApply(); });
+function viewerStep(d) {
+  const i = VW.index + d;
+  if (i < 0 || i >= VW.list.length) return;
+  if (VW.pdf) { try { VW.pdf.destroy(); } catch (e) {} VW.pdf = null; }
+  VW.index = i; VW.scale = 1;
+  viewerShow();
+}
+function viewerShow() {
+  const it = VW.list[VW.index], n = VW.list.length, ext = $('fvExt');
+  $('fvTitle').textContent = it.name || '';
+  $('fvCount').textContent = n > 1 ? (VW.index + 1) + ' / ' + n : '';
+  $('fvPrev').style.display = (n > 1 && VW.index > 0) ? '' : 'none';
+  $('fvNext').style.display = (n > 1 && VW.index < n - 1) ? '' : 'none';
+  ext.href = it.url || (it.driveId ? 'https://drive.google.com/file/d/' + it.driveId + '/view' : '#');
+  ext.textContent = it.url ? '保存' : 'ドライブで開く';
+  ext.style.display = (it.url || it.driveId) && !isOffline() ? '' : 'none';
+  const info = [xDate(it.at)];
+  if (it.byName) info.push('👤 ' + it.byName);
+  $('fvInfo').textContent = info.join('　') + (it.comment ? '\n💬 ' + it.comment : '');
+  $('fvInfo').style.whiteSpace = 'pre-line';
+  if (/^image\//.test(it.mime || '') || it.kind === 'photo') viewerPhoto(it); else viewerDoc(it);
+}
+function viewerPhoto(it) {
+  const body = $('fvBody');
+  body.innerHTML = '<div class="fv-wrap" id="fvWrap"><img id="fvImg" alt=""></div>';
+  const img = $('fvImg'), tries = [];
+  if (it.url) tries.push(it.url);
+  if (it.driveId) tries.push('https://lh3.googleusercontent.com/d/' + it.driveId + '=w2000', 'https://drive.google.com/thumbnail?id=' + it.driveId + '&sz=w2000');
+  if (it.thumb) tries.push(it.thumb);   // 大きい写真が取れないときは、端末にある見本画像を出す
+  let k = 0;
+  img.onerror = () => {
+    k++;
+    if (k < tries.length) { img.src = tries[k]; return; }
+    body.innerHTML = '<div class="fv-msg">' + (isOffline() ? '電波がないため、この写真は表示できません。<br>電波のある所で一度開くと、次からは電波がなくても見られます。' : '写真を表示できませんでした。') + '</div>';
+  };
+  img.onload = () => { if (VW) { VW.natW = img.naturalWidth; VW.natH = img.naturalHeight; viewerApply(); } };
+  if (tries.length) img.src = tries[0]; else img.onerror();
+}
+function viewerDoc(it) {
+  const body = $('fvBody'), isPdf = /pdf/i.test(it.mime || '') || /\.pdf$/i.test(it.name || '');
+  if (!it.url) {
+    if (!it.driveId) { body.innerHTML = '<div class="fv-msg">まだ送信していません。送信が終わると開けます。</div>'; return; }
+    if (isOffline()) { body.innerHTML = '<div class="fv-msg">電波がないため、この資料は開けません。</div>'; return; }
+    body.innerHTML = '<iframe src="https://drive.google.com/file/d/' + encodeURIComponent(it.driveId) + '/preview" allow="autoplay"></iframe>';
+    return;
+  }
+  if (!isPdf) { body.innerHTML = '<div class="fv-msg">この形式の資料は、画面の中では開けません。<br>右上の「保存」から開いてください。</div>'; return; }
+  body.innerHTML = '<div class="fv-msg">資料を読み込んでいます…</div>';
+  const cur = VW;
+  fetch(it.url).then(r => { if (!r.ok) throw new Error('資料を開けませんでした。'); return r.arrayBuffer(); })
+    .then(buf => loadPdfJs().then(lib => lib.getDocument({ data: new Uint8Array(buf) }).promise))
+    .then(pdf => { if (VW !== cur) { pdf.destroy(); return; } VW.pdf = pdf; pdfDraw(); })
+    .catch(e => {
+      if (VW !== cur) return;
+      body.innerHTML = '<div class="fv-msg">' + (isOffline() ? '電波がないため、この資料は開けません。<br>電波のある所で一度開くと、次からは電波がなくても見られます。' : esc((e && e.message) || '資料を開けませんでした。')) + '</div>';
+    });
+}
+function loadPdfJs() {
+  if (pdfjsP) return pdfjsP;
+  pdfjsP = new Promise((ok, ng) => {
+    const s = document.createElement('script');
+    s.crossOrigin = 'anonymous'; s.src = PDFJS_URL;
+    s.onload = () => ok(window.pdfjsLib);
+    s.onerror = () => ng(new Error('PDFを表示する部品を読み込めませんでした。電波のある所で一度開いてください。'));
+    document.head.appendChild(s);
+  }).then(lib => fetch(PDFJS_WORKER).then(r => r.text()).then(t => {
+    lib.GlobalWorkerOptions.workerSrc = URL.createObjectURL(new Blob([t], { type: 'text/javascript' }));
+    return lib;
+  }));
+  pdfjsP.catch(() => { pdfjsP = null; });
+  return pdfjsP;
+}
+const pdfFitW = () => Math.max(100, $('fvBody').clientWidth - 16);
+function pdfPaint(page, c) {
+  const cssW = pdfFitW() * VW.scale, vp1 = page.getViewport({ scale: 1 }), dpr = Math.min(window.devicePixelRatio || 1, 2);
+  const vp = page.getViewport({ scale: Math.min(cssW * dpr, 4000) / vp1.width });   // 大きすぎる絵は作らない（スマホのメモリ）
+  c.width = Math.round(vp.width); c.height = Math.round(vp.height);
+  c.style.width = cssW + 'px'; c.style.height = (cssW * vp1.height / vp1.width) + 'px';
+  return page.render({ canvasContext: c.getContext('2d'), viewport: vp }).promise;
+}
+function pdfDraw() {
+  const body = $('fvBody'), wrap = document.createElement('div'), pdf = VW.pdf;
+  wrap.className = 'fv-pages'; wrap.id = 'fvPages';
+  body.innerHTML = ''; body.appendChild(wrap);
+  let chain = Promise.resolve();
+  for (let p = 1; p <= pdf.numPages; p++) {
+    chain = chain.then(() => {
+      if (!VW || VW.pdf !== pdf) return;
+      return pdf.getPage(p).then(page => { const c = document.createElement('canvas'); c.dataset.p = p; wrap.appendChild(c); return pdfPaint(page, c); });
+    });
+  }
+}
+function viewerApply() {
+  if (!VW) return;
+  const body = $('fvBody');
+  if (VW.pdf) {
+    const cssW = pdfFitW() * VW.scale;
+    document.querySelectorAll('#fvPages canvas').forEach(c => { const r = c.height / c.width; c.style.width = cssW + 'px'; c.style.height = (cssW * r) + 'px'; });
+    clearTimeout(pdfRepaintTimer);
+    pdfRepaintTimer = setTimeout(() => {
+      if (!VW || !VW.pdf) return;
+      const pdf = VW.pdf; let chain = Promise.resolve();
+      document.querySelectorAll('#fvPages canvas').forEach(c => { chain = chain.then(() => { if (VW && VW.pdf === pdf) return pdf.getPage(+c.dataset.p).then(pg => pdfPaint(pg, c)); }); });
+    }, 350);
+    return;
+  }
+  const img = $('fvImg'), wrap = $('fvWrap');
+  if (!img || !VW.natW) return;
+  const fit = Math.min(body.clientWidth / VW.natW, body.clientHeight / VW.natH), w = VW.natW * fit * VW.scale, h = VW.natH * fit * VW.scale;
+  img.style.width = w + 'px'; img.style.height = h + 'px';
+  wrap.style.width = Math.max(w, body.clientWidth) + 'px'; wrap.style.height = Math.max(h, body.clientHeight) + 'px';
+}
+function viewerSetScale(s, cx, cy) {
+  if (!VW) return;
+  const body = $('fvBody'), old = VW.scale;
+  s = Math.max(1, Math.min(6, s));
+  if (cx == null) { cx = body.clientWidth / 2; cy = body.clientHeight / 2; }
+  const px = (body.scrollLeft + cx) / old, py = (body.scrollTop + cy) / old;
+  VW.scale = s;
+  viewerApply();
+  body.scrollLeft = px * s - cx; body.scrollTop = py * s - cy;
+}
+function viewerTouch(body) {
+  let t0 = null, pinch = null, lastTap = 0;
+  body.addEventListener('touchstart', e => {
+    if (!VW) return;
+    if (e.touches.length === 2) {
+      const a = e.touches[0], b = e.touches[1], r = body.getBoundingClientRect();
+      pinch = { d: Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY), s: VW.scale, cx: (a.clientX + b.clientX) / 2 - r.left, cy: (a.clientY + b.clientY) / 2 - r.top };
+      t0 = null;
+    } else if (e.touches.length === 1) t0 = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+  }, { passive: true });
+  body.addEventListener('touchmove', e => {
+    if (!pinch || e.touches.length !== 2) return;
+    e.preventDefault();
+    const a = e.touches[0], b = e.touches[1];
+    viewerSetScale(pinch.s * Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY) / pinch.d, pinch.cx, pinch.cy);
+  }, { passive: false });
+  body.addEventListener('touchend', e => {
+    if (pinch) { if (e.touches.length < 2) pinch = null; return; }
+    if (!t0 || !VW) return;
+    const p = e.changedTouches[0], dx = p.clientX - t0.x, dy = p.clientY - t0.y, photo = !VW.pdf;
+    if (photo && VW.scale === 1 && Math.abs(dx) > 60 && Math.abs(dy) < 60) { viewerStep(dx < 0 ? 1 : -1); t0 = null; return; }
+    if (photo && Math.abs(dx) < 10 && Math.abs(dy) < 10) {
+      const now = Date.now();
+      if (now - lastTap < 300) { const r = body.getBoundingClientRect(); viewerSetScale(VW.scale > 1 ? 1 : 2.5, p.clientX - r.left, p.clientY - r.top); lastTap = 0; }
+      else lastTap = now;
+    }
+    t0 = null;
+  });
+}
+function xBatch(rows, data) {
   for (let i = 0; i < rows.length; i += 400) {
     const b = writeBatch(db);
     rows.slice(i, i + 400).forEach(r => b.update(doc(xSub(r[0]), r[1]), data));
-    await b.commit();
+    fire(b.commit(), xLabel(X.kind));
   }
 }
-async function xNewFolder(name, parent) {
+function xNewFolder(name, parent) {
   const ref = doc(xSub('folders'));
-  await setDoc(ref, { kind: X.kind, name, parent: parent || '', at: Date.now(), by: me.uid, deleted: false });
+  fire(setDoc(ref, { kind: X.kind, name, parent: parent || '', at: Date.now(), by: me.uid, deleted: false }), 'フォルダ「' + name + '」');
   return ref.id;
 }
 /* フォルダを選ぶ画面。allowTop=false のときは TOP を出さない。選ばなければ null */
@@ -566,7 +869,7 @@ function xPick(title, allowTop, allowNew) {
     o.querySelectorAll('[data-p]').forEach(b => { b.onclick = () => end(b.dataset.p); });
     if (o.querySelector('[data-n]')) o.querySelector('[data-n]').onclick = async () => {
       const name = (prompt('新しいフォルダ名を入力してください（' + xLabel(X.kind) + 'TOPの中に作ります）:') || '').trim();
-      if (name) end(await xNewFolder(name, '')); else end(null);
+      if (name) end(xNewFolder(name, '')); else end(null);
     };
     o.querySelector('[data-x]').onclick = () => end(null);
     document.body.appendChild(o);
@@ -586,29 +889,30 @@ async function xMove(ids) {
   if (!ids.length) return;
   const to = await xPick('移動先のフォルダを選んでください', false);
   if (to === null) return;
-  await xBatch(ids.map(id => ['files', id]), { folder: to });
+  xBatch(ids.map(id => ['files', id]), { folder: to });
   X.sel.clear(); X.selMode = false; xBulk();
 }
-async function xEdit(it) {
+function xEdit(it) {
   const name = prompt('名前を入力してください:', it.name);
   if (name === null || !name.trim()) return;
   const data = { name: name.trim() };
   if (it.kind === 'photo') { const c = prompt('コメントを入力してください:', it.comment || ''); if (c !== null) data.comment = c; }
-  await updateDoc(doc(xSub('files'), it.id), data);
+  fire(updateDoc(doc(xSub('files'), it.id), data), data.name);
 }
-async function xRemove(ids) {
+function xRemove(ids) {
   if (!ids.length) return;
   const list = xFiles().filter(f => ids.includes(f.id));
   if (list.some(f => !xMayRemove(f))) { alert('削除できるのは、マスター・現場管理者、または自分が追加したものだけです。'); return; }
   if (!confirm(list.length + '件を削除します。よろしいですか？')) return;
-  await xBatch(ids.map(id => ['files', id]), { deleted: true });
+  xBatch(ids.map(id => ['files', id]), { deleted: true });
   X.sel.clear(); X.selMode = false; xBulk();
 }
 /* 追加：写真は今の現場管理と同じく 1600px・画質 0.8 に縮める。一覧用の見本画像（長い辺 240px）は Firestore に入れる */
-function xPrepare(file) {
+function xPrepare(file, kind) {
   return new Promise(ok => {
     const raw = () => { const r = new FileReader(); r.onload = () => ok({ name: file.name, mime: file.type || 'application/octet-stream', data: String(r.result).split(',')[1], thumb: '' }); r.readAsDataURL(file); };
-    if (!/^image\/(jpeg|png|webp|heic)/i.test(file.type || '')) return raw();
+    // 資料は元のまま送る（今の現場管理と同じ）。縮めるのは写真だけ
+    if (kind !== 'photo' || !/^image\/(jpeg|png|webp|heic)/i.test(file.type || '')) return raw();
     const url = URL.createObjectURL(file), img = new Image();
     img.onload = () => {
       const draw = (max, q) => {
@@ -625,39 +929,25 @@ function xPrepare(file) {
     img.src = url;
   });
 }
-const upQueue = []; let upBusy = 0;
-function upNext() {
-  while (upBusy < 3 && upQueue.length) {
-    const j = upQueue.shift(); upBusy++;
-    const t = performance.now();
-    (async () => {
-      try {
-        // iPhone から Cloud Storage へ直接送る（途中で電波が切れても、つながれば続きから送る）
-        const bytes = Uint8Array.from(atob(j.data), c => c.charCodeAt(0));
-        const path = 'sites/' + j.siteId + '/' + j.ref.id + '/' + j.name;
-        await uploadBytesResumable(stRef(storage, path), bytes, { contentType: j.mime });
-        const url = await getDownloadURL(stRef(storage, path));
-        await updateDoc(j.ref, { url, path, uploading: false, sendMs: Math.round(performance.now() - t) });
-        window.portalLastSend = sec(t);
-      } catch (e) {
-        window.portalLastError = e && (e.code || e.message);
-        try { await updateDoc(j.ref, { uploading: false, failed: true }); } catch (e2) {}
-      }
-      upBusy--; upNext();
-    })();
-  }
-}
 async function xUpload(kind, folder, files) {
   for (const file of files) {
-    const p = await xPrepare(file);
-    const ref = doc(xSub('files'));
-    await setDoc(ref, { kind, folder, name: p.name, mime: p.mime, size: Math.round(p.data.length * 0.75), thumb: p.thumb, by: me.uid, byName: me.name || me.uid, at: Date.now(), driveId: '', uploading: true, deleted: false, comment: '' });
-    upQueue.push({ ref, siteId: X.s.id, name: p.name, mime: p.mime, data: p.data });
-    upNext();
+    const p = await xPrepare(file, kind);
+    const ref = doc(xSub('files')), siteId = X.s.id;
+    const blob = new Blob([Uint8Array.from(atob(p.data), c => c.charCodeAt(0))], { type: p.mime });
+    // 先に端末へ貯める（画面を閉じても電波がなくても消えない）。一覧には押した瞬間に出る
+    await upTx('readwrite', s => s.put({ id: ref.id, siteId, name: p.name.replace(/[\/#?\[\]*]/g, '_'), mime: p.mime, blob, t: Date.now() }));
+    fire(setDoc(ref, { kind, folder, name: p.name, mime: p.mime, size: blob.size, thumb: p.thumb, by: me.uid, byName: me.name || me.uid, at: Date.now(), driveId: '', uploading: true, deleted: false, comment: '' }), p.name);
+    upPump();
   }
 }
 window.portalTest = {
-  queue: () => ({ waiting: upQueue.length, busy: upBusy, last: window.portalLastSend || '', error: window.portalLastError || '' }),
+  queue: () => ({ waiting: badgeUp, busy: upRun.size, writes: fireN, last: window.portalLastSend || '', error: window.portalLastError || '' }),
+  /* 電波なしのふりをする（確認用） */
+  async net(on) {
+    window.portalTestOffline = !on; netDown = !on;
+    await (on ? enableNetwork(db) : disableNetwork(db));
+    badge(); upPump();
+  },
   /* テスト用データ：開いている現場に、フォルダと 写真30・資料30 を入れる（テスト現場だけ） */
   async seed() {
     if (!X || !X.s.isTest) throw new Error('テスト現場を開いてください。');
@@ -683,7 +973,7 @@ window.portalTest = {
           file = new File(['%PDF-1.4\n1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj 2 0 obj<</Type/Pages/Count 1/Kids[3 0 R]>>endobj 3 0 obj<</Type/Page/MediaBox[0 0 595 842]/Parent 2 0 R>>endobj\ntrailer<</Root 1 0 R>>\n' + '%'.repeat(200000)], 'テスト資料' + ('0' + i).slice(-2) + '.pdf', { type: 'application/pdf' });
         }
         await xUpload(kind, leaves[i % leaves.length], [file]);
-        while (upQueue.length > 6) await new Promise(r => setTimeout(r, 300));
+        while (badgeUp > 6) await new Promise(r => setTimeout(r, 300));
       }
     }
     return 'done';
@@ -730,29 +1020,22 @@ function showSiteForm(s) {
     data.startDate = toJp($('f_start').value); data.endDate = toJp($('f_end').value);
     TEXTS.forEach(k => { data[k] = $('f_' + k).value.trim(); });
     data.workContent = $('f_workContent').value; data.notes = $('f_notes').value;
-    $('save').disabled = true; $('err').textContent = '保存しています…';
-    const t = performance.now();
-    try {
-      if (isNew) {
-        const ref = doc(collection(db, 'sites'));
-        await setDoc(ref, { ...data, imageUrl1: '', imageUrl2: '', order: Date.now(), members: [me.uid], roles: { [me.uid]: '現場管理者' } });
-        showDetail(ref.id, '保存 ' + sec(t));
-      } else {
-        await updateDoc(doc(db, 'sites', s.id), data);
-        showDetail(s.id, '保存 ' + sec(t));
-      }
-    } catch (e) { $('save').disabled = false; $('err').textContent = '保存できませんでした（権限がないか、通信できません）。'; }
+    if (isNew) {
+      const ref = doc(collection(db, 'sites'));
+      fire(setDoc(ref, { ...data, imageUrl1: '', imageUrl2: '', order: Date.now(), members: [me.uid], roles: { [me.uid]: '現場管理者' } }), data.siteName);
+      showDetail(ref.id);
+    } else {
+      fire(updateDoc(doc(db, 'sites', s.id), data), data.siteName);
+      showDetail(s.id);
+    }
   };
-  if ($('delSite')) $('delSite').onclick = async () => {
+  if ($('delSite')) $('delSite').onclick = () => {
     if (!confirm('「' + s.siteName + '」を削除します。よろしいですか？')) return;
-    $('err').textContent = '削除しています…';
-    try {
-      const b = writeBatch(db), { id, ...rest } = s;
-      b.set(doc(db, 'endedSites', s.id), { ...rest, endedAt: Date.now(), endedBy: me.uid });
-      b.delete(doc(db, 'sites', s.id));
-      await b.commit();
-      showList();
-    } catch (e) { $('err').textContent = '削除できませんでした（権限がないか、通信できません）。'; }
+    const b = writeBatch(db), { id, ...rest } = s;
+    b.set(doc(db, 'endedSites', s.id), { ...rest, endedAt: Date.now(), endedBy: me.uid });
+    b.delete(doc(db, 'sites', s.id));
+    fire(b.commit(), s.siteName + 'の削除');
+    showList();
   };
 }
 
