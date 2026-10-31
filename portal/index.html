@@ -48,7 +48,7 @@
           <span id="userEmail" class="header-user-email"></span><br>
           <a href="javascript:void(0)" id="out" style="color: #333; text-decoration: underline;">ログアウト</a>
         </div>
-        <button type="button" id="admin" class="header-gear-btn" title="人の管理" aria-label="人の管理" style="display: none;">
+        <button type="button" id="admin" class="header-gear-btn" title="設定" aria-label="設定" style="display: none;">
           <svg viewBox="0 0 24 24"><path d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58a.49.49 0 0 0 .12-.61l-1.92-3.32a.488.488 0 0 0-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54a.484.484 0 0 0-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58a.49.49 0 0 0-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/></svg>
         </button>
       </div>
@@ -102,14 +102,15 @@ const app = initializeApp({
   authDomain: 'genba-portal-9077b.firebaseapp.com',
   projectId: 'genba-portal-9077b',
   appId: '1:1005411376335:web:0129ce73c9988973e56bba',
-  storageBucket: 'genba-portal-9077b.firebasestorage.app'
+  storageBucket: 'genba-portal-9077b.firebasestorage.app',
+  messagingSenderId: '1005411376335'
 });
 const storage = getStorage(app);
 storage.maxUploadRetryTime = 60000;   // 電波が切れたら1分で一度あきらめ、端末に貯めたまま後で送り直す
 const auth = getAuth(app);
 auth.languageCode = 'ja';   // パスワード再設定のメールと画面を日本語にする
 const db = initializeFirestore(app, { localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }) });
-const APP_VER = 'Ver.20261031-15';
+const APP_VER = 'Ver.20261031-16';
 
 /* ---------- 電波なしでも使う（今の現場管理と同じ考え方） ----------
    ・保存は押した瞬間に完了の形。電波が戻ったら自動で送る（データは Firestore が端末に貯める）
@@ -324,10 +325,11 @@ onAuthStateChanged(auth, async user => {
   let c = {};
   try { c = JSON.parse(localStorage.getItem(key) || '{}'); } catch (e) {}
   me = { uid: user.uid, name: c.name || '', group: c.group || '', isMaster: c.isMaster === true, canAddSite: c.canAddSite === true, canDaily: c.canDaily === true, isSenior: c.isSenior === true };
-  $('admin').style.display = me.isMaster ? '' : 'none';
+  $('admin').style.display = '';
   showList();
   nStart();
   setTimeout(upPump, 1500);
+  setTimeout(pushRefresh, 2500);
   try {
     const d = await getDoc(doc(db, 'users', user.uid));
     const x = d.exists() ? d.data() : {};
@@ -337,7 +339,6 @@ onAuthStateChanged(auth, async user => {
     localStorage.setItem(key, JSON.stringify({ isMaster, canAddSite, canDaily, isSenior, name: me.name, group: me.group }));
     if (isMaster !== me.isMaster || canAddSite !== me.canAddSite || moved) {
       me.isMaster = isMaster; me.canAddSite = canAddSite;
-      $('admin').style.display = isMaster ? '' : 'none';
       showList(); nStart();
     }
   } catch (e) {}
@@ -369,7 +370,7 @@ function showLogin() {
     catch (e) { $('err').textContent = AUTH_MSG[e.code] || 'メールを送れませんでした。'; }
   };
 }
-$('out').onclick = () => { signOut(auth); };
+$('out').onclick = async () => { await pushDrop().catch(() => {}); signOut(auth); };
 
 /* ---------- 現場一覧 ---------- */
 let allSites = [], flowFilter = '全て表示';
@@ -2205,6 +2206,142 @@ function hTeamDraw() {
   hCmWire(box);
 }
 
+/* ---------- 音の出る通知と設定画面 ----------
+   送るのは Cloud Functions（functions/index.js）。端末と通知設定は push/{人}。通知の表示は sw.js が行う（アプリを閉じていても届く）。
+   iPhone はホーム画面のアイコンから開いたときだけ受け取れる */
+const VAPID = 'BB9VwflcuXR7PK0wAwMc4_b8_jFHLsPCgNNv2sxtsgBRMd2JKTtj5mkA--u3s-2w4TAkRzWt_O-rTZDatVg4MdM';
+const pushRef = () => doc(db, 'push', me.uid), tokenKey = () => 'portalPushToken:' + me.uid;
+const pushOk = () => 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
+const isIos = () => /iPhone|iPad|iPod/.test(navigator.userAgent), isHome = () => navigator.standalone === true || matchMedia('(display-mode: standalone)').matches;
+async function pushLib() {
+  const M = await import('https://www.gstatic.com/firebasejs/10.12.2/firebase-messaging.js');
+  if (!(await M.isSupported())) throw new Error('この端末（ブラウザ）は通知に対応していません。');
+  return { M, msg: M.getMessaging(app) };
+}
+async function pushSave(t) {
+  const d = await getDoc(pushRef()), cur = (d.exists() && d.data().tokens) || [], label = (navigator.userAgentData && navigator.userAgentData.platform) || (isIos() ? 'iPhone' : navigator.platform || '');
+  if (!cur.some(x => x.t === t)) await setDoc(pushRef(), { tokens: cur.filter(x => x && x.t).concat([{ t, label, at: Date.now() }]).slice(-10) }, { merge: true });
+  localStorage.setItem(tokenKey(), t);
+}
+async function pushOn() {
+  const { M, msg } = await pushLib(), reg = await navigator.serviceWorker.ready;
+  await pushSave(await M.getToken(msg, { vapidKey: VAPID, serviceWorkerRegistration: reg }));
+}
+/** 許可済みの端末は、開いたときに登録を確かめる（送り先が変わることがあるため。1日1回） */
+async function pushRefresh() {
+  if (!me || !pushOk() || Notification.permission !== 'granted' || isOffline() || localStorage.getItem('portalPushOff:' + me.uid)) return;
+  const k = 'portalPushDay:' + me.uid, day = dsOf(new Date());
+  if (localStorage.getItem(k) === day) return;
+  try { await pushOn(); localStorage.setItem(k, day); } catch (e) { window.portalLastError = e && e.code; }
+}
+/** この端末の通知を止める（ログアウトのときも） */
+async function pushDrop() {
+  const t = localStorage.getItem(tokenKey());
+  if (!t) return;
+  localStorage.removeItem(tokenKey());
+  const d = await getDoc(pushRef());
+  if (d.exists()) await updateDoc(pushRef(), { tokens: (d.data().tokens || []).filter(x => x.t !== t) });
+  try { const { M, msg } = await pushLib(); await M.deleteToken(msg); } catch (e) {}
+}
+function pushBox(id) {
+  const box = $(id);
+  if (!box) return;
+  const st = box.querySelector('[data-st]'), btn = (k, on) => { const b = box.querySelector('[data-b="' + k + '"]'); if (b) b.style.display = on ? '' : 'none'; };
+  ['on', 'off', 'test'].forEach(k => btn(k, false));
+  if (!pushOk()) { st.textContent = isIos() && !isHome() ? 'iPhone・iPadは、ホーム画面に追加したアイコンから開くと通知を受け取れます。' : 'この端末（ブラウザ）は通知に対応していません。'; return; }
+  if (Notification.permission === 'denied') { st.textContent = '通知がブロックされています。端末（ブラウザ）の設定で、このアプリの通知を「許可」にしてください。'; return; }
+  if (Notification.permission === 'granted' && localStorage.getItem(tokenKey())) { st.textContent = '✅ この端末で通知を受け取ります（アプリを閉じていても届きます）'; btn('off', true); btn('test', true); return; }
+  st.textContent = 'この端末は、まだ通知を受け取る設定になっていません。';
+  btn('on', true);
+}
+const pushBoxHtml = id => '<div class="set-device-box" id="' + id + '"><div class="set-device-status" data-st></div><div class="set-btn-row"><button type="button" class="btn btn-dark" data-b="on">この端末で通知を受け取る</button><button type="button" class="btn btn-sub" data-b="off">この端末の通知を止める</button><button type="button" class="btn btn-sub" data-b="test">テスト通知を送る</button></div><div class="set-note" data-msg>通知の音は、スマホ・PCの通知音が鳴ります（マナーモードや端末の通知設定に従います）。</div></div>';
+function pushWire(id) {
+  const box = $(id), note = t => { box.querySelector('[data-msg]').textContent = t; };
+  box.querySelector('[data-b="on"]').onclick = async () => {
+    note('設定しています…');
+    try {
+      const p = await Notification.requestPermission();
+      if (p !== 'granted') { pushBox(id); note('通知が許可されませんでした。'); return; }
+      localStorage.removeItem('portalPushOff:' + me.uid);
+      await pushOn();
+      note('この端末で通知を受け取れるようになりました。');
+    } catch (e) { note('設定できませんでした：' + ((e && e.message) || '')); }
+    pushBox(id);
+  };
+  box.querySelector('[data-b="off"]').onclick = async () => {
+    localStorage.setItem('portalPushOff:' + me.uid, '1');
+    await pushDrop().catch(() => {});
+    pushBox(id);
+    note('この端末の通知を止めました。');
+  };
+  box.querySelector('[data-b="test"]').onclick = async () => {
+    note('テスト通知を送っています…');
+    const r = doc(collection(db, 'pushTests'));
+    try {
+      await setDoc(r, { by: me.uid, at: Date.now() });
+      let off = null;
+      const end = setTimeout(() => { if (off) off(); note('お返事がありません。少し待っても届かないときは、もう一度押してください。'); }, 30000);
+      off = onSnapshot(r, d => {
+        const x = d.data();
+        if (!x || !x.result) return;
+        clearTimeout(end); off();
+        note(x.result.sent ? x.result.sent + '台の端末にテスト通知を送りました。' : '送れませんでした。「この端末の通知を止める」を押してから、もう一度設定してください。');
+      });
+    } catch (e) { note('送れませんでした：' + ((e && e.message) || '')); }
+  };
+  pushBox(id);
+}
+async function setOpen() {
+  stopWatch();
+  show('panelSettings', '設定', showList);
+  $('speed').textContent = '';
+  const P = $('panelSettings');
+  const sw = (id, label, on) => '<label class="switch-row"><span>' + esc(label) + '</span><input type="checkbox" id="' + id + '"' + (on ? ' checked' : '') + '></label>';
+  P.innerHTML = '<div class="info-card" style="text-align:center; color:var(--muted);">読み込んでいます…</div>';
+  const read = r => oRead(() => getDoc(r), () => getDocFromCache(r)).catch(() => null);
+  const [pd, ud] = await Promise.all([read(pushRef()), read(doc(db, 'users', me.uid))]);
+  if (!$('panelSettings').classList.contains('active')) return;
+  const pf = (pd && pd.exists() && pd.data().prefs) || {}, u = (ud && ud.data()) || {}, t = pf.types || {}, muted = pf.mutedSites || [];
+  const types = [['report', '報告の追加・編集'], ['photo', '写真の追加・編集'], ['doc', '資料の追加・編集'], ['site', '現場情報の追加・編集']];
+  P.innerHTML =
+    '<div class="info-card"><div class="card-header-row"><span style="font-weight: 700;">📱 アプリの版</span></div><div style="font-size: 0.95rem; margin-bottom: 10px;">今の版：<b>' + APP_VER + '</b></div><button type="button" id="verBtn" class="btn btn-dark">最新の版にする</button><div class="set-note">新しい版が出ているときは、押すと入れ替わります。</div></div>' +
+    '<div class="info-card"><div class="card-header-row"><span style="font-weight: 700;">🔔 お知らせ通知設定</span></div>' + pushBoxHtml('setPush') +
+    '<div class="set-sub-title">通知する内容</div>' + sw('pfAll', 'お知らせを通知する（全体）', pf.enabled !== false) + types.map(a => sw('pf_' + a[0], a[1], t[a[0]] !== false)).join('') +
+    '<div class="set-sub-title">通知する現場</div>' + (allSites.length ? allSites.map(s => '<label class="switch-row"><span>' + esc(s.siteName) + '</span><input type="checkbox" data-site="' + esc(s.id) + '"' + (muted.includes(s.id) ? '' : ' checked') + '></label>').join('') : '<div class="set-note">担当の現場はありません。</div>') +
+    '<div class="set-note">オフにした内容・現場は端末に通知しません（お知らせ一覧には表示されます）。自分が行った操作は通知されません。@で指定されたコメントと体調の知らせは、設定に関係なく届きます。</div>' +
+    '<button type="button" id="pfSave" class="btn btn-dark" style="margin-top: 14px;">お知らせ通知設定を保存</button></div>' +
+    '<div class="info-card"><div class="card-header-row"><span style="font-weight: 700;">👤 アカウント設定</span></div>' +
+    '<div class="form-group"><label>名前</label><div style="font-weight:700;">' + esc(u.name || me.name || '') + '</div></div><div class="form-group"><label>アカウントID</label><div>' + esc(me.uid) + '</div></div>' +
+    '<div class="form-group"><label>グループ（マスターが決めます）</label><div style="font-weight:700;">' + esc(u.group || 'エクスケア') + '</div></div>' +
+    '<div class="form-group"><label for="acMb">携帯番号（伝票・注文書の注文者の欄に出ます）</label><input type="tel" id="acMb" value="' + esc(u.mobile) + '" placeholder="例: 090-1234-5678" inputmode="tel"></div>' +
+    '<div class="form-group"><label for="acGo">googleアカウント</label><input type="text" id="acGo" value="' + esc(u.google) + '" placeholder="例: taro@gmail.com" autocomplete="off"></div>' +
+    '<button type="button" id="acSave" class="btn btn-dark">アカウント設定を保存</button><button type="button" id="acPass" class="btn btn-sub" style="margin-top: 8px; width: 100%;">パスワードを変える（メールでご案内します）</button><div id="acMsg" class="set-note"></div></div>' +
+    (me.isMaster ? '<div class="info-card"><button type="button" id="goUsers" class="btn btn-outline">人の管理</button></div>' : '');
+  pushWire('setPush');
+  $('verBtn').onclick = async () => {
+    $('verBtn').textContent = '入れ替えています…';
+    try { const r = await fetch('./?check=' + Date.now(), { cache: 'no-store' }); if (r.ok && window.caches) await (await caches.open('portal-shell-v1')).put('./', r); } catch (e) {}
+    location.reload();
+  };
+  $('pfSave').onclick = () => {
+    const types_ = {}, mutedSites = [];
+    types.forEach(a => { types_[a[0]] = $('pf_' + a[0]).checked; });
+    P.querySelectorAll('[data-site]').forEach(c => { if (!c.checked) mutedSites.push(c.dataset.site); });
+    fire(setDoc(pushRef(), { prefs: { enabled: $('pfAll').checked, types: types_, mutedSites } }, { merge: true }), '通知設定');
+    $('pfSave').textContent = '保存しました ✓';
+    setTimeout(() => { if ($('pfSave')) $('pfSave').textContent = 'お知らせ通知設定を保存'; }, 1500);
+  };
+  $('acSave').onclick = () => {
+    fire(updateDoc(doc(db, 'users', me.uid), { mobile: $('acMb').value.trim().slice(0, 30), google: $('acGo').value.trim().slice(0, 200) }), 'アカウント設定');
+    $('acMsg').textContent = '保存しました。';
+  };
+  $('acPass').onclick = async () => {
+    try { await sendPasswordResetEmail(auth, me.uid); $('acMsg').textContent = me.uid + ' へ、パスワードを変えるメールを送りました。'; }
+    catch (e) { $('acMsg').textContent = '送れませんでした：' + ((e && e.message) || ''); }
+  };
+  if ($('goUsers')) $('goUsers').onclick = () => showUsers();
+}
+
 /* ---------- お知らせ（見た目は今の現場管理と同じ）----------
    現場の人とマスターに届く。自分の操作は自分には出さない。30日より古いものは出さない。未読は現場カードにも出す（案 E）。
    音の出る通知（アプリを閉じていても届くもの）はまだ入れていない */
@@ -2249,10 +2386,11 @@ $('btnFooterNotices').onclick = () => {
   $('speed').textContent = '';
   nLimit = 30;
   $('panelNotices').innerHTML =
-    '<div class="notice-tools"><button type="button" class="notice-chip" data-f="all">すべて</button><button type="button" class="notice-chip" data-f="unread">未読 <span id="nfCount"></span></button><button type="button" class="notice-chip" data-f="read">既読済</button></div>' +
+    (pushOk() && Notification.permission === 'default' ? pushBoxHtml('nPush') + '<div style="height: 12px;"></div>' : '') + '<div class="notice-tools"><button type="button" class="notice-chip" data-f="all">すべて</button><button type="button" class="notice-chip" data-f="unread">未読 <span id="nfCount"></span></button><button type="button" class="notice-chip" data-f="read">既読済</button></div>' +
     '<div class="notice-tools"><span class="notice-tools-label">並び順</span><button type="button" class="notice-chip" data-s="date">年月日順 <span id="nsArrow"></span></button><button type="button" class="notice-chip" data-s="site">現場別</button></div>' +
     '<div class="notice-tools"><label class="notice-tools-label" style="margin-bottom: 0;">通知者</label><select id="nActor" class="action-control-select" style="flex: 1; max-width: 320px; justify-content: flex-start;"></select></div>' +
     '<div style="display: flex; justify-content: flex-end; margin-bottom: 10px;"><button type="button" id="nAll" class="btn btn-sub">✓ すべて既読にする</button></div><div id="nBox"></div>';
+  if ($('nPush')) pushWire('nPush');
   $('panelNotices').querySelectorAll('[data-f]').forEach(b => { b.onclick = () => { nFilter = b.dataset.f; nLimit = 30; nRender(); }; });
   $('panelNotices').querySelectorAll('[data-s]').forEach(b => { b.onclick = () => { if (b.dataset.s === 'date' && nSort === 'date') nAsc = !nAsc; nSort = b.dataset.s; nLimit = 30; nRender(); }; });
   $('nActor').onchange = () => { nActor = $('nActor').value; nLimit = 30; nRender(); };
@@ -2304,7 +2442,7 @@ function nRender() {
 })();
 
 /* ---------- マスター用の管理 ---------- */
-$('admin').onclick = () => showUsers();
+$('admin').onclick = setOpen;
 async function showUsers(note) {
   stopWatch();
   show('panelSettings', '人の管理', showList);

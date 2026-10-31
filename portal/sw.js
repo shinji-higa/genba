@@ -58,3 +58,18 @@ self.addEventListener('fetch', e => {
   if (u.hostname === 'cdnjs.cloudflare.com' && u.pathname.includes('/pdf.js/')) { e.respondWith(cacheFirst(LIB, req)); return; }
   if (u.hostname === 'firebasestorage.googleapis.com' && u.searchParams.get('alt') === 'media') { e.respondWith(cacheFirst(FILES, req, FILES_MAX)); return; }
 });
+
+/* 音の出る通知：Firebase から届いたものを出す。押したらアプリを前に出す（開いていなければ開く） */
+self.addEventListener('push', e => {
+  let d = {};
+  try { d = e.data.json(); } catch (x) {}
+  const n = d.notification || {};
+  e.waitUntil(self.registration.showNotification(n.title || '現場管理ポータル', { body: n.body || '', icon: n.icon, badge: n.badge, tag: n.tag, renotify: !!n.tag }));
+});
+self.addEventListener('notificationclick', e => {
+  e.notification.close();
+  e.waitUntil(self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(list => {
+    const w = list.find(c => c.url.indexOf(self.registration.scope) === 0 && 'focus' in c);
+    return w ? w.focus() : self.clients.openWindow(self.registration.scope);
+  }));
+});
