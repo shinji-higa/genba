@@ -86,7 +86,7 @@
 <script type="module">
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, sendPasswordResetEmail, signOut } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
-import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager, collection, query, where, doc, getDoc, getDocs, setDoc, updateDoc, writeBatch, onSnapshot, disableNetwork, enableNetwork, orderBy, limit, waitForPendingWrites } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
+import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager, collection, query, where, doc, getDoc, getDocs, setDoc, updateDoc, writeBatch, onSnapshot, disableNetwork, enableNetwork, orderBy, limit, waitForPendingWrites, runTransaction } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
 import { getStorage, ref as stRef, uploadBytesResumable, getDownloadURL } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-storage.js';
 
@@ -105,7 +105,7 @@ storage.maxUploadRetryTime = 60000;   // 電波が切れたら1分で一度あ�
 const auth = getAuth(app);
 auth.languageCode = 'ja';   // パスワード再設定のメールと画面を日本語にする
 const db = initializeFirestore(app, { localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }) });
-const APP_VER = 'Ver.20261031-12';
+const APP_VER = 'Ver.20261031-13';
 
 /* ---------- 電波なしでも使う（今の現場管理と同じ考え方） ----------
    ・保存は押した瞬間に完了の形。電波が戻ったら自動で送る（データは Firestore が端末に貯める）
@@ -452,7 +452,7 @@ function renderDetail(s) {
   const nearby = s.address ? '<div class="nearby-row" style="display:grid;">' + ['コンビニ', 'トイレ', '駐車場', 'ホームセンター'].map(k => '<button type="button" class="nearby-btn" data-k="' + k + '"><span>' + k + '</span></button>').join('') + '</div>' : '';
   $('panelDetail').innerHTML =
     '<nav class="nav-tabs" style="margin: -16px -16px 14px -16px;">' + tabsOf(s).map(n => '<button type="button" class="nav-tab-item' + (n === detailTab ? ' active' : '') + '" data-t="' + n + '">' + n + '</button>').join('') + '</nav>' +
-    (detailTab === '担当' ? '<div id="sRoot"></div>' : detailTab === '報告' ? '<div id="rRoot"></div>' : detailTab === '写真' || detailTab === '資料' ? '<div id="xRoot"></div>' :
+    (detailTab === '注文' ? '<div id="oRoot"></div>' : detailTab === '担当' ? '<div id="sRoot"></div>' : detailTab === '報告' ? '<div id="rRoot"></div>' : detailTab === '写真' || detailTab === '資料' ? '<div id="xRoot"></div>' :
      detailTab !== '現場詳細' ? '<div class="info-card" style="text-align:center; color:var(--muted);">「' + detailTab + '」はこれから作ります。</div>' :
     '<div style="margin-bottom: 14px; display: flex; gap: 8px; align-items: center;">' +
       (isManagerOf(s) ? '<button type="button" id="edit" class="btn btn-dark" style="flex: 1;">✏️ 現場情報編集</button>'
@@ -482,6 +482,7 @@ function renderDetail(s) {
       ruleFields(s, true) +
     '</div>');
   $('panelDetail').querySelectorAll('.nav-tab-item').forEach(b => { b.onclick = () => { detailTab = b.dataset.t; renderDetail(s); }; });
+  if (detailTab === '注文') { oOpen(s); return; }
   if (detailTab === '担当') { sOpen(s); return; }
   if (detailTab === '報告') { rOpen(s); return; }
   if (detailTab === '写真' || detailTab === '資料') { xOpen(s, detailTab === '写真' ? 'photo' : 'doc'); return; }
@@ -1464,6 +1465,149 @@ function showSiteForm(s) {
     notify(s, 'site', '現場を削除しました（現場終了）');
     fire(b.commit(), s.siteName + 'の削除');
     showList();
+  };
+}
+
+/* ---------- 注文（角ダクト注文・丸ダクト注文）----------
+   画面は今の現場管理と同じ denpyo.html・maru.html を、押したときだけ枠（iframe）で開く。
+   画面からは window.parent.denpyoHost / maruHost を呼ぶ。今の現場管理のサーバーの代わりに、ここで Firestore と Cloud Storage へ保存する。
+   1枚の中身は sites/{id}/orderBody、一覧に出す情報は sites/{id}/orders、記録は sites/{id}/orderLog */
+const O_KIND = {
+  kaku: { host: 'denpyoHost', src: 'denpyo.html?v=1', title: '角ダクト注文', word: '伝票', log: '角ダクト', fn: 'Denpyo' },
+  maru: { host: 'maruHost', src: 'maru.html?v=1', title: '丸ダクト注文', word: '注文書', log: '丸ダクト', fn: 'Maru' }
+};
+function oOpen(s) {
+  const btn = (k, ic, t, sub) => '<button type="button" class="order-btn' + (k ? ' on' : '') + '"' + (k ? ' data-o="' + k + '"' : ' disabled') + '><span class="order-ic">' + ic + '</span><span class="order-t">' + t + '</span><span class="order-s">' + sub + '</span></button>';
+  $('oRoot').innerHTML = '<div class="order-grid">' + btn('maru', '◯', '丸ダクト注文', '注文書の入力') + btn('kaku', '▢', '角ダクト注文', '製作伝票の入力') + btn('', '🧰', '消耗品注文', '準備中') + btn('', '🔩', '金物注文', '準備中') + '</div>';
+  $('oRoot').querySelectorAll('[data-o]').forEach(b => { b.onclick = () => oShow(s, b.dataset.o); });
+}
+function oShow(s, k) {
+  const K = O_KIND[k];
+  // 電波がないときは開かない（今の現場管理と同じ。ユーザー指示 2026-10-28）
+  if (isOffline()) { alert('電波がないため、' + K.title + 'は使えません。電波のある所で開いてください。'); return; }
+  let ov = $('denpyoOverlay');
+  if (!ov) { ov = document.createElement('div'); ov.id = 'denpyoOverlay'; document.body.appendChild(ov); }
+  window[K.host] = oHost(s, k);
+  ov.innerHTML = '<iframe class="denpyo-frame" title="' + K.title + '" src="' + K.src + '"></iframe>';
+  ov.classList.add('open');
+  document.body.style.overflow = 'hidden';
+}
+function oClose() {
+  const ov = $('denpyoOverlay');
+  if (ov) { ov.classList.remove('open'); ov.innerHTML = ''; }
+  document.body.style.overflow = '';
+}
+const oDataUrl = b => new Promise((ok, ng) => { const r = new FileReader(); r.onload = () => ok(r.result); r.onerror = () => ng(r.error); r.readAsDataURL(b); });
+function oHost(s, k) {
+  const K = O_KIND[k], col = n => collection(db, 'sites', s.id, n);
+  const log = (action, no, rev, url) => setDoc(doc(col('orderLog')), { at: Date.now(), by: me.uid, byName: me.name || me.uid, kind: K.log, no: String(no || ''), rev: Number(rev) || 0, action, url: url || '' }).catch(() => {});
+  const fns = {
+    async getOrdererInfo() {
+      const x = (await getDoc(doc(db, 'users', me.uid))).data() || {}, home = me.group === 'マルトク' || me.group === 'NAFA' ? me.group : 'エクスケア';
+      const co = await getDoc(doc(db, 'companies', home));
+      return { orderer: { name: me.name, mobile: x.mobile || '', google: x.google || '', group: home, company: co.exists() ? co.data() : { name: '', addr: '', tel: '', fax: '', logo: '', addrs: [] } } };
+    },
+    async getDuctSpecs() { return { list: (await getDocs(collection(db, 'ductSpecs'))).docs.map(d => d.data()) }; },
+    async saveDuctSpec(json) {
+      const x = JSON.parse(json || '{}'), name = String(x.name || '').trim();
+      if (!name) throw new Error('題名を入れてください。');
+      await setDoc(doc(db, 'ductSpecs', encodeURIComponent(name)), { name, spec: x.spec || {}, up: !!x.up, updated: Date.now(), by: me.uid });
+      return fns.getDuctSpecs();
+    },
+    async uploadDenpyoPhoto(site, dataUrl) {
+      const path = 'sites/' + s.id + '/orderPhotos/' + doc(col('orders')).id + '.jpg', blob = await (await fetch(dataUrl)).blob();
+      await uploadBytesResumable(stRef(storage, path), blob, { contentType: blob.type || 'image/jpeg' });
+      return { id: path };
+    },
+    async getDenpyoPhotos(site, ids) {
+      const photos = {};
+      await Promise.all((ids || []).slice(0, 60).map(async id => {
+        try { photos[id] = await oDataUrl(await (await fetch(await getDownloadURL(stRef(storage, id)))).blob()); } catch (e) {}
+      }));
+      return { photos };
+    },
+    async getDenpyoFolders() {
+      const fs = (await getDocs(col('folders'))).docs.map(d => ({ id: d.id, ...d.data() })).filter(f => f.kind === 'doc' && !f.deleted);
+      const pathOf = f => { const p = [f.name]; let c = f; while (c.parent && (c = fs.find(x => x.id === c.parent))) p.unshift(c.name); return p.join(' / '); };
+      return { folders: fs.map(f => ({ id: f.id, path: pathOf(f) })).sort((a, b) => a.path.localeCompare(b.path, 'ja')), rootName: '資料' };
+    },
+    async ['list' + K.fn]() {
+      const list = (await getDocs(query(col('orders'), where('kind', '==', k)))).docs.map(d => ({ id: d.id, ...d.data() })).filter(m => !m.deleted);
+      list.forEach(m => { m.canDelete = me.isMaster || isManagerOf(s) || me.canAddSite || m.createdBy === me.uid; });
+      return { list: list.sort((a, b) => (b.updated || 0) - (a.updated || 0)) };
+    },
+    async ['get' + K.fn](site, id) {
+      const [m, b] = await Promise.all([getDoc(doc(col('orders'), id)), getDoc(doc(col('orderBody'), id))]);
+      if (!m.exists() || !b.exists() || m.data().deleted) throw new Error('この現場の' + K.word + 'ではありません。');
+      return { fileId: id, updated: m.data().updated || 0, slip: JSON.parse(b.data().json) };
+    },
+    async ['save' + K.fn](site, id, json, base) {
+      if (new Blob([json]).size > 1000000) throw new Error(K.word + 'が大きすぎて保存できません。');
+      const slip = JSON.parse(json), now = Date.now();
+      const meta = { kind: k, sid: slip.id || '', no: String(slip.no || ''), room: String(slip.room || ''), n: (slip.items || []).length, status: String(slip.status || ''), rev: Number(slip.rev) || 0, updated: now, by: me.uid, byName: me.name || me.uid };
+      if (!id) {
+        const ref = doc(col('orders')), b = writeBatch(db);
+        b.set(ref, { ...meta, createdBy: me.uid, createdAt: now, deleted: false });
+        b.set(doc(col('orderBody'), ref.id), { json });
+        await b.commit();
+        log('作成', slip.no, 0);
+        return { fileId: ref.id, updated: now };
+      }
+      const ref = doc(col('orders'), id), body = doc(col('orderBody'), id);
+      await runTransaction(db, async t => {
+        const m = (await t.get(ref)).data() || {};
+        if (base && m.updated && m.updated !== base && m.by !== me.uid) throw { conflict: true, message: (m.byName || 'ほかの人') + 'さんが先にこの' + K.word + 'を保存しました。' + K.word + '一覧から開き直してください。' };
+        t.update(ref, meta);
+        t.set(body, { json });
+      });
+      return { fileId: id, updated: now };
+    },
+    async ['delete' + K.fn](site, id) {
+      const ref = doc(col('orders'), id), m = (await getDoc(ref)).data() || {};
+      await updateDoc(ref, { deleted: true, deletedAt: Date.now(), updated: Date.now(), by: me.uid, byName: me.name || me.uid });
+      log('削除（' + K.word + '）', m.no, 0);
+      return { message: K.word + (m.no ? '（NO.' + m.no + '）' : '') + 'を削除しました。' };
+    },
+    async ['log' + K.fn](site, action, no, rev) { await log(action, no, rev); return {}; },
+    /* 工場へ提出：PDF を資料の選んだフォルダへ。前の版は削除の印を付ける（今の現場管理の削除フォルダと同じ扱い） */
+    async ['save' + K.fn + 'Pdf'](site, dir, newName, b64, fileName, replaceId, rev, no) {
+      let fid = dir, folder = '';
+      const fs = (await getDocs(col('folders'))).docs.map(d => ({ id: d.id, ...d.data() })).filter(f => f.kind === 'doc' && !f.deleted);
+      if (newName) {
+        const hit = fs.find(f => !f.parent && f.name === newName);
+        if (hit) fid = hit.id;
+        else { const ref = doc(col('folders')); await setDoc(ref, { kind: 'doc', name: newName, parent: '', at: Date.now(), by: me.uid, deleted: false }); fid = ref.id; }
+        folder = newName;
+      } else folder = (fs.find(f => f.id === fid) || {}).name || '';
+      if (!fid) throw new Error('保存先フォルダを選んでください。');
+      const used = (await getDocs(query(col('files'), where('folder', '==', fid)))).docs.map(d => d.data()).filter(f => !f.deleted).map(f => f.name);
+      const base = String(fileName || K.title).replace(/[\\/:*?"<>|#\[\]]/g, '').replace(/\.pdf$/i, '');
+      let name = base + '.pdf';
+      for (let n = 2; used.includes(name); n++) name = base + n + '.pdf';
+      const blob = new Blob([Uint8Array.from(atob(b64), c => c.charCodeAt(0))], { type: 'application/pdf' }), ref = doc(col('files')), path = 'sites/' + s.id + '/' + ref.id + '/' + name, r = stRef(storage, path);
+      await uploadBytesResumable(r, blob, { contentType: 'application/pdf' });
+      const url = await getDownloadURL(r);
+      await setDoc(ref, { kind: 'doc', folder: fid, name, mime: 'application/pdf', size: blob.size, thumb: '', by: me.uid, byName: me.name || me.uid, at: Date.now(), driveId: '', url, path, uploading: false, deleted: false, comment: '', orderPdf: true });
+      let old = '';
+      if (replaceId) {
+        try {
+          const o = doc(col('files'), replaceId), d = await getDoc(o);
+          if (d.exists() && !d.data().deleted) { await updateDoc(o, { deleted: true }); old = d.data().name; }
+        } catch (e) {}
+      }
+      log('提出' + (old ? '（前の版のPDFを置き換え）' : ''), no, rev, url);
+      notify(s, 'doc', '「' + folder + '」に資料を追加：' + name);
+      return { message: '「' + name + '」を保存しました。' + (old ? '\n前の版（' + old + '）は削除しました。' : ''), url, pdfId: ref.id, folderId: fid };
+    }
+  };
+  return {
+    site: s.siteName, userName: me.name || '',
+    call: (fn, args) => (async () => {
+      if (!fns[fn]) throw new Error('この操作はまだ使えません（' + fn + '）。');
+      return fns[fn](...(args || []));
+    })().catch(e => { throw e && e.conflict ? e : { message: e && e.code === 'permission-denied' ? '権限がありません。' : (e && e.message) || String(e) }; }),
+    confirm: msg => Promise.resolve(window.confirm(msg)),
+    close: oClose
   };
 }
 

@@ -17,14 +17,14 @@ self.addEventListener('activate', e => {
 
 async function shell(req, ev) {
   const c = await caches.open(SHELL);
-  const key = req.mode === 'navigate' ? './' : new URL(req.url).pathname;
+  const path = new URL(req.url).pathname, page = /\/portal\/(index\.html)?$/.test(path), key = page ? './' : path;
   const hit = await c.match(key, { ignoreSearch: true });
-  const net = fetch(req.mode === 'navigate' ? './' : req.url, { cache: 'no-cache' }).then(async r => {
+  const net = fetch(page ? './' : req.url, { cache: 'no-cache' }).then(async r => {
     if (r.ok) {
       const old = hit && (hit.headers.get('etag') || hit.headers.get('last-modified'));
       const now = r.headers.get('etag') || r.headers.get('last-modified');
       await c.put(key, r.clone());
-      if (hit && old && now && old !== now && req.mode === 'navigate') {
+      if (hit && old && now && old !== now && page && req.mode === 'navigate') {
         (await self.clients.matchAll({ type: 'window' })).forEach(w => w.postMessage({ type: 'portal-update' }));
       }
     }
@@ -51,6 +51,7 @@ self.addEventListener('fetch', e => {
   const u = new URL(req.url);
   if (u.origin === self.location.origin) {
     if (u.searchParams.has('check')) return;   // 新しい版の確認は、端末の控えを通さない
+    if (/\/(denpyo|maru)\.html$/.test(u.pathname)) return;   // 注文の画面は電波があるときだけ開く（端末に控えない）
     if (u.pathname.startsWith('/portal/') && !u.pathname.endsWith('/sw.js')) e.respondWith(shell(req, e));
     return;
   }
