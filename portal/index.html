@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
 <title>現場管理ポータル</title>
 <link rel="manifest" href="manifest.json">
 <link rel="apple-touch-icon" href="/apple-touch-icon.png">
@@ -15,6 +15,18 @@
 <link rel="stylesheet" href="app.css?v=1">
 <style>
   .site-card-btn { color: var(--text); }   /* iPhone でボタンの文字が青くなるのを防ぐ（リンクの色は変わらない） */
+  /* iPhone の丸い角・下の線に部品がかからないように、上下左右に余白を取る */
+  :root { --safe-t: env(safe-area-inset-top, 0px); --safe-b: max(14px, env(safe-area-inset-bottom, 0px)); --safe-l: max(6px, env(safe-area-inset-left, 0px)); --safe-r: max(6px, env(safe-area-inset-right, 0px)); }
+  header { padding-top: calc(8px + var(--safe-t)); padding-left: calc(14px + env(safe-area-inset-left, 0px)); padding-right: calc(14px + env(safe-area-inset-right, 0px)); }
+  .view-panel { padding-left: calc(10px + var(--safe-l)); padding-right: calc(10px + var(--safe-r)); padding-bottom: calc(16px + var(--safe-b)); }
+  .nav-tabs { margin-left: calc(-10px - var(--safe-l)) !important; margin-right: calc(-10px - var(--safe-r)) !important; }
+  .cm-input { padding-left: calc(10px + env(safe-area-inset-left, 0px)); padding-right: calc(10px + env(safe-area-inset-right, 0px)); padding-bottom: calc(8px + var(--safe-b)); }
+  .cm-sheet { max-height: calc(100dvh - var(--safe-t) - 8px); }
+  .cm-head { padding-left: calc(14px + env(safe-area-inset-left, 0px)); padding-right: calc(14px + env(safe-area-inset-right, 0px)); }
+  .fv-bar { padding-left: calc(10px + env(safe-area-inset-left, 0px)); padding-right: calc(10px + env(safe-area-inset-right, 0px)); }
+  .fv-zoom { right: calc(10px + env(safe-area-inset-right, 0px)); bottom: calc(10px + var(--safe-b)); }
+  .fv-info { left: calc(10px + env(safe-area-inset-left, 0px)); bottom: calc(10px + var(--safe-b)); }
+  #offlineBadge { bottom: calc(128px + var(--safe-b)) !important; }
   #speed { font-size: 0.7rem; color: var(--muted); padding: 2px 16px; min-height: 1.3em; }
   .site-row { display: grid; grid-template-columns: 1fr 9.5em; gap: 8px; align-items: center; padding: 6px 0; border-bottom: 1px solid var(--border); }
   .check-row { display: flex; align-items: center; gap: 8px; font-size: 0.9rem; font-weight: 400; margin: 0; }
@@ -86,7 +98,7 @@ storage.maxUploadRetryTime = 60000;   // 電波が切れたら1分で一度あ�
 const auth = getAuth(app);
 auth.languageCode = 'ja';   // パスワード再設定のメールと画面を日本語にする
 const db = initializeFirestore(app, { localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }) });
-const APP_VER = 'Ver.20261031-07';
+const APP_VER = 'Ver.20261031-08';
 
 /* ---------- 電波なしでも使う（今の現場管理と同じ考え方） ----------
    ・保存は押した瞬間に完了の形。電波が戻ったら自動で送る（データは Firestore が端末に貯める）
