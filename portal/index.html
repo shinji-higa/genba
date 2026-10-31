@@ -86,7 +86,7 @@
 <script type="module">
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, sendPasswordResetEmail, signOut } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
-import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager, collection, query, where, doc, getDoc, getDocs, setDoc, updateDoc, writeBatch, onSnapshot, disableNetwork, enableNetwork, orderBy, limit, waitForPendingWrites, runTransaction } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
+import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager, collection, query, where, doc, getDoc, getDocs, getDocFromCache, getDocsFromCache, setDoc, updateDoc, writeBatch, onSnapshot, disableNetwork, enableNetwork, orderBy, limit, waitForPendingWrites, runTransaction } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
 import { getStorage, ref as stRef, uploadBytesResumable, getDownloadURL } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-storage.js';
 
@@ -105,7 +105,7 @@ storage.maxUploadRetryTime = 60000;   // 電波が切れたら1分で一度あ�
 const auth = getAuth(app);
 auth.languageCode = 'ja';   // パスワード再設定のメールと画面を日本語にする
 const db = initializeFirestore(app, { localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }) });
-const APP_VER = 'Ver.20261031-13';
+const APP_VER = 'Ver.20261031-14';
 
 /* ---------- 電波なしでも使う（今の現場管理と同じ考え方） ----------
    ・保存は押した瞬間に完了の形。電波が戻ったら自動で送る（データは Firestore が端末に貯める）
@@ -231,6 +231,17 @@ async function upPump() {
   }
 }
 async function upOne(j) {
+  if (j.order) return oSendJob(j);
+  if (j.rawPath) {   // 伝票の手書き写真（ファイルだけ送る）
+    const r = stRef(storage, j.rawPath);
+    try { await uploadBytesResumable(r, j.blob, { contentType: j.mime }); }
+    catch (e) {
+      if (!e || e.code !== 'storage/unauthorized') { window.portalLastError = e && e.code; return; }
+      try { await getDownloadURL(r); } catch (e2) { await upTx('readwrite', s => s.delete(j.id)); fail(j.name, '権限がありません'); return; }
+    }
+    await upTx('readwrite', s => s.delete(j.id));
+    return;
+  }
   // j.slot があれば外観画像（1 か 2）。送り終えたら現場の情報に書く
   const t = performance.now(), ext = !!j.slot, file = ext ? doc(db, 'sites', j.siteId) : doc(db, 'sites', j.siteId, 'files', j.id), path = 'sites/' + j.siteId + '/' + (ext ? 'exterior/' : '') + j.id + '/' + j.name, r = stRef(storage, path);
   try {
@@ -1471,6 +1482,8 @@ function showSiteForm(s) {
 /* ---------- 注文（角ダクト注文・丸ダクト注文）----------
    画面は今の現場管理と同じ denpyo.html・maru.html を、押したときだけ枠（iframe）で開く。
    画面からは window.parent.denpyoHost / maruHost を呼ぶ。今の現場管理のサーバーの代わりに、ここで Firestore と Cloud Storage へ保存する。
+   電波がなくても入力できる（ユーザー指示 2026-10-31。工場へ提出だけは電波が要る）。伝票は端末（portal-offline）に貯め、電波が戻ったら送る。
+   送るときに、ほかの人が先に直していたら上書きせず、別の伝票として残す
    1枚の中身は sites/{id}/orderBody、一覧に出す情報は sites/{id}/orders、記録は sites/{id}/orderLog */
 const O_KIND = {
   kaku: { host: 'denpyoHost', src: 'denpyo.html?v=1', title: '角ダクト注文', word: '伝票', log: '角ダクト', fn: 'Denpyo' },
@@ -1480,11 +1493,15 @@ function oOpen(s) {
   const btn = (k, ic, t, sub) => '<button type="button" class="order-btn' + (k ? ' on' : '') + '"' + (k ? ' data-o="' + k + '"' : ' disabled') + '><span class="order-ic">' + ic + '</span><span class="order-t">' + t + '</span><span class="order-s">' + sub + '</span></button>';
   $('oRoot').innerHTML = '<div class="order-grid">' + btn('maru', '◯', '丸ダクト注文', '注文書の入力') + btn('kaku', '▢', '角ダクト注文', '製作伝票の入力') + btn('', '🧰', '消耗品注文', '準備中') + btn('', '🔩', '金物注文', '準備中') + '</div>';
   $('oRoot').querySelectorAll('[data-o]').forEach(b => { b.onclick = () => oShow(s, b.dataset.o); });
+  // 電波が切れても一覧・会社の情報・ダクト仕様が出るように、電波のあるうちに読んで端末に控える
+  if (!isOffline()) {
+    getDocs(collection(db, 'sites', s.id, 'orders')).catch(() => {});
+    getDocs(collection(db, 'companies')).catch(() => {});
+    getDocs(collection(db, 'ductSpecs')).catch(() => {});
+  }
 }
 function oShow(s, k) {
   const K = O_KIND[k];
-  // 電波がないときは開かない（今の現場管理と同じ。ユーザー指示 2026-10-28）
-  if (isOffline()) { alert('電波がないため、' + K.title + 'は使えません。電波のある所で開いてください。'); return; }
   let ov = $('denpyoOverlay');
   if (!ov) { ov = document.createElement('div'); ov.id = 'denpyoOverlay'; document.body.appendChild(ov); }
   window[K.host] = oHost(s, k);
@@ -1498,79 +1515,139 @@ function oClose() {
   document.body.style.overflow = '';
 }
 const oDataUrl = b => new Promise((ok, ng) => { const r = new FileReader(); r.onload = () => ok(r.result); r.onerror = () => ng(r.error); r.readAsDataURL(b); });
+/* 読む：電波があれば新しいものを、無いか3秒待っても来なければ端末の控えを出す */
+const oRead = (net, cache) => isOffline() ? cache() : Promise.race([net(), new Promise((_, ng) => setTimeout(() => ng({ code: 'timeout' }), 3000))]).catch(e => { if (e && e.code === 'permission-denied') throw e; return cache(); });
+function oLog(siteId, k, action, no, rev, url) {
+  fire(setDoc(doc(collection(db, 'sites', siteId, 'orderLog')), { at: Date.now(), by: me.uid, byName: me.name || me.uid, kind: O_KIND[k].log, no: String(no || ''), rev: Number(rev) || 0, action, url: url || '' }), '注文ログ');
+}
+const oMeta = (k, slip, now) => ({ kind: k, sid: slip.id || '', no: String(slip.no || ''), room: String(slip.room || ''), n: (slip.items || []).length, status: String(slip.status || ''), rev: Number(slip.rev) || 0, updated: now, by: me.uid, byName: me.name || me.uid });
+/** サーバーへ保存。ほかの人が base より後に保存していたら断る */
+async function oSave(siteId, k, id, json, base) {
+  const K = O_KIND[k], slip = JSON.parse(json), now = Date.now(), meta = oMeta(k, slip, now), ref = doc(db, 'sites', siteId, 'orders', id), body = doc(db, 'sites', siteId, 'orderBody', id);
+  let made = false;
+  await runTransaction(db, async t => {
+    const c = await t.get(ref);
+    if (!c.exists()) { made = true; t.set(ref, { ...meta, createdBy: me.uid, createdAt: now, deleted: false }); }
+    else {
+      const m = c.data();
+      if (base && m.updated && m.updated !== base && m.by !== me.uid) throw { conflict: true, message: (m.byName || 'ほかの人') + 'さんが先にこの' + K.word + 'を保存しました。' + K.word + '一覧から開き直してください。' };
+      t.update(ref, meta);
+    }
+    t.set(body, { json });
+  });
+  if (made) oLog(siteId, k, '作成', slip.no, 0);
+  return { fileId: id, updated: now };
+}
+/** 貯めておいた伝票を送る（upPump から呼ばれる） */
+async function oSendJob(j) {
+  const done = async () => { const cur = await upTx('readonly', s => s.get(j.id)); if (cur && cur.n === j.n) await upTx('readwrite', s => s.delete(j.id)); };
+  try { await oSave(j.siteId, j.k, j.oid, j.json, j.base); await done(); }
+  catch (e) {
+    if (e && e.conflict) {
+      const slip = JSON.parse(j.json), id = doc(collection(db, 'sites', j.siteId, 'orders')).id;
+      slip.id = id; slip.no = (slip.no ? slip.no + '-' : '') + '電波なし分';
+      try { await oSave(j.siteId, j.k, id, JSON.stringify(slip), 0); await done(); fail(j.name, 'ほかの人が先に直していたため、「' + slip.no + '」という別の' + O_KIND[j.k].word + 'として残しました'); } catch (e2) { window.portalLastError = e2 && e2.code; }
+    } else if (e && e.code === 'permission-denied') { await done(); fail(j.name, '権限がありません'); }
+    else window.portalLastError = e && e.code;
+  }
+}
 function oHost(s, k) {
-  const K = O_KIND[k], col = n => collection(db, 'sites', s.id, n);
-  const log = (action, no, rev, url) => setDoc(doc(col('orderLog')), { at: Date.now(), by: me.uid, byName: me.name || me.uid, kind: K.log, no: String(no || ''), rev: Number(rev) || 0, action, url: url || '' }).catch(() => {});
+  const K = O_KIND[k], col = n => collection(db, 'sites', s.id, n), log = (a, no, rev, url) => oLog(s.id, k, a, no, rev, url);
+  const jobKey = id => 'o' + id, job = id => upTx('readonly', q => q.get(jobKey(id)));
+  const NO_NET = '電波がないため開けません。電波のある所で一度開くと、次からは電波がなくても見られます。';
   const fns = {
     async getOrdererInfo() {
-      const x = (await getDoc(doc(db, 'users', me.uid))).data() || {}, home = me.group === 'マルトク' || me.group === 'NAFA' ? me.group : 'エクスケア';
-      const co = await getDoc(doc(db, 'companies', home));
-      return { orderer: { name: me.name, mobile: x.mobile || '', google: x.google || '', group: home, company: co.exists() ? co.data() : { name: '', addr: '', tel: '', fax: '', logo: '', addrs: [] } } };
+      const u = await oRead(() => getDoc(doc(db, 'users', me.uid)), () => getDocFromCache(doc(db, 'users', me.uid))).catch(() => null);
+      const x = (u && u.data()) || {}, home = me.group === 'マルトク' || me.group === 'NAFA' ? me.group : 'エクスケア', c = doc(db, 'companies', home);
+      const co = await oRead(() => getDoc(c), () => getDocFromCache(c)).catch(() => null);
+      return { orderer: { name: me.name, mobile: x.mobile || '', google: x.google || '', group: home, company: co && co.exists() ? co.data() : { name: '', addr: '', tel: '', fax: '', logo: '', addrs: [] } } };
     },
-    async getDuctSpecs() { return { list: (await getDocs(collection(db, 'ductSpecs'))).docs.map(d => d.data()) }; },
+    async getDuctSpecs() {
+      const c = collection(db, 'ductSpecs');
+      return { list: (await oRead(() => getDocs(c), () => getDocsFromCache(c))).docs.map(d => d.data()) };
+    },
     async saveDuctSpec(json) {
       const x = JSON.parse(json || '{}'), name = String(x.name || '').trim();
       if (!name) throw new Error('題名を入れてください。');
-      await setDoc(doc(db, 'ductSpecs', encodeURIComponent(name)), { name, spec: x.spec || {}, up: !!x.up, updated: Date.now(), by: me.uid });
+      fire(setDoc(doc(db, 'ductSpecs', encodeURIComponent(name)), { name, spec: x.spec || {}, up: !!x.up, updated: Date.now(), by: me.uid }), 'ダクト仕様');
       return fns.getDuctSpecs();
     },
+    // 写真は端末に貯めて、番号（置き場）だけ先に返す。電波が戻ったら送る
     async uploadDenpyoPhoto(site, dataUrl) {
       const path = 'sites/' + s.id + '/orderPhotos/' + doc(col('orders')).id + '.jpg', blob = await (await fetch(dataUrl)).blob();
-      await uploadBytesResumable(stRef(storage, path), blob, { contentType: blob.type || 'image/jpeg' });
+      await upTx('readwrite', q => q.put({ id: path, rawPath: path, siteId: s.id, name: K.word + 'の写真', mime: blob.type || 'image/jpeg', blob, t: Date.now() }));
+      upPump();
       return { id: path };
     },
     async getDenpyoPhotos(site, ids) {
       const photos = {};
       await Promise.all((ids || []).slice(0, 60).map(async id => {
-        try { photos[id] = await oDataUrl(await (await fetch(await getDownloadURL(stRef(storage, id)))).blob()); } catch (e) {}
+        try {
+          const j = await upTx('readonly', q => q.get(id));
+          if (j && j.blob) { photos[id] = await oDataUrl(j.blob); return; }
+          const key = 'portalUrl:' + id;
+          let url = localStorage.getItem(key);
+          if (!url) { url = await getDownloadURL(stRef(storage, id)); localStorage.setItem(key, url); }
+          photos[id] = await oDataUrl(await (await fetch(url)).blob());
+        } catch (e) {}
       }));
       return { photos };
     },
     async getDenpyoFolders() {
+      if (isOffline()) throw new Error('工場へ提出は、電波のある所で行ってください。入力した内容は保存されています。');
       const fs = (await getDocs(col('folders'))).docs.map(d => ({ id: d.id, ...d.data() })).filter(f => f.kind === 'doc' && !f.deleted);
       const pathOf = f => { const p = [f.name]; let c = f; while (c.parent && (c = fs.find(x => x.id === c.parent))) p.unshift(c.name); return p.join(' / '); };
       return { folders: fs.map(f => ({ id: f.id, path: pathOf(f) })).sort((a, b) => a.path.localeCompare(b.path, 'ja')), rootName: '資料' };
     },
     async ['list' + K.fn]() {
-      const list = (await getDocs(query(col('orders'), where('kind', '==', k)))).docs.map(d => ({ id: d.id, ...d.data() })).filter(m => !m.deleted);
+      const q = query(col('orders'), where('kind', '==', k));
+      const list = (await oRead(() => getDocs(q), () => getDocsFromCache(q))).docs.map(d => ({ id: d.id, ...d.data() })).filter(m => !m.deleted);
+      (await upTx('readonly', o => o.getAll())).filter(j => j.order && j.siteId === s.id && j.k === k).forEach(j => {
+        const i = list.findIndex(m => m.id === j.oid), m = { id: j.oid, createdBy: me.uid, ...(i >= 0 ? list[i] : {}), ...j.meta };
+        if (i >= 0) list[i] = m; else list.push(m);
+      });
       list.forEach(m => { m.canDelete = me.isMaster || isManagerOf(s) || me.canAddSite || m.createdBy === me.uid; });
       return { list: list.sort((a, b) => (b.updated || 0) - (a.updated || 0)) };
     },
     async ['get' + K.fn](site, id) {
-      const [m, b] = await Promise.all([getDoc(doc(col('orders'), id)), getDoc(doc(col('orderBody'), id))]);
+      const j = await job(id);
+      if (j) return { fileId: id, updated: j.base, slip: JSON.parse(j.json) };
+      const m0 = doc(col('orders'), id), b0 = doc(col('orderBody'), id);
+      const [m, b] = await oRead(() => Promise.all([getDoc(m0), getDoc(b0)]), () => Promise.all([getDocFromCache(m0), getDocFromCache(b0)])).catch(e => { if (e && e.code === 'permission-denied') throw e; throw new Error(NO_NET); });
       if (!m.exists() || !b.exists() || m.data().deleted) throw new Error('この現場の' + K.word + 'ではありません。');
       return { fileId: id, updated: m.data().updated || 0, slip: JSON.parse(b.data().json) };
     },
     async ['save' + K.fn](site, id, json, base) {
       if (new Blob([json]).size > 1000000) throw new Error(K.word + 'が大きすぎて保存できません。');
-      const slip = JSON.parse(json), now = Date.now();
-      const meta = { kind: k, sid: slip.id || '', no: String(slip.no || ''), room: String(slip.room || ''), n: (slip.items || []).length, status: String(slip.status || ''), rev: Number(slip.rev) || 0, updated: now, by: me.uid, byName: me.name || me.uid };
-      if (!id) {
-        const ref = doc(col('orders')), b = writeBatch(db);
-        b.set(ref, { ...meta, createdBy: me.uid, createdAt: now, deleted: false });
-        b.set(doc(col('orderBody'), ref.id), { json });
-        await b.commit();
-        log('作成', slip.no, 0);
-        return { fileId: ref.id, updated: now };
+      const fid = id || doc(col('orders')).id, now = Date.now(), old = await job(fid), b = old ? old.base : (base || 0);
+      const keep = async () => {
+        const slip = JSON.parse(json);
+        await upTx('readwrite', q => q.put({ id: jobKey(fid), order: true, siteId: s.id, oid: fid, k, name: K.word + (slip.no ? '（NO.' + slip.no + '）' : ''), json, base: b, meta: oMeta(k, slip, now), n: now, t: old ? old.t : now }));
+        upPump();
+        return { fileId: fid, updated: b };
+      };
+      if (isOffline()) return keep();
+      try {
+        const r = await Promise.race([oSave(s.id, k, fid, json, b), new Promise((_, ng) => setTimeout(() => ng({ code: 'timeout' }), 5000))]);
+        if (old) await upTx('readwrite', q => q.delete(jobKey(fid)));
+        return r;
+      } catch (e) {
+        if ((e && e.conflict) || (e && e.code === 'permission-denied')) throw e;
+        return keep();   // 電波が弱くて送れないときも、端末に貯めて入力を続けられるように
       }
-      const ref = doc(col('orders'), id), body = doc(col('orderBody'), id);
-      await runTransaction(db, async t => {
-        const m = (await t.get(ref)).data() || {};
-        if (base && m.updated && m.updated !== base && m.by !== me.uid) throw { conflict: true, message: (m.byName || 'ほかの人') + 'さんが先にこの' + K.word + 'を保存しました。' + K.word + '一覧から開き直してください。' };
-        t.update(ref, meta);
-        t.set(body, { json });
-      });
-      return { fileId: id, updated: now };
     },
     async ['delete' + K.fn](site, id) {
-      const ref = doc(col('orders'), id), m = (await getDoc(ref)).data() || {};
-      await updateDoc(ref, { deleted: true, deletedAt: Date.now(), updated: Date.now(), by: me.uid, byName: me.name || me.uid });
+      const ref = doc(col('orders'), id), c = await oRead(() => getDoc(ref), () => getDocFromCache(ref)).catch(() => null), j = await job(id);
+      const m = (c && c.data()) || (j && j.meta) || {};
+      if (j) await upTx('readwrite', q => q.delete(jobKey(id)));
+      if (c && c.exists()) fire(updateDoc(ref, { deleted: true, deletedAt: Date.now(), updated: Date.now(), by: me.uid, byName: me.name || me.uid }), K.word + 'の削除');
       log('削除（' + K.word + '）', m.no, 0);
       return { message: K.word + (m.no ? '（NO.' + m.no + '）' : '') + 'を削除しました。' };
     },
-    async ['log' + K.fn](site, action, no, rev) { await log(action, no, rev); return {}; },
+    async ['log' + K.fn](site, action, no, rev) { log(action, no, rev); return {}; },
     /* 工場へ提出：PDF を資料の選んだフォルダへ。前の版は削除の印を付ける（今の現場管理の削除フォルダと同じ扱い） */
     async ['save' + K.fn + 'Pdf'](site, dir, newName, b64, fileName, replaceId, rev, no) {
+      if (isOffline()) throw new Error('工場へ提出は、電波のある所で行ってください。');
       let fid = dir, folder = '';
       const fs = (await getDocs(col('folders'))).docs.map(d => ({ id: d.id, ...d.data() })).filter(f => f.kind === 'doc' && !f.deleted);
       if (newName) {
