@@ -86,7 +86,7 @@ storage.maxUploadRetryTime = 60000;   // 電波が切れたら1分で一度あ�
 const auth = getAuth(app);
 auth.languageCode = 'ja';   // パスワード再設定のメールと画面を日本語にする
 const db = initializeFirestore(app, { localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }) });
-const APP_VER = 'Ver.20261031-01';
+const APP_VER = 'Ver.20261031-02';
 
 /* ---------- 電波なしでも使う（今の現場管理と同じ考え方） ----------
    ・保存は押した瞬間に完了の形。電波が戻ったら自動で送る（データは Firestore が端末に貯める）
@@ -714,18 +714,23 @@ function viewerShow() {
 function viewerPhoto(it) {
   const body = $('fvBody');
   body.innerHTML = '<div class="fv-wrap" id="fvWrap"><img id="fvImg" alt=""></div>';
-  const img = $('fvImg'), tries = [];
+  const img = $('fvImg'), tries = [], cur = VW;
   if (it.url) tries.push(it.url);
   if (it.driveId) tries.push('https://lh3.googleusercontent.com/d/' + it.driveId + '=w2000', 'https://drive.google.com/thumbnail?id=' + it.driveId + '&sz=w2000');
-  if (it.thumb) tries.push(it.thumb);   // 大きい写真が取れないときは、端末にある見本画像を出す
+  // 先に手元の見本画像を正しい形で出し、大きい写真は裏で全部受け取ってから差し替える（読み込み途中の崩れた絵を見せない）
+  const size = el => { if (VW === cur) { VW.natW = el.naturalWidth; VW.natH = el.naturalHeight; viewerApply(); } };
+  img.onload = () => size(img);
+  if (it.thumb) img.src = it.thumb;
+  const big = new Image();
   let k = 0;
-  img.onerror = () => {
+  big.onload = () => { if (VW === cur && $('fvImg') === img) { img.src = big.src; } };
+  big.onerror = () => {
     k++;
-    if (k < tries.length) { img.src = tries[k]; return; }
+    if (k < tries.length) { big.src = tries[k]; return; }
+    if (VW !== cur || it.thumb) return;   // 見本画像があれば、それを出したままにする
     body.innerHTML = '<div class="fv-msg">' + (isOffline() ? '電波がないため、この写真は表示できません。<br>電波のある所で一度開くと、次からは電波がなくても見られます。' : '写真を表示できませんでした。') + '</div>';
   };
-  img.onload = () => { if (VW) { VW.natW = img.naturalWidth; VW.natH = img.naturalHeight; viewerApply(); } };
-  if (tries.length) img.src = tries[0]; else img.onerror();
+  if (tries.length) big.src = tries[0]; else big.onerror();
 }
 function viewerDoc(it) {
   const body = $('fvBody'), isPdf = /pdf/i.test(it.mime || '') || /\.pdf$/i.test(it.name || '');
