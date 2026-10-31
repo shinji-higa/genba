@@ -60,6 +60,7 @@ const app = initializeApp({
   appId: '1:1005411376335:web:0129ce73c9988973e56bba'
 });
 const auth = getAuth(app);
+auth.languageCode = 'ja';   // パスワード再設定のメールと画面を日本語にする
 const db = initializeFirestore(app, { localCache: persistentLocalCache() });
 const PORTAL_API = 'https://script.google.com/macros/s/AKfycbyW2hFHqIQuu-TsflPk_0zv7gquhoepspuvRG9-bMStPDSWSc2blcDFBtWs7MisP3f_/exec';
 
