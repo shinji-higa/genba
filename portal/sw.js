@@ -49,6 +49,7 @@ self.addEventListener('fetch', e => {
   if (req.method !== 'GET') return;
   const u = new URL(req.url);
   if (u.origin === self.location.origin) {
+    if (u.searchParams.has('check')) return;   // 新しい版の確認は、端末の控えを通さない
     if (u.pathname.startsWith('/portal/') && !u.pathname.endsWith('/sw.js')) e.respondWith(shell(req));
     return;
   }

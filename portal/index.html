@@ -86,7 +86,7 @@ storage.maxUploadRetryTime = 60000;   // 電波が切れたら1分で一度あ�
 const auth = getAuth(app);
 auth.languageCode = 'ja';   // パスワード再設定のメールと画面を日本語にする
 const db = initializeFirestore(app, { localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }) });
-const APP_VER = 'Ver.20261031-03';
+const APP_VER = 'Ver.20261031-04';
 
 /* ---------- 電波なしでも使う（今の現場管理と同じ考え方） ----------
    ・保存は押した瞬間に完了の形。電波が戻ったら自動で送る（データは Firestore が端末に貯める）
@@ -146,17 +146,37 @@ window.addEventListener('offline', () => { netDown = true; badge(); });
 document.addEventListener('visibilitychange', () => { if (!document.hidden) upPump(); });
 setInterval(() => upPump(), 30000);
 
-/* 新しい版の知らせ */
+/* 新しい版の知らせ。iPhone のホーム画面アプリは裏に残って続きから出るので、開き直しを待たず、
+   表に出たときと10分ごとに公開中の版番号を確かめる。押すと端末の控えを入れ替えて開き直す */
+function showUpdate() {
+  if (document.getElementById('updBar')) return;
+  const b = document.createElement('button');
+  b.type = 'button'; b.id = 'updBar'; b.textContent = '新しいVerがあります（押すと入れ替え）';
+  b.style.cssText = 'position:fixed;left:50%;transform:translateX(-50%);top:calc(8px + env(safe-area-inset-top,0px));z-index:3700;border:0;border-radius:18px;padding:9px 16px;background:#111;color:#fff;font:700 13px -apple-system,BlinkMacSystemFont,"Hiragino Sans",Meiryo,sans-serif;box-shadow:0 2px 8px rgba(0,0,0,.3);max-width:92vw;white-space:nowrap;';
+  b.onclick = async () => {
+    b.textContent = '入れ替えています…';
+    try {
+      const r = await fetch('./?check=' + Date.now(), { cache: 'no-store' });
+      if (r.ok && window.caches) await (await caches.open('portal-shell-v1')).put('./', r);
+    } catch (e) {}
+    location.reload();
+  };
+  document.body.appendChild(b);
+}
+async function checkVer() {
+  if (navigator.onLine === false || document.hidden) return;
+  try {
+    const t = await fetch('./?check=' + Date.now(), { cache: 'no-store' }).then(r => r.ok ? r.text() : '');
+    const m = t.match(/APP_VER = '([^']+)'/);
+    if (m && m[1] !== APP_VER) showUpdate();
+  } catch (e) {}
+}
+document.addEventListener('visibilitychange', checkVer);
+setInterval(checkVer, 600000);
+setTimeout(checkVer, 3000);
 if ('serviceWorker' in navigator) {
   navigator.serviceWorker.register('sw.js').catch(() => {});
-  navigator.serviceWorker.addEventListener('message', e => {
-    if (!e.data || e.data.type !== 'portal-update' || document.getElementById('updBar')) return;
-    const b = document.createElement('button');
-    b.type = 'button'; b.id = 'updBar'; b.textContent = '新しいVerがあります（押すと入れ替え）';
-    b.style.cssText = 'position:fixed;left:50%;transform:translateX(-50%);top:calc(8px + env(safe-area-inset-top,0px));z-index:3700;border:0;border-radius:18px;padding:9px 16px;background:#111;color:#fff;font:700 13px -apple-system,BlinkMacSystemFont,"Hiragino Sans",Meiryo,sans-serif;box-shadow:0 2px 8px rgba(0,0,0,.3);';
-    b.onclick = () => location.reload();
-    document.body.appendChild(b);
-  });
+  navigator.serviceWorker.addEventListener('message', e => { if (e.data && e.data.type === 'portal-update') showUpdate(); });
 }
 
 /* 写真・資料の貯め場所 */
