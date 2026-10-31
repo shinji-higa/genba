@@ -102,7 +102,7 @@ function show(panel, title, back, backLabel) {
   window.scrollTo(0, 0);
 }
 $('back').onclick = () => { if (backTo) backTo(); };
-const stopWatch = () => { if (stop) { stop(); stop = null; } };
+const stopWatch = () => { if (stop) { stop(); stop = null; } xStop(); };
 const banner = (t, ng) => '<div class="info-card" style="' + (ng ? 'background:var(--error-bg);color:var(--error-text);' : 'background:var(--success-bg);color:var(--success-text);') + 'font-weight:600;">' + esc(t) + '</div>';
 const autoGrow = root => root.querySelectorAll('textarea.auto-expand').forEach(a => {
   const f = () => { a.style.height = 'auto'; a.style.height = a.scrollHeight + 4 + 'px'; };
@@ -257,7 +257,8 @@ function renderDetail(s) {
   const nearby = s.address ? '<div class="nearby-row" style="display:grid;">' + ['コンビニ', 'トイレ', '駐車場', 'ホームセンター'].map(k => '<button type="button" class="nearby-btn" data-k="' + k + '"><span>' + k + '</span></button>').join('') + '</div>' : '';
   $('panelDetail').innerHTML =
     '<nav class="nav-tabs" style="margin: -16px -16px 14px -16px;">' + TABS.map(n => '<button type="button" class="nav-tab-item' + (n === detailTab ? ' active' : '') + '" data-t="' + n + '">' + n + '</button>').join('') + '</nav>' +
-    (detailTab !== '現場詳細' ? '<div class="info-card" style="text-align:center; color:var(--muted);">「' + detailTab + '」はこれから作ります。</div>' :
+    (detailTab === '写真' || detailTab === '資料' ? '<div id="xRoot"></div>' :
+     detailTab !== '現場詳細' ? '<div class="info-card" style="text-align:center; color:var(--muted);">「' + detailTab + '」はこれから作ります。</div>' :
     '<div style="margin-bottom: 14px; display: flex; gap: 8px; align-items: center;">' +
       (isManagerOf(s) ? '<button type="button" id="edit" class="btn btn-dark" style="flex: 1;">✏️ 現場情報編集</button>'
         : '<div style="flex: 1; padding: 10px 12px; background: #f7f7f9; color: #555; font-size: 0.82rem; font-weight: 600; border: 1px dashed var(--border); border-radius: 4px; text-align: center;">※ 編集する場合は現場管理者に連絡</div>') +
@@ -286,6 +287,7 @@ function renderDetail(s) {
       ruleFields(s, true) +
     '</div>');
   $('panelDetail').querySelectorAll('.nav-tab-item').forEach(b => { b.onclick = () => { detailTab = b.dataset.t; renderDetail(s); }; });
+  if (detailTab === '写真' || detailTab === '資料') { xOpen(s, detailTab === '写真' ? 'photo' : 'doc'); return; }
   if (detailTab !== '現場詳細') return;
   autoGrow($('panelDetail'));
   $('panelDetail').querySelectorAll('.nearby-btn').forEach(b => {
@@ -324,6 +326,332 @@ function readRules() {
   data.ruleOther = $('f_ruleOther').value;
   return data;
 }
+
+/* ---------- 写真・資料（見た目と操作は今の現場管理と同じ） ----------
+   ファイルの情報と小さな見本画像は Firestore、本体は Google ドライブ。
+   一覧は Firestore から出すので、ドライブを待たない。追加は先に一覧へ出して、本体は裏で送る */
+const RELOAD_ICON = '';
+let X = null, xUnsub = [];
+function xStop() { xUnsub.forEach(f => f()); xUnsub = []; X = null; }
+const xLabel = k => k === 'doc' ? '資料' : '写真';
+const xSub = name => collection(db, 'sites', X.s.id, name);
+const xFolders = () => X.folders.filter(f => f.kind === X.kind && !f.deleted);
+const xFiles = () => X.files.filter(f => f.kind === X.kind && !f.deleted);
+const xMayRemove = it => me.isMaster || isManagerOf(X.s) || (me.canAddSite && it.by === me.uid);
+const xDate = t => { const d = new Date(t || 0); return d.getFullYear() + '/' + (d.getMonth() + 1) + '/' + d.getDate(); };
+
+function xOpen(s, kind) {
+  if (!X || X.s.id !== s.id) {
+    xStop();
+    const t = performance.now();
+    X = { s, kind, folders: [], files: [], active: { photo: '', doc: '' }, mode: { photo: 'grid', doc: 'textonly' }, sort: 'newest', selMode: false, sel: new Set(), selF: new Set() };
+    let shown = false;
+    const draw = snap => {
+      if (!shown && !snap.metadata.fromCache) { shown = true; $('speed').textContent = xLabel(X.kind) + 'を表示：' + sec(t); }
+      if ($('xRoot')) xRender();
+    };
+    xUnsub.push(onSnapshot(xSub('folders'), { includeMetadataChanges: true }, q => { if (!X) return; X.folders = q.docs.map(d => ({ id: d.id, ...d.data() })); draw(q); }));
+    xUnsub.push(onSnapshot(xSub('files'), { includeMetadataChanges: true }, q => { if (!X) return; X.files = q.docs.map(d => ({ id: d.id, ...d.data() })); draw(q); }));
+  }
+  X.s = s; X.kind = kind; X.selMode = false; X.sel.clear(); X.selF.clear();
+  xShell();
+  xRender();
+}
+function xShell() {
+  const k = X.kind, L = xLabel(k);
+  $('xRoot').innerHTML =
+    '<div style="margin-bottom: 12px; display: flex; gap: 8px; align-items: center;"><button type="button" id="xAdd" class="btn btn-dark" style="flex: 1;">＋ ' + L + 'を追加</button></div>' +
+    '<input type="file" id="xFile" multiple style="display:none;"' + (k === 'photo' ? ' accept="image/*"' : '') + '>' +
+    '<div class="tree-graph-container" style="background: #f9f9fa; border: 1px solid var(--border); border-radius: 6px; padding: 12px; margin-bottom: 12px;">' +
+      '<div class="folder-tool-row">' +
+        '<button type="button" id="xFAdd" class="btn btn-sub">📁 <span class="lbl-long">フォルダを追加</span><span class="lbl-short">フォルダ追加</span></button>' +
+        '<button type="button" id="xFMove" class="btn btn-sub">📁 <span class="lbl-long">フォルダの移動</span><span class="lbl-short">フォルダ移動</span></button>' +
+        '<button type="button" id="xFDel" class="btn btn-sub btn-del del-admin">🗑️ <span class="lbl-long">選択中のフォルダの削除</span><span class="lbl-short">選択削除</span></button>' +
+      '</div><div id="xTree" class="tree-graph-scroll" style="overflow-x: auto; padding-bottom: 6px;"></div></div>' +
+    '<div id="xBulk" class="bulk-action-bar" style="display: none;"><span id="xCount" style="font-weight: 700; font-size: 0.8rem; white-space: nowrap;">0件選択中</span>' +
+      '<div style="display: flex; gap: 6px; align-items: center;">' +
+        '<button type="button" id="xAll" class="btn btn-sub" style="font-size: 0.78rem; background: #ffffff; color: #111111;">全選択</button>' +
+        '<button type="button" id="xDl" class="btn btn-dark dl-btn" style="font-size: 0.78rem; background: #1a73e8; border: 1px solid #1a73e8;">⬇ <span class="lbl-long">ダウンロード</span><span class="lbl-short">DL</span></button>' +
+        '<button type="button" id="xMv" class="btn btn-dark" style="font-size: 0.78rem; background: #333333; border: 1px solid #777777;">移動</button>' +
+        '<button type="button" id="xRm" class="btn btn-dark del-admin" style="font-size: 0.78rem; background: var(--error-text); border: 1px solid var(--error-text);">削除</button>' +
+        '<button type="button" id="xEnd" class="btn btn-sub" style="font-size: 0.78rem; background: transparent; color: #ffffff; border: 1px solid #777777;">完了</button>' +
+      '</div></div>' +
+    '<div style="display: flex; justify-content: flex-end; align-items: center; gap: 8px; margin-bottom: 10px;">' +
+      '<button type="button" id="xSelBtn" class="btn btn-sub action-control-btn" style="font-weight: 700;"><span class="chk-icon">☑</span><span>選択</span></button>' +
+      '<select id="xMode" class="action-control-select"><option value="grid">標準グリッド</option><option value="large">拡大表示</option><option value="textonly">文字のみ</option></select>' +
+      '<select id="xSort" class="action-control-select"><option value="newest">新しい順</option><option value="oldest">古い順</option></select></div>' +
+    '<div id="xBox"></div>';
+  $('xMode').value = X.mode[k]; $('xSort').value = X.sort;
+  $('xMode').onchange = () => { X.mode[X.kind] = $('xMode').value; xList(); };
+  $('xSort').onchange = () => { X.sort = $('xSort').value; xList(); };
+  $('xAdd').onclick = xAdd;
+  $('xFile').onchange = e => { const fs = [...e.target.files]; e.target.value = ''; if (fs.length) xUpload(X.kind, X.pending, fs); };
+  $('xFAdd').onclick = async () => {
+    const name = (prompt('「' + xNameOf(X.active[X.kind]) + '」内に作成するフォルダ名を入力してください:') || '').trim();
+    if (name) await xNewFolder(name, X.active[X.kind]);
+  };
+  $('xFMove').onclick = async () => {
+    if (!X.selF.size) { alert('移動するフォルダにチェックを入れてください。'); return; }
+    const to = await xPick('移動先のフォルダを選んでください', true);
+    if (to === null) return;
+    if ([...X.selF].some(id => id === to || xDescendants(id).includes(to))) { alert('自分の中には移動できません。'); return; }
+    const b = writeBatch(db);
+    X.selF.forEach(id => b.update(doc(xSub('folders'), id), { parent: to }));
+    await b.commit(); X.selF.clear();
+  };
+  $('xFDel').onclick = async () => {
+    if (!X.selF.size) { alert('削除するフォルダにチェックを入れてください。'); return; }
+    if (!confirm('選択中のフォルダを、中の' + xLabel(X.kind) + 'ごと削除します。よろしいですか？')) return;
+    const ids = new Set();
+    X.selF.forEach(id => { ids.add(id); xDescendants(id).forEach(x => ids.add(x)); });
+    const files = xFiles().filter(f => ids.has(f.folder));
+    if (files.some(f => !xMayRemove(f)) || [...ids].some(id => !xMayRemove(X.folders.find(f => f.id === id) || {}))) { alert('削除できるのは、マスター・現場管理者、または自分が追加したものだけです。'); return; }
+    await xBatch([...[...ids].map(id => ['folders', id]), ...files.map(f => ['files', f.id])], { deleted: true });
+    X.selF.clear();
+    if (ids.has(X.active[X.kind])) X.active[X.kind] = '';
+  };
+  $('xSelBtn').onclick = () => { X.selMode = !X.selMode; X.sel.clear(); xBulk(); xList(); };
+  $('xEnd').onclick = () => { X.selMode = false; X.sel.clear(); xBulk(); xList(); };
+  $('xAll').onclick = () => { const l = xItems(); if (X.sel.size === l.length) X.sel.clear(); else l.forEach(i => X.sel.add(i.id)); xBulk(); xList(); };
+  $('xDl').onclick = () => { xItems().filter(i => X.sel.has(i.id) && i.driveId).forEach(i => window.open('https://drive.google.com/uc?export=download&id=' + i.driveId, '_blank')); };
+  $('xMv').onclick = () => xMove([...X.sel]);
+  $('xRm').onclick = () => xRemove([...X.sel]);
+}
+function xBulk() {
+  $('xBulk').style.display = X.selMode ? 'flex' : 'none';
+  $('xCount').textContent = X.sel.size + '件選択中';
+}
+const xKids = id => xFolders().filter(f => (f.parent || '') === id).sort((a, b) => (a.at || 0) - (b.at || 0));
+const xDescendants = id => xKids(id).flatMap(c => [c.id, ...xDescendants(c.id)]);
+const xNameOf = id => { const f = xFolders().find(x => x.id === id); return f ? f.name : xLabel(X.kind) + 'TOP'; };
+function xRender() {
+  if (!$('xTree')) return;
+  if (X.active[X.kind] && !xFolders().some(f => f.id === X.active[X.kind])) X.active[X.kind] = '';
+  const files = xFiles();
+  const node = (id, root) => {
+    const kids = root ? xKids('') : xKids(id);
+    const f = root ? null : xFolders().find(x => x.id === id);
+    const on = X.active[X.kind] === (root ? '' : id), chk = !root && X.selF.has(id);
+    return '<div class="tree-branch"><div class="tree-node-col"><button type="button" class="tree-node-btn' + (on ? ' active' : '') + (chk ? ' folder-selected' : '') + '" data-f="' + (root ? '' : esc(id)) + '">' +
+      (root ? '' : '<input type="checkbox" class="tree-node-check"' + (chk ? ' checked' : '') + ' data-c="' + esc(id) + '">') +
+      esc(root ? xLabel(X.kind) + 'TOP' : f.name) + (root ? '' : ' <span style="font-size:0.7rem; font-weight:normal; opacity:0.8;">(' + files.filter(x => x.folder === id).length + ')</span>') + '</button></div>' +
+      (kids.length ? '<div class="tree-children-col">' + kids.map(c => '<div class="tree-child-row">' + node(c.id, false) + '</div>').join('') + '</div>' : '') + '</div>';
+  };
+  $('xTree').innerHTML = node('', true);
+  $('xTree').querySelectorAll('.tree-node-btn').forEach(b => { b.onclick = () => { X.active[X.kind] = b.dataset.f; X.sel.clear(); xRender(); }; });
+  $('xTree').querySelectorAll('.tree-node-check').forEach(c => {
+    c.onclick = e => e.stopPropagation();
+    c.onchange = () => { if (c.checked) X.selF.add(c.dataset.c); else X.selF.delete(c.dataset.c); xRender(); };
+  });
+  xList();
+}
+function xItems() {
+  const a = X.active[X.kind], l = xFiles().filter(f => (f.folder || '') === a);
+  return l.sort((p, q) => X.sort === 'newest' ? (q.at || 0) - (p.at || 0) : (p.at || 0) - (q.at || 0));
+}
+function xList() {
+  const box = $('xBox'), kind = X.kind, doc_ = kind === 'doc', mode = X.mode[kind], L = xLabel(kind), items = xItems();
+  box.className = mode === 'textonly' && doc_ ? '' : 'photo-grid view-' + mode;
+  box.style.display = mode === 'textonly' ? 'flex' : 'grid';
+  box.style.flexDirection = 'column'; box.style.gap = mode === 'textonly' ? '6px' : '';
+  if (!items.length) {
+    const sub = xKids(X.active[kind]).length;
+    box.innerHTML = '<div class="info-card" style="grid-column: 1/-1; width:100%; text-align:center; color:var(--muted);">' + (sub ? 'このフォルダ直下には' + L + 'がありません（サブフォルダを選択してください）。' : L + 'がありません。「' + L + 'を追加」から保存してください。') + '</div>';
+    return;
+  }
+  const state = it => it.failed ? '<span style="color:var(--error-text); font-size:0.74rem;"> 送信できませんでした</span>' : it.uploading ? '<span style="color:var(--muted); font-size:0.74rem;"> 送信中</span>' : '';
+  box.innerHTML = items.map(it => {
+    const id = esc(it.id), chk = X.sel.has(it.id), del = xMayRemove(it) ? '<button type="button" class="ACT" data-a="del" style="color:var(--error-text);">削除</button>' : '';
+    const acts = c => ('<button type="button" class="ACT" data-a="move">移動</button><button type="button" class="ACT" data-a="edit">編集</button>' + del).replace(/class="ACT"/g, c);
+    if (mode === 'textonly') return '<div class="photo-list-row' + (chk ? ' is-selected' : '') + '" data-id="' + id + '">' +
+      (X.selMode ? '<input type="checkbox" class="bulk-checkbox"' + (chk ? ' checked' : '') + '>' : '') +
+      '<div style="overflow:hidden; text-overflow:ellipsis; flex:1; padding-right:8px;"><a href="javascript:void(0)" data-a="open" style="color:var(--link-blue); text-decoration:underline;">' + (doc_ ? '📄 ' : '📷 ') + esc(it.name) + '</a>' +
+      '<span style="font-size:0.78rem; color:var(--muted); margin-left:8px;">' + xDate(it.at) + '</span>' + (it.byName ? '<span style="font-size:0.78rem; color:var(--muted); margin-left:6px;">👤 ' + esc(it.byName) + '</span>' : '') + state(it) +
+      (it.comment ? '<div style="font-size:0.75rem; color:var(--muted); margin-top:2px;">💬 ' + esc(it.comment) + '</div>' : '') + '</div>' +
+      '<div style="display:flex; gap:6px; flex-shrink:0;">' + acts('class="btn btn-sub" style="padding:2px 6px; font-size:0.78rem;"').replace(/" style="color:var\(--error-text\);"/g, ' color:var(--error-text);"') + '</div></div>';
+    return '<div class="photo-card' + (chk ? ' is-selected' : '') + '" data-id="' + id + '">' +
+      (X.selMode ? '<div class="photo-card-check-wrap"><input type="checkbox" class="bulk-checkbox"' + (chk ? ' checked' : '') + '></div>' : '') +
+      '<div class="photo-card-img-wrap" data-a="open"' + (doc_ || !it.thumb ? ' style="background:#f4f4f6;"' : '') + '>' + (it.thumb ? '<img src="' + esc(it.thumb) + '" alt="' + esc(it.name) + '">' : '<span style="font-size:2.4rem;">📄</span>') + '</div>' +
+      '<div class="photo-card-name" title="' + esc(it.name) + '">' + esc(it.name) + '</div>' +
+      '<div style="font-size:0.74rem; color:var(--muted); text-align:center;">' + xDate(it.at) + state(it) + '</div>' +
+      (it.byName ? '<div style="font-size:0.74rem; color:var(--muted); text-align:center;">👤 ' + esc(it.byName) + '</div>' : '') +
+      (it.comment ? '<div style="font-size:0.74rem; color:var(--muted); padding:0 4px 2px 4px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; text-align:center;">💬 ' + esc(it.comment) + '</div>' : '') +
+      '<div class="photo-card-actions">' + acts('class="photo-act-btn"') + '</div></div>';
+  }).join('');
+  box.querySelectorAll('[data-id]').forEach(el => {
+    const it = items.find(i => i.id === el.dataset.id);
+    const toggle = () => { if (X.sel.has(it.id)) X.sel.delete(it.id); else X.sel.add(it.id); xBulk(); xList(); };
+    const cb = el.querySelector('.bulk-checkbox');
+    if (cb) cb.onchange = toggle;
+    el.querySelectorAll('[data-a]').forEach(b => {
+      b.onclick = () => {
+        const a = b.dataset.a;
+        if (a === 'open') { if (X.selMode) toggle(); else xView(it); }
+        else if (a === 'move') xMove([it.id]);
+        else if (a === 'edit') xEdit(it);
+        else if (a === 'del') xRemove([it.id]);
+      };
+    });
+  });
+}
+function xView(it) {
+  if (!it.driveId) { alert('まだ送信中です。'); return; }
+  if (it.kind === 'doc') { window.open('https://drive.google.com/file/d/' + it.driveId + '/view', '_blank'); return; }
+  const o = document.createElement('div');
+  o.style.cssText = 'position:fixed; inset:0; background:rgba(0,0,0,.9); z-index:100; display:flex; align-items:center; justify-content:center;';
+  o.innerHTML = '<img style="max-width:100%; max-height:100%;" alt="" src="https://drive.google.com/thumbnail?id=' + esc(it.driveId) + '&sz=w2000"><button type="button" class="btn btn-sub" style="position:absolute; top:12px; right:12px;">閉じる</button>';
+  o.onclick = () => o.remove();
+  document.body.appendChild(o);
+}
+async function xBatch(rows, data) {
+  for (let i = 0; i < rows.length; i += 400) {
+    const b = writeBatch(db);
+    rows.slice(i, i + 400).forEach(r => b.update(doc(xSub(r[0]), r[1]), data));
+    await b.commit();
+  }
+}
+async function xNewFolder(name, parent) {
+  const ref = doc(xSub('folders'));
+  await setDoc(ref, { kind: X.kind, name, parent: parent || '', at: Date.now(), by: me.uid, deleted: false });
+  return ref.id;
+}
+/* フォルダを選ぶ画面。allowTop=false のときは TOP を出さない。選ばなければ null */
+function xPick(title, allowTop, allowNew) {
+  return new Promise(done => {
+    const rows = [];
+    const walk = (p, depth) => xKids(p).forEach(f => { rows.push([f.id, '　'.repeat(depth) + f.name]); walk(f.id, depth + 1); });
+    walk('', 0);
+    const o = document.createElement('div');
+    o.style.cssText = 'position:fixed; inset:0; background:rgba(0,0,0,.5); z-index:100; display:flex; align-items:center; justify-content:center; padding:16px;';
+    o.innerHTML = '<div class="info-card" style="width:100%; max-width:420px; max-height:80vh; overflow:auto; margin:0;"><div style="font-weight:700; margin-bottom:10px;">' + esc(title) + '</div>' +
+      (allowTop ? '<button type="button" class="btn btn-sub" data-p="" style="width:100%; margin-bottom:6px; justify-content:flex-start;">' + xLabel(X.kind) + 'TOP</button>' : '') +
+      rows.map(r => '<button type="button" class="btn btn-sub" data-p="' + esc(r[0]) + '" style="width:100%; margin-bottom:6px; justify-content:flex-start;">' + esc(r[1]) + '</button>').join('') +
+      (allowNew ? '<button type="button" class="btn btn-outline" data-n="1" style="margin-bottom:6px;">＋ 新しいフォルダを作って追加</button>' : '') +
+      '<button type="button" class="btn btn-sub" data-x="1" style="width:100%;">やめる</button></div>';
+    const end = v => { o.remove(); done(v); };
+    o.querySelectorAll('[data-p]').forEach(b => { b.onclick = () => end(b.dataset.p); });
+    if (o.querySelector('[data-n]')) o.querySelector('[data-n]').onclick = async () => {
+      const name = (prompt('新しいフォルダ名を入力してください（' + xLabel(X.kind) + 'TOPの中に作ります）:') || '').trim();
+      if (name) end(await xNewFolder(name, '')); else end(null);
+    };
+    o.querySelector('[data-x]').onclick = () => end(null);
+    document.body.appendChild(o);
+  });
+}
+async function xAdd() {
+  let to = X.active[X.kind];
+  if (!to) {
+    to = await xPick(xLabel(X.kind) + 'TOPには直接追加できません。保存先を選んでください', false, true);
+    if (to === null) return;
+    X.active[X.kind] = to; xRender();
+  }
+  X.pending = to;
+  $('xFile').click();
+}
+async function xMove(ids) {
+  if (!ids.length) return;
+  const to = await xPick('移動先のフォルダを選んでください', false);
+  if (to === null) return;
+  await xBatch(ids.map(id => ['files', id]), { folder: to });
+  X.sel.clear(); X.selMode = false; xBulk();
+}
+async function xEdit(it) {
+  const name = prompt('名前を入力してください:', it.name);
+  if (name === null || !name.trim()) return;
+  const data = { name: name.trim() };
+  if (it.kind === 'photo') { const c = prompt('コメントを入力してください:', it.comment || ''); if (c !== null) data.comment = c; }
+  await updateDoc(doc(xSub('files'), it.id), data);
+}
+async function xRemove(ids) {
+  if (!ids.length) return;
+  const list = xFiles().filter(f => ids.includes(f.id));
+  if (list.some(f => !xMayRemove(f))) { alert('削除できるのは、マスター・現場管理者、または自分が追加したものだけです。'); return; }
+  if (!confirm(list.length + '件を削除します。よろしいですか？')) return;
+  await xBatch(ids.map(id => ['files', id]), { deleted: true });
+  X.sel.clear(); X.selMode = false; xBulk();
+}
+/* 追加：写真は今の現場管理と同じく 1600px・画質 0.8 に縮める。一覧用の見本画像（長い辺 240px）は Firestore に入れる */
+function xPrepare(file) {
+  return new Promise(ok => {
+    const raw = () => { const r = new FileReader(); r.onload = () => ok({ name: file.name, mime: file.type || 'application/octet-stream', data: String(r.result).split(',')[1], thumb: '' }); r.readAsDataURL(file); };
+    if (!/^image\/(jpeg|png|webp|heic)/i.test(file.type || '')) return raw();
+    const url = URL.createObjectURL(file), img = new Image();
+    img.onload = () => {
+      const draw = (max, q) => {
+        const s = Math.min(1, max / Math.max(img.naturalWidth, img.naturalHeight)), c = document.createElement('canvas');
+        c.width = Math.round(img.naturalWidth * s); c.height = Math.round(img.naturalHeight * s);
+        const x = c.getContext('2d'); x.fillStyle = '#fff'; x.fillRect(0, 0, c.width, c.height); x.drawImage(img, 0, 0, c.width, c.height);
+        return c.toDataURL('image/jpeg', q);
+      };
+      const big = draw(1600, 0.8), thumb = draw(240, 0.5);
+      URL.revokeObjectURL(url);
+      ok({ name: file.name.replace(/\.[^.]+$/, '') + '.jpg', mime: 'image/jpeg', data: big.split(',')[1], thumb });
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); raw(); };
+    img.src = url;
+  });
+}
+const upQueue = []; let upBusy = 0;
+function upNext() {
+  while (upBusy < 3 && upQueue.length) {
+    const j = upQueue.shift(); upBusy++;
+    const t = performance.now();
+    (async () => {
+      try {
+        const idToken = await auth.currentUser.getIdToken();
+        const d = await fetch(PORTAL_API, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ fn: 'upload', idToken, data: { siteId: j.siteId, name: j.name, mime: j.mime, data: j.data } }) }).then(r => r.json());
+        if (!d || !d.ok) throw new Error((d && d.m) || '送信できませんでした。');
+        await updateDoc(j.ref, { driveId: d.v.id, uploading: false, sendMs: Math.round(performance.now() - t) });
+        window.portalLastSend = sec(t);
+      } catch (e) {
+        try { await updateDoc(j.ref, { uploading: false, failed: true }); } catch (e2) {}
+      }
+      upBusy--; upNext();
+    })();
+  }
+}
+async function xUpload(kind, folder, files) {
+  for (const file of files) {
+    const p = await xPrepare(file);
+    const ref = doc(xSub('files'));
+    await setDoc(ref, { kind, folder, name: p.name, mime: p.mime, size: Math.round(p.data.length * 0.75), thumb: p.thumb, by: me.uid, byName: $('userEmail').textContent, at: Date.now(), driveId: '', uploading: true, deleted: false, comment: '' });
+    upQueue.push({ ref, siteId: X.s.id, name: p.name, mime: p.mime, data: p.data });
+    upNext();
+  }
+}
+window.portalTest = {
+  queue: () => ({ waiting: upQueue.length, busy: upBusy, last: window.portalLastSend || '' }),
+  /* テスト用データ：開いている現場に、フォルダと 写真30・資料30 を入れる（テスト現場だけ） */
+  async seed() {
+    if (!X || !X.s.isTest) throw new Error('テスト現場を開いてください。');
+    const sets = { photo: [['全景'], ['施工中', '1階', '2階'], ['完了']], doc: [['図面', 'ダクト図'], ['書類'], ['メーカー資料']] };
+    for (const kind of ['photo', 'doc']) {
+      X.kind = kind;
+      const leaves = [];
+      for (const s of sets[kind]) {
+        const top = await xNewFolder(s[0], '');
+        if (s.length === 1) leaves.push(top);
+        for (const c of s.slice(1)) leaves.push(await xNewFolder(c, top));
+      }
+      for (let i = 1; i <= 30; i++) {
+        let file;
+        if (kind === 'photo') {
+          const c = document.createElement('canvas'); c.width = 1600; c.height = 1200;
+          const x = c.getContext('2d'), h = (i * 37 + X.s.order * 11) % 360;
+          for (let n = 0; n < 900; n++) { x.fillStyle = 'hsl(' + ((h + Math.random() * 60) % 360) + ',' + (20 + Math.random() * 40) + '%,' + (25 + Math.random() * 55) + '%)'; x.fillRect(Math.random() * 1600, Math.random() * 1200, 40 + Math.random() * 300, 30 + Math.random() * 200); }
+          x.fillStyle = '#fff'; x.font = 'bold 120px sans-serif'; x.fillText('写真 ' + i, 80, 180);
+          const blob = await new Promise(r => c.toBlob(r, 'image/jpeg', 0.85));
+          file = new File([blob], 'テスト写真' + ('0' + i).slice(-2) + '.jpg', { type: 'image/jpeg' });
+        } else {
+          file = new File(['%PDF-1.4\n1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj 2 0 obj<</Type/Pages/Count 1/Kids[3 0 R]>>endobj 3 0 obj<</Type/Page/MediaBox[0 0 595 842]/Parent 2 0 R>>endobj\ntrailer<</Root 1 0 R>>\n' + '%'.repeat(200000)], 'テスト資料' + ('0' + i).slice(-2) + '.pdf', { type: 'application/pdf' });
+        }
+        await xUpload(kind, leaves[i % leaves.length], [file]);
+        while (upQueue.length > 6) await new Promise(r => setTimeout(r, 300));
+      }
+    }
+    return 'done';
+  }
+};
 
 /* ---------- 現場の追加・編集・削除（権限は今の現場管理と同じ。最終の判断は Firestore のルール） ---------- */
 const toIso = t => { const m = String(t || '').match(/(\d+)年(\d+)月(\d+)日/); return m ? m[1] + '-' + m[2].padStart(2, '0') + '-' + m[3].padStart(2, '0') : ''; };
