@@ -127,16 +127,17 @@ onAuthStateChanged(auth, async user => {
   const key = 'portalMe:' + user.uid;
   let c = {};
   try { c = JSON.parse(localStorage.getItem(key) || '{}'); } catch (e) {}
-  me = { uid: user.uid, isMaster: c.isMaster === true, canAddSite: c.canAddSite === true };
+  me = { uid: user.uid, name: c.name || '', isMaster: c.isMaster === true, canAddSite: c.canAddSite === true };
   $('admin').style.display = me.isMaster ? '' : 'none';
   showList();
   try {
     const d = await getDoc(doc(db, 'users', user.uid));
     const x = d.exists() ? d.data() : {};
     const isMaster = x.isMaster === true, canAddSite = isMaster || x.canAddSite === true;
+    me.name = x.name || '';
+    localStorage.setItem(key, JSON.stringify({ isMaster, canAddSite, name: me.name }));
     if (isMaster !== me.isMaster || canAddSite !== me.canAddSite) {
       me.isMaster = isMaster; me.canAddSite = canAddSite;
-      localStorage.setItem(key, JSON.stringify({ isMaster, canAddSite }));
       $('admin').style.display = isMaster ? '' : 'none';
       showList();
     }
@@ -614,7 +615,7 @@ async function xUpload(kind, folder, files) {
   for (const file of files) {
     const p = await xPrepare(file);
     const ref = doc(xSub('files'));
-    await setDoc(ref, { kind, folder, name: p.name, mime: p.mime, size: Math.round(p.data.length * 0.75), thumb: p.thumb, by: me.uid, byName: $('userEmail').textContent, at: Date.now(), driveId: '', uploading: true, deleted: false, comment: '' });
+    await setDoc(ref, { kind, folder, name: p.name, mime: p.mime, size: Math.round(p.data.length * 0.75), thumb: p.thumb, by: me.uid, byName: me.name || me.uid, at: Date.now(), driveId: '', uploading: true, deleted: false, comment: '' });
     upQueue.push({ ref, siteId: X.s.id, name: p.name, mime: p.mime, data: p.data });
     upNext();
   }
