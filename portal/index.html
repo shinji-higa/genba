@@ -250,7 +250,9 @@ function showDetail(id, saved) {
     if (first || (server && !firstServer)) $('speed').textContent = (saved ? saved + '　' : '') + (server ? '最新を表示：' : '端末の控えを表示：') + sec(t);
     first = false; firstServer = firstServer || server;
     $('title').textContent = s.siteName;
-    if (!rulesEditing) renderDetail(s);
+    // 写真・資料タブを開いているときは作り直さない（ファイルを選んでいる最中に入力欄が消えるため）
+    if ($('xRoot') && X) X.s = s;
+    else if (!rulesEditing) renderDetail(s);
   }, e => { $('panelDetail').innerHTML = banner('読み込めませんでした：' + e.message, true); });
 }
 function renderDetail(s) {
@@ -497,7 +499,17 @@ function xList() {
 }
 function xView(it) {
   if (!it.driveId) { alert('まだ送信中です。'); return; }
-  if (it.kind === 'doc') { window.open('https://drive.google.com/file/d/' + it.driveId + '/view', '_blank'); return; }
+  if (it.kind === 'doc') {
+    // iPhone で別窓にするとドライブのアプリに飛んでエラーになったため、画面の中で開く（今の現場管理と同じ）
+    const v = document.createElement('div');
+    v.style.cssText = 'position:fixed; inset:0; background:#000; z-index:100; display:flex; flex-direction:column;';
+    v.innerHTML = '<div style="display:flex; gap:8px; align-items:center; padding:8px; background:#111;"><span style="flex:1; color:#fff; font-size:0.85rem; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">' + esc(it.name) + '</span>' +
+      '<a class="btn btn-sub" style="padding:4px 10px;" target="_blank" rel="noopener noreferrer" href="https://drive.google.com/file/d/' + esc(it.driveId) + '/view">ドライブで開く</a><button type="button" class="btn btn-sub" style="padding:4px 10px;">閉じる</button></div>' +
+      '<iframe style="flex:1; width:100%; border:0; background:#fff;" allow="autoplay" src="https://drive.google.com/file/d/' + esc(it.driveId) + '/preview"></iframe>';
+    v.querySelector('button').onclick = () => v.remove();
+    document.body.appendChild(v);
+    return;
+  }
   const o = document.createElement('div');
   o.style.cssText = 'position:fixed; inset:0; background:rgba(0,0,0,.9); z-index:100; display:flex; align-items:center; justify-content:center;';
   // 先に手元の見本画像を出し、大きい画像が届いたら差し替える（iPhone で drive.google.com の画像が出ないことがあったため、2つの入口を順に試す）
