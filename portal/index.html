@@ -86,7 +86,7 @@
 <script type="module">
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, sendPasswordResetEmail, signOut } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
-import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager, collection, query, where, doc, getDoc, getDocs, setDoc, updateDoc, writeBatch, onSnapshot, disableNetwork, enableNetwork, orderBy, limit } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
+import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager, collection, query, where, doc, getDoc, getDocs, setDoc, updateDoc, writeBatch, onSnapshot, disableNetwork, enableNetwork, orderBy, limit, waitForPendingWrites } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
 import { getStorage, ref as stRef, uploadBytesResumable, getDownloadURL } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-storage.js';
 
@@ -105,7 +105,7 @@ storage.maxUploadRetryTime = 60000;   // 電波が切れたら1分で一度あ�
 const auth = getAuth(app);
 auth.languageCode = 'ja';   // パスワード再設定のメールと画面を日本語にする
 const db = initializeFirestore(app, { localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }) });
-const APP_VER = 'Ver.20261031-11';
+const APP_VER = 'Ver.20261031-12';
 
 /* ---------- 電波なしでも使う（今の現場管理と同じ考え方） ----------
    ・保存は押した瞬間に完了の形。電波が戻ったら自動で送る（データは Firestore が端末に貯める）
@@ -231,14 +231,16 @@ async function upPump() {
   }
 }
 async function upOne(j) {
-  const t = performance.now(), file = doc(db, 'sites', j.siteId, 'files', j.id), path = 'sites/' + j.siteId + '/' + j.id + '/' + j.name, r = stRef(storage, path);
+  // j.slot があれば外観画像（1 か 2）。送り終えたら現場の情報に書く
+  const t = performance.now(), ext = !!j.slot, file = ext ? doc(db, 'sites', j.siteId) : doc(db, 'sites', j.siteId, 'files', j.id), path = 'sites/' + j.siteId + '/' + (ext ? 'exterior/' : '') + j.id + '/' + j.name, r = stRef(storage, path);
   try {
+    if (ext) await waitForPendingWrites(db);   // 新しい現場は、現場の情報が届いてからでないと置き場の許可が下りない
     await uploadBytesResumable(r, j.blob, { contentType: j.mime });
   } catch (e) {
     if (e && e.code === 'storage/unauthorized') {
       // 前の回で本体は届いていて、記録だけ残らなかった場合は成功として続ける
       try { await getDownloadURL(r); } catch (e2) {
-        fire(updateDoc(file, { uploading: false, failed: true }), j.name);
+        if (!ext) fire(updateDoc(file, { uploading: false, failed: true }), j.name);
         await upTx('readwrite', s => s.delete(j.id));
         fail(j.name, '権限がありません');
         return;
@@ -247,7 +249,7 @@ async function upOne(j) {
   }
   try {
     const url = await getDownloadURL(r);
-    fire(updateDoc(file, { url, path, uploading: false, sendMs: Math.round(performance.now() - t) }), j.name);
+    fire(updateDoc(file, ext ? { ['imageUrl' + j.slot]: url, ['imagePath' + j.slot]: path } : { url, path, uploading: false, sendMs: Math.round(performance.now() - t) }), j.name);
     await upTx('readwrite', s => s.delete(j.id));
     window.portalLastSend = sec(t);
   } catch (e) { window.portalLastError = e && e.code; }
@@ -411,9 +413,17 @@ const person = (co, n, t) => {
   return (co ? '<div class="dt-person-co">' + esc(co) + '</div>' : '') +
     '<div class="dt-person-main"><span>' + esc(n || '未設定') + '</span>' + (t ? '<a href="tel:' + esc(t) + '">' + esc(t) + '</a>' : '') + '</div>';
 };
-const imgBox = (url, label) => {
-  const m = String(url || '').match(/\/d\/([a-zA-Z0-9_-]+)/) || String(url || '').match(/id=([a-zA-Z0-9_-]+)/);
-  return '<div class="img-box">' + (m ? '<img loading="lazy" alt="' + label + '" src="https://lh3.googleusercontent.com/d/' + m[1] + '=w800">' : '<span style="font-size:0.78rem; color:var(--muted); font-weight:600;">' + label + ' なし</span>') + '</div>';
+/* 外観画像：写真・資料と同じ Cloud Storage に置く。コピーしたデータの分はドライブのアドレスのまま。送信前は見本画像を出す */
+const extItem = (s, n) => {
+  const url = String(s['imageUrl' + n] || ''), thumb = s['imageThumb' + n] || '', store = /firebasestorage/.test(url);
+  const m = store ? null : url.match(/\/d\/([a-zA-Z0-9_-]+)/) || url.match(/id=([a-zA-Z0-9_-]+)/);
+  if (!store && !m && !thumb) return null;
+  return { name: '外観画像' + n, kind: 'photo', mime: 'image/jpeg', url: store ? url : '', driveId: m ? m[1] : '', thumb, at: s['imageAt' + n], byName: s['imageByName' + n] };
+};
+const imgBox = (s, n) => {
+  const it = extItem(s, n), label = '外観画像' + n;
+  const src = it && (it.url || (it.driveId ? 'https://lh3.googleusercontent.com/d/' + it.driveId + '=w800' : it.thumb));
+  return '<div class="img-box">' + (it ? '<img loading="lazy" alt="' + label + '" data-ext="' + n + '" src="' + esc(src) + '">' : '<span style="font-size:0.78rem; color:var(--muted); font-weight:600;">' + label + ' なし</span>') + '</div>';
 };
 const opts = (list, cur) => list.map(o => '<option' + (o === cur ? ' selected' : '') + '>' + esc(o) + '</option>').join('');
 let detailTab = '現場詳細', rulesEditing = false;
@@ -462,7 +472,7 @@ function renderDetail(s) {
       '<div class="form-group"><label>現場担当者1 / 連絡先</label><div>' + person(s.siteStaff1Company, s.siteStaff1Name, s.siteStaff1Tel) + '</div></div>' +
       '<div class="form-group" style="margin-bottom: 0;"><label>現場担当者2 / 連絡先</label><div>' + person(s.siteStaff2Company, s.siteStaff2Name, s.siteStaff2Tel) + '</div></div>' +
     '</div>' +
-    '<div class="images-row">' + imgBox(s.imageUrl1, '外観画像1') + imgBox(s.imageUrl2, '外観画像2') + '</div>' +
+    '<div class="images-row">' + imgBox(s, 1) + imgBox(s, 2) + '</div>' +
     '<div class="info-card"><label>備考</label><div class="dt-multiline" style="margin-top:4px;">' + (esc(s.notes) || '特になし') + '</div></div>' +
     '<div class="info-card">' +
       '<div class="card-header-row"><span style="font-weight: 700; font-size: 0.92rem;">⚠️ 施工に関する注意事項</span><div>' +
@@ -482,6 +492,11 @@ function renderDetail(s) {
       const word = b.dataset.k === 'トイレ' ? '公衆トイレ' : b.dataset.k;
       window.open('https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(String(s.address).split(/\r?\n/)[0].trim() + ' 周辺 ' + word), '_blank');
     };
+  });
+  $('panelDetail').querySelectorAll('[data-ext]').forEach(img => {
+    const it = extItem(s, Number(img.dataset.ext));
+    img.onerror = () => { img.onerror = null; if (it.thumb) img.src = it.thumb; };   // 電波がなくて出せないときは見本画像
+    img.onclick = () => { const list = [extItem(s, 1), extItem(s, 2)].filter(Boolean); viewerOpen(list, list.findIndex(x => x.name === it.name)); };
   });
   if ($('edit')) $('edit').onclick = () => showSiteForm(s);
   const fields = () => $('panelDetail').querySelectorAll('.rule-field');
@@ -1065,7 +1080,7 @@ function viewerShow() {
   ext.href = it.url || (it.driveId ? 'https://drive.google.com/file/d/' + it.driveId + '/view' : '#');
   ext.textContent = it.url ? '保存' : 'ドライブで開く';
   ext.style.display = (it.url || it.driveId) && !isOffline() ? '' : 'none';
-  const info = [xDate(it.at)];
+  const info = it.at ? [xDate(it.at)] : [];
   if (it.byName) info.push('👤 ' + it.byName);
   $('fvInfo').textContent = info.join('　') + (it.comment ? '\n💬 ' + it.comment : '');
   $('fvInfo').style.whiteSpace = 'pre-line';
@@ -1360,6 +1375,11 @@ function showSiteForm(s) {
   const staff = (label, k) => '<div class="form-group" style="padding-top: 10px; border-top: 1px solid #f0f0f0;"><label>' + label + '</label>' +
     '<div class="grid-two-col" style="margin-bottom: 8px;"><div>' + inp(k + 'Company', '会社名') + '</div><div>' + inp(k + 'Name', '姓名') + '</div></div>' + inp(k + 'Tel', '連絡先 09012345678', 'tel') + '</div>';
   const date = (id, val, label) => '<div class="form-group"><label>' + label + '</label><div class="date-pick"><input type="date" id="' + id + '" class="date-input" value="' + val + '"><button type="button" class="btn btn-sub" data-clear="' + id + '">未定</button></div></div>';
+  const exist = n => { const u = v['imageUrl' + n]; return u ? '登録済: <a href="' + esc(u) + '" target="_blank" rel="noopener noreferrer">画像を確認</a>' : v['imageThumb' + n] ? '登録済（送信待ち）' : ''; };
+  const pic = n => '<div class="form-group"><label>外観画像' + n + '</label><input type="file" id="fImg' + n + '" accept="image/*" style="display:none;">' +
+    '<button type="button" class="btn btn-sub" id="fImgB' + n + '" style="width: 100%;">📷 写真を撮影 / 端末から選択</button>' +
+    '<div id="fImgW' + n + '" style="display:none; margin-top:8px; text-align:center;"><img id="fImgP' + n + '" alt="" style="max-height:160px; border-radius:4px;"><br><button type="button" class="btn btn-sub" id="fImgC' + n + '" style="margin-top:4px;">✕ 選択解除</button></div>' +
+    '<div id="fImgI' + n + '" style="font-size:0.75rem; color:var(--muted); margin-top:4px;">' + exist(n) + '</div></div>';
   show('panelNewSite', isNew ? '現場新規追加' : '現場情報編集', isNew ? showList : () => showDetail(s.id), isNew ? '← 現場選択へ' : '← 戻る');
   $('speed').textContent = '';
   $('panelNewSite').innerHTML =
@@ -1373,14 +1393,49 @@ function showSiteForm(s) {
       '<div class="grid-two-col form-group"><div><label>EXD案件担当者</label>' + inp('exdChargeName', '姓名') + '</div><div><label>連絡先</label>' + inp('exdChargeTel', '09012345678', 'tel') + '</div></div>' +
       staff('現場代理人', 'agent') + staff('現場担当者1', 'siteStaff1') + staff('現場担当者2', 'siteStaff2') + '</div>' +
     '<div class="info-card"><div class="card-header-row"><span style="font-weight: 700;">⚠️ 施工ルール・注意事項</span></div>' + ruleFields(v, false) + '</div>' +
-    '<div class="info-card"><div class="form-group"><label>備考</label><textarea id="f_notes" class="auto-expand" placeholder="補足事項等">' + esc(v.notes) + '</textarea></div></div>' +
+    '<div class="info-card"><div class="card-header-row"><span style="font-weight: 700;">📷 外観画像</span></div>' + pic(1) + pic(2) +
+      '<div class="form-group"><label>備考</label><textarea id="f_notes" class="auto-expand" placeholder="補足事項等">' + esc(v.notes) + '</textarea></div></div>' +
     '<div style="margin-top: 16px; margin-bottom: 30px; display: flex; flex-direction: column; gap: 8px;">' +
       '<button type="button" id="save" class="btn btn-dark">' + (isNew ? 'この内容で現場を登録' : 'この内容で現場情報を編集する') + '</button>' +
       '<button type="button" id="cancelForm" class="btn btn-sub">キャンセルして戻る</button><div id="err" style="font-size:0.85rem;"></div></div>';
   autoGrow($('panelNewSite'));
   $('panelNewSite').querySelectorAll('[data-clear]').forEach(b => { b.onclick = () => { $(b.dataset.clear).value = ''; }; });
   $('cancelForm').onclick = () => backTo();
+  const pics = {};
+  let shrinking = 0;
+  [1, 2].forEach(n => {
+    const clear = () => { $('fImg' + n).value = ''; $('fImgP' + n).src = ''; $('fImgW' + n).style.display = 'none'; $('fImgI' + n).innerHTML = exist(n); delete pics[n]; };
+    $('fImgB' + n).onclick = () => $('fImg' + n).click();
+    $('fImgC' + n).onclick = clear;
+    $('fImg' + n).onchange = async () => {
+      const f = $('fImg' + n).files[0];
+      if (!f) return;
+      $('fImgI' + n).textContent = '写真を圧縮しています...';
+      shrinking++;
+      const p = await xPrepare(f, 'photo');
+      shrinking--;
+      const blob = new Blob([Uint8Array.from(atob(p.data), c => c.charCodeAt(0))], { type: p.mime });
+      pics[n] = { ...p, blob };
+      $('fImgP' + n).src = 'data:' + p.mime + ';base64,' + p.data;
+      $('fImgW' + n).style.display = 'block';
+      $('fImgI' + n).textContent = '送信サイズ ' + Math.round(blob.size / 1024) + 'KB';
+    };
+  });
+  // 写真は端末に貯めてから送る（電波がなくても消えない）。現場の情報には先に見本画像を入れ、送り終えたら本物に替わる
+  const picData = () => {
+    const d = {};
+    Object.keys(pics).forEach(n => { d['imageUrl' + n] = ''; d['imagePath' + n] = ''; d['imageThumb' + n] = pics[n].thumb; d['imageAt' + n] = Date.now(); d['imageByName' + n] = me.name || me.uid; });
+    return d;
+  };
+  const picSend = async siteId => {
+    for (const n of Object.keys(pics)) {
+      const id = doc(collection(db, 'sites')).id, p = pics[n];
+      await upTx('readwrite', q => q.put({ id, siteId, slot: Number(n), name: p.name.replace(/[\/#?\[\]*]/g, '_'), mime: p.mime, blob: p.blob, t: Date.now() }));
+    }
+    upPump();
+  };
   $('save').onclick = async () => {
+    if (shrinking) { $('err').textContent = '写真を圧縮しています。少し待ってからもう一度押してください。'; return; }
     const data = { ...readRules() };
     data.siteName = $('f_siteName').value.trim();
     if (!data.siteName) { $('err').textContent = '現場名を入れてください。'; return; }
@@ -1391,11 +1446,13 @@ function showSiteForm(s) {
     data.workContent = $('f_workContent').value; data.notes = $('f_notes').value;
     if (isNew) {
       const ref = doc(collection(db, 'sites'));
-      fire(setDoc(ref, { ...data, imageUrl1: '', imageUrl2: '', order: Date.now(), members: [me.uid], roles: { [me.uid]: '現場管理者' }, managers: [me.uid] }), data.siteName);
+      fire(setDoc(ref, { ...data, imageUrl1: '', imageUrl2: '', ...picData(), order: Date.now(), members: [me.uid], roles: { [me.uid]: '現場管理者' }, managers: [me.uid] }), data.siteName);
+      picSend(ref.id);
       showDetail(ref.id);
     } else {
-      fire(updateDoc(doc(db, 'sites', s.id), data), data.siteName);
-      notify({ ...s, ...data }, 'site', '現場情報を編集');
+      fire(updateDoc(doc(db, 'sites', s.id), { ...data, ...picData() }), data.siteName);
+      picSend(s.id);
+      notify({ ...s, ...data }, 'site', Object.keys(pics).length ? '現場情報を編集（外観画像を変更）' : '現場情報を編集');
       showDetail(s.id);
     }
   };
