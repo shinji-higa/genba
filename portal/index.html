@@ -8,6 +8,7 @@
 <!-- 見た目は今の現場管理と同じ（app.css は現場管理の style をそのまま写したもの） -->
 <link rel="stylesheet" href="app.css?v=1">
 <style>
+  .site-card-btn { color: var(--text); }   /* iPhone でボタンの文字が青くなるのを防ぐ（リンクの色は変わらない） */
   #speed { font-size: 0.7rem; color: var(--muted); padding: 2px 16px; min-height: 1.3em; }
   .site-row { display: grid; grid-template-columns: 1fr 9.5em; gap: 8px; align-items: center; padding: 6px 0; border-bottom: 1px solid var(--border); }
   .check-row { display: flex; align-items: center; gap: 8px; font-size: 0.9rem; font-weight: 400; margin: 0; }
@@ -462,7 +463,8 @@ function xList() {
     box.innerHTML = '<div class="info-card" style="grid-column: 1/-1; width:100%; text-align:center; color:var(--muted);">' + (sub ? 'このフォルダ直下には' + L + 'がありません（サブフォルダを選択してください）。' : L + 'がありません。「' + L + 'を追加」から保存してください。') + '</div>';
     return;
   }
-  const state = it => it.failed ? '<span style="color:var(--error-text); font-size:0.74rem;"> 送信できませんでした</span>' : it.uploading ? '<span style="color:var(--muted); font-size:0.74rem;"> 送信中</span>' : '';
+  // 送信中に画面を閉じると続きが送れないので、3分たっても終わらないものは失敗として見せる
+  const state = it => (it.failed || (it.uploading && Date.now() - (it.at || 0) > 180000)) ? '<span style="color:var(--error-text); font-size:0.74rem;"> 送信できませんでした</span>' : it.uploading ? '<span style="color:var(--muted); font-size:0.74rem;"> 送信中</span>' : '';
   box.innerHTML = items.map(it => {
     const id = esc(it.id), chk = X.sel.has(it.id), del = xMayRemove(it) ? '<button type="button" class="ACT" data-a="del" style="color:var(--error-text);">削除</button>' : '';
     const acts = c => ('<button type="button" class="ACT" data-a="move">移動</button><button type="button" class="ACT" data-a="edit">編集</button>' + del).replace(/class="ACT"/g, c);
