@@ -86,7 +86,7 @@ storage.maxUploadRetryTime = 60000;   // 電波が切れたら1分で一度あ�
 const auth = getAuth(app);
 auth.languageCode = 'ja';   // パスワード再設定のメールと画面を日本語にする
 const db = initializeFirestore(app, { localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }) });
-const APP_VER = 'Ver.20261031-06';
+const APP_VER = 'Ver.20261031-07';
 
 /* ---------- 電波なしでも使う（今の現場管理と同じ考え方） ----------
    ・保存は押した瞬間に完了の形。電波が戻ったら自動で送る（データは Firestore が端末に貯める）
@@ -499,7 +499,7 @@ function readRules() {
    一覧は Firestore から出すので、ドライブを待たない。追加は先に一覧へ出して、本体は裏で送る */
 const RELOAD_ICON = '';
 let X = null, xUnsub = [];
-function xStop() { xUnsub.forEach(f => f()); xUnsub = []; X = null; }
+function xStop() { xUnsub.forEach(f => f()); xUnsub = []; X = null; cmPanels = {}; const o = $('cmOverlay'); if (o) o.remove(); }
 const xLabel = k => k === 'doc' ? '資料' : '写真';
 const xSub = name => collection(db, 'sites', X.s.id, name);
 const xFolders = () => X.folders.filter(f => f.kind === X.kind && !f.deleted);
@@ -521,9 +521,161 @@ function xEnsure(s, kind) {
     xUnsub.push(onSnapshot(xSub('folders'), { includeMetadataChanges: true }, q => { if (!X) return; X.folders = q.docs.map(d => ({ id: d.id, ...d.data() })); draw(q); }));
     xUnsub.push(onSnapshot(xSub('files'), { includeMetadataChanges: true }, q => { if (!X) return; X.files = q.docs.map(d => ({ id: d.id, ...d.data() })); draw(q); }));
     xUnsub.push(onSnapshot(xSub('reports'), { includeMetadataChanges: true }, q => { if (!X) return; X.reports = q.docs.map(d => ({ id: d.id, ...d.data() })); draw(q); }));
+    xUnsub.push(onSnapshot(xSub('comments'), q => { if (!X) return; X.comments = q.docs.map(d => ({ id: d.id, ...d.data() })).filter(c => !c.deleted).sort((a, b) => (a.at || 0) - (b.at || 0)); cmRefresh(); }));
+    getDoc(doc(xSub('reads'), me.uid)).then(d => { if (X && d.exists()) { X.reads = { ...(d.data().marks || {}), ...X.reads }; cmRefresh(); } }).catch(() => {});
+    cmPeopleLoad();
   }
   X.s = s;
 }
+
+/* ---------- コメント（報告・写真・資料ごと。今の現場管理と同じ作り）----------
+   報告はカードの下に埋め込み、写真・資料は画面の下からチャットが開く。自分は右、他の人は左。
+   @ で現場の担当者を選べる。ほかの人のコメントは、画面に見えた時点で既読になる */
+const cmList = (k, id) => (X.comments || []).filter(c => c.kind === k && c.target === id);
+const cmUnread = (k, id) => { const t = (X.reads || {})[k + ':' + id] || 0; return cmList(k, id).filter(c => c.by !== me.uid && (c.at || 0) > t).length; };
+const cmText = (k, id, label, toggle) => { const n = cmList(k, id).length, u = cmUnread(k, id); return '💬' + (label ? ' ' + label : '') + (toggle ? ' ' + ((X.cmOpen || {})[k + ':' + id] ? '▲' : '▼') : '') + (n ? ' ' + u + '/' + n : ''); };
+const cmCls = (k, id) => ' cm-open-btn' + (cmList(k, id).length ? ' has-cm' : '') + (cmUnread(k, id) ? ' has-unread' : '');
+const cmBtn = (k, id, cls) => '<button type="button" class="' + cls + cmCls(k, id) + '" data-cm="' + k + '|' + esc(id) + '" title="コメント">' + cmText(k, id) + '</button>';
+const cmInline = (k, id) => '<div class="cm-inline" data-cmw="' + k + '|' + esc(id) + '"><button type="button" class="cm-toggle' + cmCls(k, id) + '" data-cm="' + k + '|' + esc(id) + '" data-label="コメント" data-toggle="1">' + cmText(k, id, 'コメント', true) + '</button><div class="cm-inline-body" style="display:none;"></div></div>';
+const CM_BODY = '<div class="cm-list"></div><div class="cm-input"><div class="cm-suggest"></div><button type="button" class="cm-at" title="相手を指定（メンション）">@</button><textarea rows="1" placeholder="コメントを入力"></textarea><button type="button" class="cm-send">送信</button></div>';
+let cmPanels = {}, cmReadTimer = null, cmIO = null;
+async function cmPeopleLoad() {
+  try {
+    const c = collection(db, 'users'), seeAll = me.isMaster || me.group === 'エクスケア社員';
+    const q = seeAll ? c : query(c, where('home', '==', (me.group === 'マルトク' || me.group === 'NAFA') ? me.group : 'エクスケア'));
+    const snap = await getDocs(q);
+    if (X) X.people = snap.docs.map(d => ({ id: d.id, ...d.data() })).filter(u => u.id !== me.uid);
+  } catch (e) {}
+}
+function cmSeen(key, ts) {
+  if (!X) return;
+  X.reads = X.reads || {};
+  if ((X.reads[key] || 0) >= ts) return;
+  X.reads[key] = ts;
+  clearTimeout(cmReadTimer);
+  const site = X.s.id, marks = { ...X.reads };
+  cmReadTimer = setTimeout(() => { setDoc(doc(db, 'sites', site, 'reads', me.uid), { marks }, { merge: true }).catch(() => {}); }, 1500);
+  cmButtons();
+}
+function cmButtons() {
+  document.querySelectorAll('[data-cm]').forEach(b => {
+    const [k, id] = b.dataset.cm.split('|');
+    b.textContent = cmText(k, id, b.dataset.label || '', !!b.dataset.toggle);
+    b.classList.toggle('has-cm', cmList(k, id).length > 0);
+    b.classList.toggle('has-unread', cmUnread(k, id) > 0);
+  });
+}
+function cmRefresh() { cmButtons(); Object.values(cmPanels).forEach(cmDraw); }
+function cmDraw(p) {
+  const list = p.root.querySelector('.cm-list');
+  if (!list) return;
+  const items = cmList(p.k, p.id), read = p.readTs, near = list.scrollHeight - list.scrollTop - list.clientHeight < 60;
+  if (!items.length) { list.innerHTML = '<div class="cm-empty">まだコメントはありません。<br>最初のコメントを送ってみましょう。</div>'; return; }
+  const first = items.find(c => c.by !== me.uid && (c.at || 0) > read);
+  if (cmIO) list.querySelectorAll('.cm-row').forEach(r => cmIO.unobserve(r));
+  const names = (X.people || []).map(u => u.name).concat(me.name).filter(Boolean).sort((a, b) => b.length - a.length).map(n => esc(n).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+  const re = names.length ? new RegExp('@(' + names.join('|') + ')', 'g') : null;
+  list.innerHTML = items.map(c => {
+    const mine = c.by === me.uid, un = !mine && (c.at || 0) > read;
+    return (first && c === first && items[0] !== c ? '<div class="cm-divider">ここから未読</div>' : '') +
+      '<div class="cm-row' + (mine ? ' mine' : '') + (un ? ' cm-unread' : '') + '" data-at="' + (c.at || 0) + '"><div class="cm-meta">' + (mine ? '' : esc(c.byName) + '　') + esc(rWhen(c.at)) +
+      (mine || me.isMaster ? '<button type="button" class="cm-del" data-del="' + esc(c.id) + '">削除</button>' : '') + '</div><div class="cm-bubble">' + (re ? esc(c.text).replace(re, '<span class="cm-mention">@$1</span>') : esc(c.text)) + '</div></div>';
+  }).join('');
+  list.querySelectorAll('[data-del]').forEach(b => {
+    b.onclick = () => { if (confirm('このコメントを削除しますか？')) fire(updateDoc(doc(xSub('comments'), b.dataset.del), { deleted: true, deletedAt: Date.now() }), 'コメントの削除'); };
+  });
+  if (!list.dataset.shown) {
+    const dv = list.querySelector('.cm-divider');
+    list.scrollTop = dv ? list.scrollTop + dv.getBoundingClientRect().top - list.getBoundingClientRect().top - 8 : list.scrollHeight;
+    list.dataset.shown = '1';
+  } else if (near) list.scrollTop = list.scrollHeight;
+  if ('IntersectionObserver' in window) {
+    cmIO = cmIO || new IntersectionObserver(es => {
+      es.forEach(e => {
+        const row = e.target;
+        if (e.isIntersecting) row._t = setTimeout(() => { const pk = row.closest('[data-cmk]'); if (pk) cmSeen(pk.dataset.cmk, Number(row.dataset.at)); }, 700);
+        else clearTimeout(row._t);
+      });
+    });
+    list.querySelectorAll('.cm-row.cm-unread').forEach(r => cmIO.observe(r));
+  }
+}
+function cmPanel(k, id, root, label, draft) {
+  const key = k + ':' + id;
+  root.setAttribute('data-cmk', key);
+  const p = { k, id, root, label, readTs: (X.reads || {})[key] || 0 };
+  cmPanels[key] = p;
+  const ta = root.querySelector('textarea'), box = root.querySelector('.cm-suggest');
+  if (draft) ta.value = draft;
+  const query_ = () => { const m = ta.value.slice(0, ta.selectionStart).match(/@([^\s@]*)$/); return m ? { q: m[1], start: ta.selectionStart - m[0].length, end: ta.selectionStart } : null; };
+  const suggest = () => {
+    const q = query_(), members = X.s.members || [];
+    if (!q) { box.style.display = 'none'; return; }
+    const hits = (X.people || []).filter(u => (members.includes(u.id) || u.isMaster) && String(u.name).replace(/\s/g, '').includes(q.q.replace(/\s/g, ''))).slice(0, 20);
+    if (!hits.length) { box.style.display = 'none'; return; }
+    box.innerHTML = hits.map(u => '<button type="button" data-n="' + esc(u.name) + '">@' + esc(u.name) + '</button>').join('');
+    box.querySelectorAll('button').forEach(b => {
+      b.onmousedown = e => e.preventDefault();
+      b.onclick = () => { const m = query_(); if (!m) return; const ins = '@' + b.dataset.n + ' '; ta.value = ta.value.slice(0, m.start) + ins + ta.value.slice(m.end); ta.focus(); ta.setSelectionRange(m.start + ins.length, m.start + ins.length); box.style.display = 'none'; };
+    });
+    box.style.display = 'block';
+  };
+  const grow = () => { ta.style.height = 'auto'; ta.style.height = Math.min(ta.scrollHeight + 2, 140) + 'px'; };
+  ta.oninput = () => { grow(); suggest(); };
+  const send = () => {
+    const text = ta.value.trim();
+    if (!text) return;
+    if (text.length > 2000) { alert('コメントは2000文字以内で入力してください。'); return; }
+    const mentions = (X.people || []).filter(u => text.includes('@' + u.name)).map(u => u.id);
+    fire(setDoc(doc(xSub('comments')), { kind: k, target: id, label, text, by: me.uid, byName: me.name || me.uid, at: Date.now(), mentions, deleted: false }), 'コメント');
+    ta.value = ''; grow(); box.style.display = 'none';
+    setTimeout(() => { const l = root.querySelector('.cm-list'); if (l) l.scrollTop = l.scrollHeight; }, 50);
+  };
+  ta.onkeydown = e => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); send(); } };
+  root.querySelector('.cm-at').onclick = () => { const s = ta.selectionStart == null ? ta.value.length : ta.selectionStart, pre = ta.value.slice(0, s), add = pre && !/\s$/.test(pre) ? ' @' : '@'; ta.value = pre + add + ta.value.slice(s); ta.focus(); ta.setSelectionRange(s + add.length, s + add.length); suggest(); };
+  root.querySelector('.cm-send').onclick = send;
+  cmDraw(p);
+  grow();
+}
+function cmLabel(k, id) {
+  if (k === 'report') { const r = (X.reports || []).find(x => x.id === id); return r ? rWhen(r.at).slice(0, 10) + ' ' + (r.category || '報告') : '報告'; }
+  const f = (X.files || []).find(x => x.id === id);
+  return f ? f.name : xLabel(k);
+}
+function cmOverlay(k, id) {
+  const label = cmLabel(k, id), ov = document.createElement('div');
+  ov.className = 'cm-overlay'; ov.id = 'cmOverlay';
+  ov.innerHTML = '<div class="cm-sheet" role="dialog" aria-modal="true"><div class="cm-head"><div class="cm-title">💬 ' + esc(label) + '<div class="cm-sub">' + xLabel(k) + 'へのコメント</div></div><button type="button" class="btn btn-sub" id="cmClose">✕ 閉じる</button></div>' + CM_BODY + '</div>';
+  const close = () => { delete cmPanels[k + ':' + id]; ov.remove(); };
+  ov.onclick = e => { if (e.target === ov) close(); };
+  document.body.appendChild(ov);
+  $('cmClose').onclick = close;
+  cmPanel(k, id, ov.querySelector('.cm-sheet'), label);
+}
+function cmToggle(k, id) {
+  const key = k + ':' + id, w = document.querySelector('[data-cmw="' + k + '|' + CSS.escape(id) + '"]');
+  if (!w) return;
+  const body = w.querySelector('.cm-inline-body');
+  X.cmOpen = X.cmOpen || {};
+  if (X.cmOpen[key]) { delete X.cmOpen[key]; delete cmPanels[key]; body.style.display = 'none'; body.innerHTML = ''; }
+  else cmInlineOpen(k, id);
+  cmButtons();
+}
+function cmInlineOpen(k, id, draft) {
+  const key = k + ':' + id, w = document.querySelector('[data-cmw="' + k + '|' + CSS.escape(id) + '"]');
+  if (!w) return;
+  const body = w.querySelector('.cm-inline-body');
+  X.cmOpen = X.cmOpen || {}; X.cmOpen[key] = 1;
+  body.innerHTML = CM_BODY; body.style.display = '';
+  cmPanel(k, id, w, cmLabel(k, id), draft);
+}
+document.addEventListener('click', e => {
+  const b = e.target.closest && e.target.closest('[data-cm]');
+  if (!b || !X) return;
+  e.stopPropagation();
+  const [k, id] = b.dataset.cm.split('|');
+  if (k === 'report') cmToggle(k, id); else cmOverlay(k, id);
+}, true);
 
 /* ---------- 担当（見た目と操作は今の現場管理と同じ）----------
    マスターは現場管理者も付けられる。現場管理者は一般作業員まで。マスター本人と自分は一覧に出さない。
@@ -641,6 +793,9 @@ function rList() {
   $('rCats').innerHTML = ['全て表示'].concat(R_CATS).map(c => '<button type="button" class="report-filter-btn' + (c === X.rCat ? ' active' : '') + '" data-c="' + c + '"><span>' + c + '</span><span class="report-count-badge">' + count(c) + '件</span></button>').join('');
   $('rCats').querySelectorAll('button').forEach(b => { b.onclick = () => { X.rCat = b.dataset.c; rList(); }; });
   if (X.rEdit) return;   // 編集中は作り直さない
+  // 開いているコメント欄と書きかけの文は、作り直したあとに戻す
+  const drafts = {};
+  Object.keys(X.cmOpen || {}).forEach(key => { const p = cmPanels[key], t = p && p.root.querySelector('textarea'); drafts[key] = t ? t.value : ''; if (p) delete cmPanels[key]; });
   const list = live.filter(r => X.rCat === '全て表示' || r.category === X.rCat);
   if (!list.length) { $('rBox').innerHTML = '<div class="info-card" style="text-align:center; color:var(--muted);">該当する報告はありません。</div>'; return; }
   const fileOf = id => X.files.find(f => f.id === id);
@@ -654,8 +809,9 @@ function rList() {
     return '<div class="info-card" style="margin-bottom:10px;" data-r="' + esc(r.id) + '">' +
       '<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px; font-size:0.8rem; color:var(--muted); border-bottom:1px solid #f0f0f0; padding-bottom:4px;"><div style="display:flex; align-items:center;"><span style="display:inline-block; font-size:0.78rem; font-weight:700; padding:2px 6px; border-radius:3px; background:#f0f0f2; color:#333; margin-right:6px;">' + esc(r.category) + '</span><span style="font-weight:700; color:var(--text);">' + esc(rWhen(r.at)) + '</span></div>' +
       '<div style="display:flex; align-items:center;"><span>' + esc(r.byName) + '</span>' + (rMay(r) ? '<button type="button" class="btn btn-sub" data-e="1" style="padding:2px 8px; font-size:0.75rem; margin-left:8px;">✏️ 編集</button>' : '') + '</div></div>' +
-      '<div class="r-view" style="font-size:0.9rem; line-height:1.5; white-space:pre-wrap; word-break:break-all;">' + rLink(r.content) + '</div>' + imgHtml + docHtml + '</div>';
+      '<div class="r-view" style="font-size:0.9rem; line-height:1.5; white-space:pre-wrap; word-break:break-all;">' + rLink(r.content) + '</div>' + imgHtml + docHtml + cmInline('report', r.id) + '</div>';
   }).join('');
+  Object.keys(drafts).forEach(key => { const id = key.split(':')[1]; if (list.some(r => r.id === id && !r.deleted)) cmInlineOpen('report', id, drafts[key]); else delete X.cmOpen[key]; });
   $('rBox').querySelectorAll('[data-open]').forEach(a => {
     a.onclick = () => {
       const f = fileOf(a.dataset.open);
@@ -793,8 +949,8 @@ function xList() {
       '<div style="overflow:hidden; text-overflow:ellipsis; flex:1; padding-right:8px;"><a href="javascript:void(0)" data-a="open" style="color:var(--link-blue); text-decoration:underline;">' + (doc_ ? '📄 ' : '📷 ') + esc(it.name) + '</a>' +
       '<span style="font-size:0.78rem; color:var(--muted); margin-left:8px;">' + xDate(it.at) + '</span>' + (it.byName ? '<span style="font-size:0.78rem; color:var(--muted); margin-left:6px;">👤 ' + esc(it.byName) + '</span>' : '') + state(it) +
       (it.comment ? '<div style="font-size:0.75rem; color:var(--muted); margin-top:2px;">💬 ' + esc(it.comment) + '</div>' : '') + '</div>' +
-      '<div style="display:flex; gap:6px; flex-shrink:0;">' + acts('class="btn btn-sub" style="padding:2px 6px; font-size:0.78rem;"').replace(/" style="color:var\(--error-text\);"/g, ' color:var(--error-text);"') + '</div></div>';
-    return '<div class="photo-card' + (chk ? ' is-selected' : '') + '" data-id="' + id + '">' +
+      '<div style="display:flex; gap:6px; flex-shrink:0;">' + cmBtn(kind, it.id, 'btn btn-sub cm-btn-row') + acts('class="btn btn-sub" style="padding:2px 6px; font-size:0.78rem;"').replace(/" style="color:var\(--error-text\);"/g, ' color:var(--error-text);"') + '</div></div>';
+    return '<div class="photo-card' + (chk ? ' is-selected' : '') + '" data-id="' + id + '">' + cmBtn(kind, it.id, 'cm-badge') +
       (X.selMode ? '<div class="photo-card-check-wrap"><input type="checkbox" class="bulk-checkbox"' + (chk ? ' checked' : '') + '></div>' : '') +
       '<div class="photo-card-img-wrap" data-a="open"' + (doc_ || !it.thumb ? ' style="background:#f4f4f6;"' : '') + '>' + (it.thumb ? '<img src="' + esc(it.thumb) + '" alt="' + esc(it.name) + '">' : '<span style="font-size:2.4rem;">📄</span>') + '</div>' +
       '<div class="photo-card-name" title="' + esc(it.name) + '">' + esc(it.name) + '</div>' +
