@@ -78,7 +78,7 @@
   <div id="panelDetail" class="view-panel"></div>
   <div id="panelSettings" class="view-panel"></div>
   <div id="panelNotices" class="view-panel"></div>
-  <div id="appFooter" class="app-footer" style="display: none;">
+  <div id="appFooter" class="app-footer">
     <button type="button" id="btnFooterNotices" class="footer-notice-btn"><span>🔔 お知らせ通知</span><span id="noticeBadge" class="notice-badge">0</span></button>
   </div>
 </div>
@@ -105,7 +105,7 @@ storage.maxUploadRetryTime = 60000;   // 電波が切れたら1分で一度あ�
 const auth = getAuth(app);
 auth.languageCode = 'ja';   // パスワード再設定のメールと画面を日本語にする
 const db = initializeFirestore(app, { localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }) });
-const APP_VER = 'Ver.20261031-10';
+const APP_VER = 'Ver.20261031-11';
 
 /* ---------- 電波なしでも使う（今の現場管理と同じ考え方） ----------
    ・保存は押した瞬間に完了の形。電波が戻ったら自動で送る（データは Firestore が端末に貯める）
@@ -299,7 +299,7 @@ const AUTH_MSG = { 'auth/invalid-credential': 'メールアドレスかパスワ
 
 onAuthStateChanged(auth, async user => {
   stopWatch();
-  if (!user) { me = null; nStop(); $('appFooter').style.display = 'none'; $('userBox').style.display = 'none'; showLogin(); return; }
+  if (!user) { me = null; nStop(); document.querySelector('.app-container').classList.remove('has-footer'); $('userBox').style.display = 'none'; showLogin(); return; }
   $('userBox').style.display = 'flex';
   $('userEmail').textContent = user.uid;
   // 表示を待たせないよう、権限は端末の控えで先に判断して一覧を出す
@@ -1425,7 +1425,7 @@ function notify(s, type, text, opt) {
 function nStop() { nUnsub.forEach(f => f()); nUnsub = []; nItems = []; }
 function nStart() {
   nStop();
-  $('appFooter').style.display = '';
+  document.querySelector('.app-container').classList.add('has-footer');
   const since = Date.now() - 30 * 86400000, c = collection(db, 'notices');
   const q = me.isMaster ? query(c, where('at', '>', since), orderBy('at', 'desc'), limit(300)) : query(c, where('members', 'array-contains', me.uid), where('at', '>', since), orderBy('at', 'desc'), limit(300));
   nUnsub.push(onSnapshot(q, s => { nItems = s.docs.map(d => ({ id: d.id, ...d.data() })); nDraw(); }, e => { window.portalLastError = e && e.code; }));
@@ -1438,6 +1438,14 @@ function nDraw() {
   if ($('panelPortal').classList.contains('active')) renderSites();
   if ($('panelNotices').classList.contains('active')) nRender();
 }
+// 入力欄に入っている間は body に is-typing を付ける（お知らせ通知ボタンを隠す。今の現場管理と同じ）
+document.addEventListener('focusin', e => {
+  const el = e.target;
+  if (el && (el.tagName === 'TEXTAREA' || (el.tagName === 'INPUT' && !/^(checkbox|radio|button|submit|file)$/i.test(el.type)))) document.body.classList.add('is-typing');
+});
+document.addEventListener('focusout', () => {
+  setTimeout(() => { const a = document.activeElement; if (!a || !(a.tagName === 'TEXTAREA' || a.tagName === 'INPUT')) document.body.classList.remove('is-typing'); }, 150);
+});
 function nSave() { setDoc(doc(db, 'noticeReads', me.uid), nReads).catch(() => {}); }
 function nRead(id) { if (nReads.ids && nReads.ids[id]) return; nReads = { ...nReads, ids: { ...(nReads.ids || {}), [id]: 1 } }; nSave(); nDraw(); }
 $('btnFooterNotices').onclick = () => {
