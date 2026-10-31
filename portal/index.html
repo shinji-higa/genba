@@ -19,7 +19,7 @@
   <header>
     <div class="header-top-row">
       <div class="header-logo-area">
-        <img class="header-logo" src="https://drive.google.com/thumbnail?id=1hlBj8Mz3Adzqvq--0ZdiUMTSAQj74ldT&sz=w320" decoding="async" alt="Excure DUCT" style="filter: invert(1);">
+        <img class="header-logo" src="logo.png?v=1" decoding="async" alt="Excure DUCT" style="filter: invert(1);">
       </div>
       <div id="userBox" class="header-user-box" style="display: none;">
         <div>
@@ -232,7 +232,7 @@ const person = (co, n, t) => {
 };
 const imgBox = (url, label) => {
   const m = String(url || '').match(/\/d\/([a-zA-Z0-9_-]+)/) || String(url || '').match(/id=([a-zA-Z0-9_-]+)/);
-  return '<div class="img-box">' + (m ? '<img loading="lazy" alt="' + label + '" src="https://drive.google.com/thumbnail?id=' + m[1] + '&sz=w800">' : '<span style="font-size:0.78rem; color:var(--muted); font-weight:600;">' + label + ' なし</span>') + '</div>';
+  return '<div class="img-box">' + (m ? '<img loading="lazy" alt="' + label + '" src="https://lh3.googleusercontent.com/d/' + m[1] + '=w800">' : '<span style="font-size:0.78rem; color:var(--muted); font-weight:600;">' + label + ' なし</span>') + '</div>';
 };
 const opts = (list, cur) => list.map(o => '<option' + (o === cur ? ' selected' : '') + '>' + esc(o) + '</option>').join('');
 let detailTab = '現場詳細', rulesEditing = false;
@@ -500,7 +500,14 @@ function xView(it) {
   if (it.kind === 'doc') { window.open('https://drive.google.com/file/d/' + it.driveId + '/view', '_blank'); return; }
   const o = document.createElement('div');
   o.style.cssText = 'position:fixed; inset:0; background:rgba(0,0,0,.9); z-index:100; display:flex; align-items:center; justify-content:center;';
-  o.innerHTML = '<img style="max-width:100%; max-height:100%;" alt="" src="https://drive.google.com/thumbnail?id=' + esc(it.driveId) + '&sz=w2000"><button type="button" class="btn btn-sub" style="position:absolute; top:12px; right:12px;">閉じる</button>';
+  // 先に手元の見本画像を出し、大きい画像が届いたら差し替える（iPhone で drive.google.com の画像が出ないことがあったため、2つの入口を順に試す）
+  o.innerHTML = '<img style="width:100%; height:100%; object-fit:contain;" alt="" src="' + esc(it.thumb || '') + '"><div id="xViewMsg" style="position:absolute; left:12px; bottom:16px; color:#fff; font-size:0.8rem;">大きい写真を読み込んでいます…</div><button type="button" class="btn btn-sub" style="position:absolute; top:12px; right:12px;">閉じる</button>';
+  const shown = o.querySelector('img'), msg = o.querySelector('#xViewMsg'), big = new Image();
+  const tries = ['https://lh3.googleusercontent.com/d/' + it.driveId + '=w2000', 'https://drive.google.com/thumbnail?id=' + it.driveId + '&sz=w2000'];
+  let k = 0;
+  big.onload = () => { shown.src = big.src; msg.remove(); };
+  big.onerror = () => { k++; if (k < tries.length) big.src = tries[k]; else msg.textContent = '大きい写真を表示できませんでした。'; };
+  big.src = tries[0];
   o.onclick = () => o.remove();
   document.body.appendChild(o);
 }
