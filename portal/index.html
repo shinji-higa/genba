@@ -86,7 +86,7 @@ storage.maxUploadRetryTime = 60000;   // 電波が切れたら1分で一度あ�
 const auth = getAuth(app);
 auth.languageCode = 'ja';   // パスワード再設定のメールと画面を日本語にする
 const db = initializeFirestore(app, { localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }) });
-const APP_VER = 'Ver.20261031-02';
+const APP_VER = 'Ver.20261031-03';
 
 /* ---------- 電波なしでも使う（今の現場管理と同じ考え方） ----------
    ・保存は押した瞬間に完了の形。電波が戻ったら自動で送る（データは Firestore が端末に貯める）
@@ -392,7 +392,7 @@ function showDetail(id, saved) {
     first = false; firstServer = firstServer || server;
     $('title').textContent = s.siteName;
     // 写真・資料タブを開いているときは作り直さない（ファイルを選んでいる最中に入力欄が消えるため）
-    if ($('xRoot') && X) X.s = s;
+    if (($('xRoot') || $('rRoot')) && X) X.s = s;
     else if (!rulesEditing) renderDetail(s);
   }, e => { $('panelDetail').innerHTML = banner('読み込めませんでした：' + e.message, true); });
 }
@@ -401,7 +401,7 @@ function renderDetail(s) {
   const nearby = s.address ? '<div class="nearby-row" style="display:grid;">' + ['コンビニ', 'トイレ', '駐車場', 'ホームセンター'].map(k => '<button type="button" class="nearby-btn" data-k="' + k + '"><span>' + k + '</span></button>').join('') + '</div>' : '';
   $('panelDetail').innerHTML =
     '<nav class="nav-tabs" style="margin: -16px -16px 14px -16px;">' + TABS.map(n => '<button type="button" class="nav-tab-item' + (n === detailTab ? ' active' : '') + '" data-t="' + n + '">' + n + '</button>').join('') + '</nav>' +
-    (detailTab === '写真' || detailTab === '資料' ? '<div id="xRoot"></div>' :
+    (detailTab === '報告' ? '<div id="rRoot"></div>' : detailTab === '写真' || detailTab === '資料' ? '<div id="xRoot"></div>' :
      detailTab !== '現場詳細' ? '<div class="info-card" style="text-align:center; color:var(--muted);">「' + detailTab + '」はこれから作ります。</div>' :
     '<div style="margin-bottom: 14px; display: flex; gap: 8px; align-items: center;">' +
       (isManagerOf(s) ? '<button type="button" id="edit" class="btn btn-dark" style="flex: 1;">✏️ 現場情報編集</button>'
@@ -431,6 +431,7 @@ function renderDetail(s) {
       ruleFields(s, true) +
     '</div>');
   $('panelDetail').querySelectorAll('.nav-tab-item').forEach(b => { b.onclick = () => { detailTab = b.dataset.t; renderDetail(s); }; });
+  if (detailTab === '報告') { rOpen(s); return; }
   if (detailTab === '写真' || detailTab === '資料') { xOpen(s, detailTab === '写真' ? 'photo' : 'doc'); return; }
   if (detailTab !== '現場詳細') return;
   autoGrow($('panelDetail'));
@@ -484,20 +485,131 @@ const xFiles = () => X.files.filter(f => f.kind === X.kind && !f.deleted);
 const xMayRemove = it => me.isMaster || isManagerOf(X.s) || (me.canAddSite && it.by === me.uid);
 const xDate = t => { const d = new Date(t || 0); return d.getFullYear() + '/' + (d.getMonth() + 1) + '/' + d.getDate(); };
 
-function xOpen(s, kind) {
+function xEnsure(s, kind) {
   if (!X || X.s.id !== s.id) {
     xStop();
     const t = performance.now();
-    X = { s, kind, folders: [], files: [], active: { photo: '', doc: '' }, mode: { photo: 'grid', doc: 'textonly' }, sort: 'newest', selMode: false, sel: new Set(), selF: new Set() };
-    let shown = false;
+    X = { s, kind, folders: [], files: [], reports: [], active: { photo: '', doc: '' }, mode: { photo: 'grid', doc: 'textonly' }, sort: 'newest', selMode: false, sel: new Set(), selF: new Set(), rCat: '全て表示', rMode: 'textonly', rEdit: '' };
+    let shown = isOffline();   // 電波なしで開いたときは、電波が戻るまでの時間を数えない
     const draw = snap => {
-      if (!shown && !snap.metadata.fromCache) { shown = true; $('speed').textContent = xLabel(X.kind) + 'を表示：' + sec(t); }
+      if (!shown && !snap.metadata.fromCache) { shown = true; $('speed').textContent = '表示：' + sec(t); }
       if ($('xRoot')) xRender();
+      if ($('rRoot')) rList();
     };
     xUnsub.push(onSnapshot(xSub('folders'), { includeMetadataChanges: true }, q => { if (!X) return; X.folders = q.docs.map(d => ({ id: d.id, ...d.data() })); draw(q); }));
     xUnsub.push(onSnapshot(xSub('files'), { includeMetadataChanges: true }, q => { if (!X) return; X.files = q.docs.map(d => ({ id: d.id, ...d.data() })); draw(q); }));
+    xUnsub.push(onSnapshot(xSub('reports'), { includeMetadataChanges: true }, q => { if (!X) return; X.reports = q.docs.map(d => ({ id: d.id, ...d.data() })); draw(q); }));
   }
-  X.s = s; X.kind = kind; X.selMode = false; X.sel.clear(); X.selF.clear();
+  X.s = s;
+}
+
+/* ---------- 報告（見た目と操作は今の現場管理と同じ） ---------- */
+const R_CATS = ['打合報告', '通常報告', '追加報告', '品質安全報告'];
+const rWhen = t => { const d = new Date(t || 0), p = n => ('0' + n).slice(-2); return d.getFullYear() + '/' + p(d.getMonth() + 1) + '/' + p(d.getDate()) + ' ' + p(d.getHours()) + ':' + p(d.getMinutes()); };
+const rLink = s => esc(s).replace(/(https?:\/\/[^\s<]+)/g, '<a href="$1" target="_blank" rel="noopener noreferrer" style="color:var(--link-blue); text-decoration:underline;">$1</a>');
+const rMay = r => me.isMaster || r.by === me.uid || isManagerOf(X.s);
+function rOpen(s) {
+  xEnsure(s, X ? X.kind : 'photo');
+  $('rRoot').innerHTML =
+    '<div style="margin-bottom: 12px;"><button type="button" id="rAdd" class="btn btn-dark">＋ 報告を追加する</button></div>' +
+    '<div class="flow-filter-scroll" id="rCats" style="margin-bottom: 12px;"></div><div id="rForm"></div>' +
+    '<div style="display: flex; justify-content: flex-end; align-items: center; margin-bottom: 8px;"><select id="rMode" style="font-size: 0.8rem; padding: 4px 8px; border: 1px solid var(--border); border-radius: 4px; width:auto;"><option value="textonly">文字のみ</option><option value="grid">標準グリッド</option></select></div>' +
+    '<div id="rBox"></div>';
+  $('rMode').value = X.rMode;
+  $('rMode').onchange = () => { X.rMode = $('rMode').value; rList(); };
+  $('rAdd').onclick = rForm;
+  rList();
+}
+function rForm() {
+  const box = $('rForm');
+  if (box.innerHTML) { box.innerHTML = ''; return; }
+  const att = (id, label, btn, accept) => '<div class="form-group"><label>' + label + '</label><input type="file" id="' + id + 'F" style="display:none;"' + (accept ? ' accept="' + accept + '"' : '') + '><button type="button" class="btn btn-sub" id="' + id + 'B" style="width: 100%;">' + btn + '</button><div id="' + id + 'N" style="font-size: 0.75rem; color: var(--muted); margin-top: 4px;"></div><div id="' + id + 'W" style="display:none;"><label style="margin-top: 8px;">保存先フォルダ <span class="req">*</span></label><select id="' + id + 'S"></select></div></div>';
+  box.innerHTML = '<div class="info-card" style="border-color: var(--primary);"><div class="card-header-row"><span style="font-weight: 700; font-size: 0.95rem;">📝 新規報告入力</span><button type="button" class="btn btn-sub" id="rClose" style="padding: 2px 8px; font-size: 0.75rem;">✕ 閉じる</button></div>' +
+    '<div class="form-group"><label>報告属性 <span class="req">*</span></label><select id="rCat">' + opts(R_CATS, '打合報告') + '</select></div>' +
+    '<div class="form-group"><label>報告内容 <span class="req">*</span></label><textarea id="rText" class="auto-expand" placeholder="本日の作業内容や報告事項を入力してください" style="min-height: 90px;"></textarea></div>' +
+    att('rI', '画像添付（写真）', '📷 写真を撮影 / 選択', 'image/*') + att('rD', '資料データ添付（PDF等）', '📄 資料ファイルを選択') +
+    '<div style="display: flex; gap: 8px; margin-top: 14px;"><button type="button" id="rSend" class="btn btn-dark" style="flex: 2;">報告を送信する</button><button type="button" id="rCancel2" class="btn btn-sub" style="flex: 1;">キャンセル</button></div><div id="rErr" style="font-size:0.85rem; margin-top:6px; color:var(--error-text);"></div></div>';
+  autoGrow(box);
+  const close = () => { box.innerHTML = ''; };
+  $('rClose').onclick = close; $('rCancel2').onclick = close;
+  const pick = (id, kind) => {
+    $(id + 'B').onclick = () => $(id + 'F').click();
+    $(id + 'F').onchange = () => {
+      const f = $(id + 'F').files[0];
+      $(id + 'N').textContent = f ? f.name : '';
+      if (!f) { $(id + 'W').style.display = 'none'; return; }
+      const keep = X.kind; X.kind = kind;
+      const rows = []; const walk = (p, d) => xKids(p).forEach(x => { rows.push([x.id, '　'.repeat(d) + x.name]); walk(x.id, d + 1); });
+      walk('', 0); X.kind = keep;
+      $(id + 'S').innerHTML = rows.map(r => '<option value="' + esc(r[0]) + '">' + esc(r[1]) + '</option>').join('') + '<option value="">＋ 新しいフォルダ（「報告添付」を作る）</option>';
+      $(id + 'W').style.display = '';
+    };
+  };
+  pick('rI', 'photo'); pick('rD', 'doc');
+  $('rSend').onclick = async () => {
+    const content = $('rText').value.trim();
+    if (!content) { $('rErr').textContent = '報告内容を入力してください。'; return; }
+    $('rSend').disabled = true;
+    const data = { category: $('rCat').value, content, by: me.uid, byName: me.name || me.uid, at: Date.now(), deleted: false, imageFile: '', docFile: '', docName: '' };
+    const send = async (id, kind) => {
+      const f = $(id + 'F').files[0];
+      if (!f) return '';
+      let folder = $(id + 'S').value;
+      if (!folder) { const k = X.kind; X.kind = kind; folder = xNewFolder('報告添付', ''); X.kind = k; }
+      return xUpload(kind, folder, [f]);
+    };
+    data.imageFile = await send('rI', 'photo');
+    data.docFile = await send('rD', 'doc');
+    if ($('rDF').files[0]) data.docName = $('rDF').files[0].name;
+    fire(setDoc(doc(xSub('reports')), data), '報告');
+    close();
+  };
+}
+function rList() {
+  if (!$('rBox') || !X) return;
+  const live = X.reports.slice().sort((a, b) => (b.at || 0) - (a.at || 0));
+  const count = c => live.filter(r => !r.deleted && (c === '全て表示' || r.category === c)).length;
+  $('rCats').innerHTML = ['全て表示'].concat(R_CATS).map(c => '<button type="button" class="report-filter-btn' + (c === X.rCat ? ' active' : '') + '" data-c="' + c + '"><span>' + c + '</span><span class="report-count-badge">' + count(c) + '件</span></button>').join('');
+  $('rCats').querySelectorAll('button').forEach(b => { b.onclick = () => { X.rCat = b.dataset.c; rList(); }; });
+  if (X.rEdit) return;   // 編集中は作り直さない
+  const list = live.filter(r => X.rCat === '全て表示' || r.category === X.rCat);
+  if (!list.length) { $('rBox').innerHTML = '<div class="info-card" style="text-align:center; color:var(--muted);">該当する報告はありません。</div>'; return; }
+  const fileOf = id => X.files.find(f => f.id === id);
+  $('rBox').innerHTML = list.map(r => {
+    if (r.deleted) return '<div class="info-card" style="margin-bottom:10px; background-color:#fff5f5; border:1px solid #ffcdd2;"><div style="display:flex; justify-content:space-between; align-items:center; font-size:0.82rem; color:#b71c1c; font-weight:700;"><span>🗑️ ' + esc(rWhen(r.deletedAt).slice(0, 10)) + 'に削除しました</span><span style="font-size:0.75rem; color:var(--muted); font-weight:normal;">元報告日: ' + esc(rWhen(r.at).slice(0, 10)) + '</span></div></div>';
+    const img = r.imageFile && fileOf(r.imageFile), docf = r.docFile && fileOf(r.docFile);
+    const imgHtml = !r.imageFile ? '' : X.rMode === 'textonly' || !img || !img.thumb
+      ? '<div style="margin-top:8px;"><a href="javascript:void(0)" data-open="' + esc(r.imageFile) + '" style="color:var(--link-blue); font-size:0.85rem; text-decoration:underline; display:inline-block;">📷 添付写真を開く</a></div>'
+      : '<div style="margin-top:10px;"><div style="font-size:0.75rem; font-weight:700; color:var(--muted); margin-bottom:4px;">📷 添付写真</div><img src="' + esc(img.thumb) + '" data-open="' + esc(r.imageFile) + '" style="max-width:100%; max-height:220px; object-fit:cover; border-radius:4px; border:1px solid var(--border); cursor:pointer; display:block;"></div>';
+    const docHtml = !r.docFile ? '' : '<div style="margin-top:10px;"><div style="font-size:0.75rem; font-weight:700; color:var(--muted); margin-bottom:4px;">📄 添付資料</div><a href="javascript:void(0)" data-open="' + esc(r.docFile) + '" style="color:var(--link-blue); font-size:0.85rem; text-decoration:underline; display:inline-block; word-break:break-all;">📄 ' + esc(r.docName || (docf && docf.name) || '添付ファイル') + 'を開く</a></div>';
+    return '<div class="info-card" style="margin-bottom:10px;" data-r="' + esc(r.id) + '">' +
+      '<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px; font-size:0.8rem; color:var(--muted); border-bottom:1px solid #f0f0f0; padding-bottom:4px;"><div style="display:flex; align-items:center;"><span style="display:inline-block; font-size:0.78rem; font-weight:700; padding:2px 6px; border-radius:3px; background:#f0f0f2; color:#333; margin-right:6px;">' + esc(r.category) + '</span><span style="font-weight:700; color:var(--text);">' + esc(rWhen(r.at)) + '</span></div>' +
+      '<div style="display:flex; align-items:center;"><span>' + esc(r.byName) + '</span>' + (rMay(r) ? '<button type="button" class="btn btn-sub" data-e="1" style="padding:2px 8px; font-size:0.75rem; margin-left:8px;">✏️ 編集</button>' : '') + '</div></div>' +
+      '<div class="r-view" style="font-size:0.9rem; line-height:1.5; white-space:pre-wrap; word-break:break-all;">' + rLink(r.content) + '</div>' + imgHtml + docHtml + '</div>';
+  }).join('');
+  $('rBox').querySelectorAll('[data-open]').forEach(a => {
+    a.onclick = () => {
+      const f = fileOf(a.dataset.open);
+      if (!f) { alert('添付はまだ届いていません。'); return; }
+      viewerOpen([f], 0);
+    };
+  });
+  $('rBox').querySelectorAll('[data-e]').forEach(b => { b.onclick = () => rEdit(list.find(r => r.id === b.closest('[data-r]').dataset.r), b.closest('[data-r]')); });
+}
+function rEdit(r, card) {
+  X.rEdit = r.id;
+  const v = card.querySelector('.r-view');
+  v.outerHTML = '<div style="margin-top:8px;"><textarea id="rEt" class="auto-expand" style="width:100%; min-height:80px; font-size:0.9rem; padding:8px; border:1px solid var(--border); border-radius:4px;">' + esc(r.content) + '</textarea><div style="display:flex; justify-content:space-between; align-items:center; margin-top:8px;"><button type="button" id="rEd" class="btn btn-sub" style="padding:4px 10px; font-size:0.8rem; color:var(--error-text); border-color:var(--error-text);">🗑️ 削除</button><div style="display:flex; gap:6px;"><button type="button" id="rEs" class="btn btn-dark" style="padding:4px 12px; font-size:0.8rem; width:auto;">保存</button><button type="button" id="rEc" class="btn btn-sub" style="padding:4px 10px; font-size:0.8rem; width:auto;">取消</button></div></div></div>';
+  autoGrow(card);
+  const end = () => { X.rEdit = ''; rList(); };
+  $('rEc').onclick = end;
+  $('rEs').onclick = () => { const t = $('rEt').value.trim(); if (t) fire(updateDoc(doc(xSub('reports'), r.id), { content: t, editedAt: Date.now() }), '報告'); end(); };
+  $('rEd').onclick = () => { if (!confirm('この報告を削除します。よろしいですか？')) return; fire(updateDoc(doc(xSub('reports'), r.id), { deleted: true, deletedAt: Date.now() }), '報告の削除'); end(); };
+}
+
+function xOpen(s, kind) {
+  xEnsure(s, kind);
+  X.kind = kind; X.selMode = false; X.sel.clear(); X.selF.clear();
   xShell();
   xRender();
 }
@@ -935,6 +1047,7 @@ function xPrepare(file, kind) {
   });
 }
 async function xUpload(kind, folder, files) {
+  let lastId = '';
   for (const file of files) {
     const p = await xPrepare(file, kind);
     const ref = doc(xSub('files')), siteId = X.s.id;
@@ -943,7 +1056,9 @@ async function xUpload(kind, folder, files) {
     await upTx('readwrite', s => s.put({ id: ref.id, siteId, name: p.name.replace(/[\/#?\[\]*]/g, '_'), mime: p.mime, blob, t: Date.now() }));
     fire(setDoc(ref, { kind, folder, name: p.name, mime: p.mime, size: blob.size, thumb: p.thumb, by: me.uid, byName: me.name || me.uid, at: Date.now(), driveId: '', uploading: true, deleted: false, comment: '' }), p.name);
     upPump();
+    lastId = ref.id;
   }
+  return lastId;
 }
 window.portalTest = {
   queue: () => ({ waiting: badgeUp, busy: upRun.size, writes: fireN, last: window.portalLastSend || '', error: window.portalLastError || '' }),
