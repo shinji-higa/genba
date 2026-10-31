@@ -23,6 +23,7 @@
   .cm-input { padding-left: calc(10px + env(safe-area-inset-left, 0px)); padding-right: calc(10px + env(safe-area-inset-right, 0px)); padding-bottom: calc(8px + var(--safe-b)); }
   .cm-sheet { max-height: calc(100dvh - var(--safe-t) - 8px); }
   .cm-head { padding-left: calc(14px + env(safe-area-inset-left, 0px)); padding-right: calc(14px + env(safe-area-inset-right, 0px)); }
+  .app-footer { padding-bottom: calc(6px + var(--safe-b)); }
   .fv-bar { padding-left: calc(10px + env(safe-area-inset-left, 0px)); padding-right: calc(10px + env(safe-area-inset-right, 0px)); }
   .fv-zoom { right: calc(10px + env(safe-area-inset-right, 0px)); bottom: calc(10px + var(--safe-b)); }
   .fv-info { left: calc(10px + env(safe-area-inset-left, 0px)); bottom: calc(10px + var(--safe-b)); }
@@ -74,12 +75,16 @@
   <div id="panelNewSite" class="view-panel"></div>
   <div id="panelDetail" class="view-panel"></div>
   <div id="panelSettings" class="view-panel"></div>
+  <div id="panelNotices" class="view-panel"></div>
+  <div id="appFooter" class="app-footer" style="display: none;">
+    <button type="button" id="btnFooterNotices" class="footer-notice-btn"><span>🔔 お知らせ通知</span><span id="noticeBadge" class="notice-badge">0</span></button>
+  </div>
 </div>
 
 <script type="module">
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, sendPasswordResetEmail, signOut } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
-import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager, collection, query, where, doc, getDoc, getDocs, setDoc, updateDoc, writeBatch, onSnapshot, disableNetwork, enableNetwork } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
+import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager, collection, query, where, doc, getDoc, getDocs, setDoc, updateDoc, writeBatch, onSnapshot, disableNetwork, enableNetwork, orderBy, limit } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
 import { getStorage, ref as stRef, uploadBytesResumable, getDownloadURL } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-storage.js';
 
@@ -98,7 +103,7 @@ storage.maxUploadRetryTime = 60000;   // 電波が切れたら1分で一度あ�
 const auth = getAuth(app);
 auth.languageCode = 'ja';   // パスワード再設定のメールと画面を日本語にする
 const db = initializeFirestore(app, { localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }) });
-const APP_VER = 'Ver.20261031-08';
+const APP_VER = 'Ver.20261031-09';
 
 /* ---------- 電波なしでも使う（今の現場管理と同じ考え方） ----------
    ・保存は押した瞬間に完了の形。電波が戻ったら自動で送る（データは Firestore が端末に貯める）
@@ -259,7 +264,7 @@ const RULES = [
   ['ruleToilet', 'トイレ', ['未確認', '敷地内or仮設', '無し']],
   ['ruleGuard', '守衛手続', ['未確認', '無し', '有り']]
 ];
-const PANELS = ['panelLogin', 'panelPortal', 'panelNewSite', 'panelDetail', 'panelSettings'];
+const PANELS = ['panelLogin', 'panelPortal', 'panelNewSite', 'panelDetail', 'panelSettings', 'panelNotices'];
 let me = null, stop = null, backTo = null;
 
 function show(panel, title, back, backLabel) {
@@ -292,7 +297,7 @@ const AUTH_MSG = { 'auth/invalid-credential': 'メールアドレスかパスワ
 
 onAuthStateChanged(auth, async user => {
   stopWatch();
-  if (!user) { me = null; $('userBox').style.display = 'none'; showLogin(); return; }
+  if (!user) { me = null; nStop(); $('appFooter').style.display = 'none'; $('userBox').style.display = 'none'; showLogin(); return; }
   $('userBox').style.display = 'flex';
   $('userEmail').textContent = user.uid;
   // 表示を待たせないよう、権限は端末の控えで先に判断して一覧を出す
@@ -302,6 +307,7 @@ onAuthStateChanged(auth, async user => {
   me = { uid: user.uid, name: c.name || '', group: c.group || '', isMaster: c.isMaster === true, canAddSite: c.canAddSite === true };
   $('admin').style.display = me.isMaster ? '' : 'none';
   showList();
+  nStart();
   setTimeout(upPump, 1500);
   try {
     const d = await getDoc(doc(db, 'users', user.uid));
@@ -312,7 +318,7 @@ onAuthStateChanged(auth, async user => {
     if (isMaster !== me.isMaster || canAddSite !== me.canAddSite) {
       me.isMaster = isMaster; me.canAddSite = canAddSite;
       $('admin').style.display = isMaster ? '' : 'none';
-      showList();
+      showList(); nStart();
     }
   } catch (e) {}
 });
@@ -386,7 +392,7 @@ function renderSites() {
       '<div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:8px;">' +
         '<div style="font-size:1.02rem; font-weight:700; flex:1; padding-right:8px;">' + esc(s.siteName) + '</div>' +
         '<span class="flow-badge flow-color-' + esc(s.flow) + '">' + esc(s.flow) + '</span>' +
-      '</div>' +
+      '</div>' + (nSiteUnread(s.id) ? '<div style="margin-bottom:6px;"><span class="notice-new">未読 ' + nSiteUnread(s.id) + '</span></div>' : '') +
       '<div style="font-size:0.8rem; color:var(--muted); display:flex; flex-direction:column; gap:3px;">' +
         '<div><span style="font-size:0.7rem; font-weight:600; background:#eee; padding:1px 4px; border-radius:2px;">着手</span> ' + esc(s.startDate) + '</div>' +
         '<div><span style="font-size:0.7rem; font-weight:600; background:#eee; padding:1px 4px; border-radius:2px;">完成</span> ' + esc(s.endDate) + '</div>' +
@@ -486,6 +492,7 @@ function renderDetail(s) {
   $('rSave').onclick = () => {
     const data = readRules();
     fire(updateDoc(doc(db, 'sites', s.id), data), '注意事項');
+    notify(s, 'site', '施工に関する注意事項を更新');
     rulesEditing = false;
     renderDetail({ ...s, ...data });
   };
@@ -640,6 +647,7 @@ function cmPanel(k, id, root, label, draft) {
     if (text.length > 2000) { alert('コメントは2000文字以内で入力してください。'); return; }
     const mentions = (X.people || []).filter(u => text.includes('@' + u.name)).map(u => u.id);
     fire(setDoc(doc(xSub('comments')), { kind: k, target: id, label, text, by: me.uid, byName: me.name || me.uid, at: Date.now(), mentions, deleted: false }), 'コメント');
+    notify(X.s, k, '「' + clip(label, 30) + '」にコメント：' + clip(text, 80), { mentions });
     ta.value = ''; grow(); box.style.display = 'none';
     setTimeout(() => { const l = root.querySelector('.cm-list'); if (l) l.scrollTop = l.scrollHeight; }, 50);
   };
@@ -789,12 +797,13 @@ function rForm() {
       if (!f) return '';
       let folder = $(id + 'S').value;
       if (!folder) { const k = X.kind; X.kind = kind; folder = xNewFolder('報告添付', ''); X.kind = k; }
-      return xUpload(kind, folder, [f]);
+      return xUpload(kind, folder, [f], true);
     };
     data.imageFile = await send('rI', 'photo');
     data.docFile = await send('rD', 'doc');
     if ($('rDF').files[0]) data.docName = $('rDF').files[0].name;
     fire(setDoc(doc(xSub('reports')), data), '報告');
+    notify(X.s, 'report', '【' + data.category + '】を追加：' + clip(content, 80));
     close();
   };
 }
@@ -840,7 +849,7 @@ function rEdit(r, card) {
   autoGrow(card);
   const end = () => { X.rEdit = ''; rList(); };
   $('rEc').onclick = end;
-  $('rEs').onclick = () => { const t = $('rEt').value.trim(); if (t) fire(updateDoc(doc(xSub('reports'), r.id), { content: t, editedAt: Date.now() }), '報告'); end(); };
+  $('rEs').onclick = () => { const t = $('rEt').value.trim(); if (t) { fire(updateDoc(doc(xSub('reports'), r.id), { content: t, editedAt: Date.now() }), '報告'); notify(X.s, 'report', '報告を編集：' + clip(t, 80)); } end(); };
   $('rEd').onclick = () => { if (!confirm('この報告を削除します。よろしいですか？')) return; fire(updateDoc(doc(xSub('reports'), r.id), { deleted: true, deletedAt: Date.now() }), '報告の削除'); end(); };
 }
 
@@ -1283,8 +1292,8 @@ function xPrepare(file, kind) {
     img.src = url;
   });
 }
-async function xUpload(kind, folder, files) {
-  let lastId = '';
+async function xUpload(kind, folder, files, quiet) {
+  let lastId = '', names = [];
   for (const file of files) {
     const p = await xPrepare(file, kind);
     const ref = doc(xSub('files')), siteId = X.s.id;
@@ -1293,8 +1302,9 @@ async function xUpload(kind, folder, files) {
     await upTx('readwrite', s => s.put({ id: ref.id, siteId, name: p.name.replace(/[\/#?\[\]*]/g, '_'), mime: p.mime, blob, t: Date.now() }));
     fire(setDoc(ref, { kind, folder, name: p.name, mime: p.mime, size: blob.size, thumb: p.thumb, by: me.uid, byName: me.name || me.uid, at: Date.now(), driveId: '', uploading: true, deleted: false, comment: '' }), p.name);
     upPump();
-    lastId = ref.id;
+    lastId = ref.id; names.push(p.name);
   }
+  if (!quiet && names.length) { const k = X.kind; X.kind = kind; const f = xNameOf(folder); X.kind = k; notify(X.s, kind, '「' + f + '」に' + xLabel(kind) + 'を追加：' + clip(names.join('、'), 60) + (names.length > 1 ? '（' + names.length + '件）' : '')); }
   return lastId;
 }
 window.portalTest = {
@@ -1329,7 +1339,7 @@ window.portalTest = {
         } else {
           file = new File(['%PDF-1.4\n1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj 2 0 obj<</Type/Pages/Count 1/Kids[3 0 R]>>endobj 3 0 obj<</Type/Page/MediaBox[0 0 595 842]/Parent 2 0 R>>endobj\ntrailer<</Root 1 0 R>>\n' + '%'.repeat(200000)], 'テスト資料' + ('0' + i).slice(-2) + '.pdf', { type: 'application/pdf' });
         }
-        await xUpload(kind, leaves[i % leaves.length], [file]);
+        await xUpload(kind, leaves[i % leaves.length], [file], true);
         while (badgeUp > 6) await new Promise(r => setTimeout(r, 300));
       }
     }
@@ -1383,6 +1393,7 @@ function showSiteForm(s) {
       showDetail(ref.id);
     } else {
       fire(updateDoc(doc(db, 'sites', s.id), data), data.siteName);
+      notify({ ...s, ...data }, 'site', '現場情報を編集');
       showDetail(s.id);
     }
   };
@@ -1391,10 +1402,101 @@ function showSiteForm(s) {
     const b = writeBatch(db), { id, ...rest } = s;
     b.set(doc(db, 'endedSites', s.id), { ...rest, endedAt: Date.now(), endedBy: me.uid });
     b.delete(doc(db, 'sites', s.id));
+    notify(s, 'site', '現場を削除しました（現場終了）');
     fire(b.commit(), s.siteName + 'の削除');
     showList();
   };
 }
+
+/* ---------- お知らせ（見た目は今の現場管理と同じ）----------
+   現場の人とマスターに届く。自分の操作は自分には出さない。30日より古いものは出さない。未読は現場カードにも出す（案 E）。
+   音の出る通知（アプリを閉じていても届くもの）はまだ入れていない */
+const N_TYPES = { report: '報告', photo: '写真', doc: '資料', site: '現場情報' };
+const clip = (s, n) => { s = String(s || ''); return s.length > n ? s.slice(0, n) + '…' : s; };
+let nItems = [], nReads = { all: 0, ids: {} }, nUnsub = [], nFilter = 'all', nSort = 'date', nAsc = false, nLimit = 30, nActor = '';
+const nIsRead = it => (it.at || 0) <= (nReads.all || 0) || !!(nReads.ids || {})[it.id];
+const nMine = () => nItems.filter(it => it.by !== me.uid);
+const nSiteUnread = id => nMine().filter(it => it.site === id && !nIsRead(it)).length;
+function notify(s, type, text, opt) {
+  fire(setDoc(doc(collection(db, 'notices')), { site: s.id, siteName: s.siteName, type, text, by: me.uid, byName: me.name || me.uid, at: Date.now(), members: s.members || [], mentions: (opt && opt.mentions) || [] }), 'お知らせ');
+}
+function nStop() { nUnsub.forEach(f => f()); nUnsub = []; nItems = []; }
+function nStart() {
+  nStop();
+  $('appFooter').style.display = '';
+  const since = Date.now() - 30 * 86400000, c = collection(db, 'notices');
+  const q = me.isMaster ? query(c, where('at', '>', since), orderBy('at', 'desc'), limit(300)) : query(c, where('members', 'array-contains', me.uid), where('at', '>', since), orderBy('at', 'desc'), limit(300));
+  nUnsub.push(onSnapshot(q, s => { nItems = s.docs.map(d => ({ id: d.id, ...d.data() })); nDraw(); }, e => { window.portalLastError = e && e.code; }));
+  nUnsub.push(onSnapshot(doc(db, 'noticeReads', me.uid), d => { if (d.exists()) nReads = { all: 0, ids: {}, ...d.data() }; nDraw(); }, () => {}));
+}
+function nDraw() {
+  const n = nMine().filter(it => !nIsRead(it)).length;
+  $('noticeBadge').textContent = n > 99 ? '99+' : String(n);
+  $('btnFooterNotices').classList.toggle('has-unread', n > 0);
+  if ($('panelPortal').classList.contains('active')) renderSites();
+  if ($('panelNotices').classList.contains('active')) nRender();
+}
+function nSave() { setDoc(doc(db, 'noticeReads', me.uid), nReads).catch(() => {}); }
+function nRead(id) { if (nReads.ids && nReads.ids[id]) return; nReads = { ...nReads, ids: { ...(nReads.ids || {}), [id]: 1 } }; nSave(); nDraw(); }
+$('btnFooterNotices').onclick = () => {
+  stopWatch();
+  show('panelNotices', 'お知らせ通知', showList);
+  $('speed').textContent = '';
+  nLimit = 30;
+  $('panelNotices').innerHTML =
+    '<div class="notice-tools"><button type="button" class="notice-chip" data-f="all">すべて</button><button type="button" class="notice-chip" data-f="unread">未読 <span id="nfCount"></span></button><button type="button" class="notice-chip" data-f="read">既読済</button></div>' +
+    '<div class="notice-tools"><span class="notice-tools-label">並び順</span><button type="button" class="notice-chip" data-s="date">年月日順 <span id="nsArrow"></span></button><button type="button" class="notice-chip" data-s="site">現場別</button></div>' +
+    '<div class="notice-tools"><label class="notice-tools-label" style="margin-bottom: 0;">通知者</label><select id="nActor" class="action-control-select" style="flex: 1; max-width: 320px; justify-content: flex-start;"></select></div>' +
+    '<div style="display: flex; justify-content: flex-end; margin-bottom: 10px;"><button type="button" id="nAll" class="btn btn-sub">✓ すべて既読にする</button></div><div id="nBox"></div>';
+  $('panelNotices').querySelectorAll('[data-f]').forEach(b => { b.onclick = () => { nFilter = b.dataset.f; nLimit = 30; nRender(); }; });
+  $('panelNotices').querySelectorAll('[data-s]').forEach(b => { b.onclick = () => { if (b.dataset.s === 'date' && nSort === 'date') nAsc = !nAsc; nSort = b.dataset.s; nLimit = 30; nRender(); }; });
+  $('nActor').onchange = () => { nActor = $('nActor').value; nLimit = 30; nRender(); };
+  $('nAll').onclick = () => {
+    if (!nMine().some(it => !nIsRead(it))) { alert('未読のお知らせはありません。'); return; }
+    nReads = { all: Date.now(), ids: {} }; nSave(); nDraw();
+  };
+  nRender();
+};
+function nRender() {
+  if (!$('nBox')) return;
+  $('panelNotices').querySelectorAll('[data-f]').forEach(b => b.classList.toggle('active', b.dataset.f === nFilter));
+  $('panelNotices').querySelectorAll('[data-s]').forEach(b => b.classList.toggle('active', b.dataset.s === nSort));
+  $('nsArrow').textContent = nAsc ? '↑古い順' : '↓新しい順';
+  const mine = nMine(), un = mine.filter(it => !nIsRead(it)).length;
+  $('nfCount').textContent = un ? '(' + un + ')' : '';
+  const names = [...new Set(mine.map(it => it.byName).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'ja'));
+  if (nActor && !names.includes(nActor)) nActor = '';
+  $('nActor').innerHTML = '<option value="">全員</option>' + names.map(n => '<option value="' + esc(n) + '"' + (n === nActor ? ' selected' : '') + '>' + esc(n) + '</option>').join('');
+  let list = mine.filter(it => (!nActor || it.byName === nActor) && (nFilter === 'all' || (nFilter === 'unread' ? !nIsRead(it) : nIsRead(it))));
+  if (!list.length) { $('nBox').innerHTML = '<div class="info-card" style="text-align:center; color:var(--muted);">' + (nFilter === 'unread' ? '未読のお知らせはありません。' : nFilter === 'read' ? '既読済のお知らせはありません。' : 'お知らせはありません。') + '</div>'; return; }
+  const byDate = (a, b) => nAsc ? (a.at - b.at) : (b.at - a.at);
+  list.sort((a, b) => (nSort === 'site' ? String(a.siteName).localeCompare(String(b.siteName), 'ja') : 0) || byDate(a, b));
+  const rest = list.length - nLimit;
+  if (rest > 0) list = list.slice(0, nLimit);
+  let html = '', last = null;
+  list.forEach(it => {
+    if (nSort === 'site' && it.siteName !== last) { html += '<div class="notice-group-head">🏗️ ' + esc(it.siteName) + '</div>'; last = it.siteName; }
+    const read = nIsRead(it);
+    html += '<div class="notice-card' + (read ? '' : ' unread') + '" data-n="' + esc(it.id) + '"><div class="notice-card-top">' + (read ? '' : '<span class="notice-new">未読</span>') +
+      '<span class="notice-type t-' + esc(it.type) + '">' + esc(N_TYPES[it.type] || 'お知らせ') + '</span>' + ((it.mentions || []).includes(me.uid) ? '<span class="notice-mention">@あなた</span>' : '') +
+      '<span style="flex:1;"></span><span>' + esc(rWhen(it.at)) + '</span></div>' + (nSort === 'site' ? '' : '<div class="notice-site">' + esc(it.siteName) + '</div>') +
+      '<div class="notice-text">' + esc(it.text) + '</div><div class="notice-foot"><span>👤 ' + esc(it.byName) + '</span><span style="flex:1;"></span><button type="button" class="btn btn-sub" data-open="' + esc(it.site) + '" style="padding:2px 8px; font-size:0.75rem;">現場を開く</button></div></div>';
+  });
+  if (rest > 0) html += '<button type="button" class="btn btn-sub" id="nMore" style="width:100%; margin-top:8px;">▼ 以前のお知らせを表示（残り' + rest + '件）</button>';
+  $('nBox').innerHTML = html;
+  $('nBox').querySelectorAll('[data-n]').forEach(c => { c.onclick = () => nRead(c.dataset.n); });
+  $('nBox').querySelectorAll('[data-open]').forEach(b => {
+    b.onclick = e => { e.stopPropagation(); nRead(b.closest('[data-n]').dataset.n); showDetail(b.dataset.open); };
+  });
+  if ($('nMore')) $('nMore').onclick = () => { nLimit += 30; nRender(); };
+}
+
+/* ヘッダーの高さを測って、タブが止まる位置にする（タブが上下に動かないように） */
+(() => {
+  const h = document.querySelector('header'), set = () => { if (h.offsetHeight) document.documentElement.style.setProperty('--hdrH', h.offsetHeight + 'px'); };
+  set();
+  if (window.ResizeObserver) new ResizeObserver(set).observe(h); else window.addEventListener('resize', set);
+})();
 
 /* ---------- マスター用の管理 ---------- */
 $('admin').onclick = () => showUsers();
