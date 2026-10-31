@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>現場管理ポータル</title>
+<style>
+  :root { --ink:#1a1a1a; --sub:#3d3d3d; --line:#8a8a8a; --bg:#f2f2f2; --card:#fff; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink); font:16px/1.6 -apple-system,"Hiragino Sans","Yu Gothic UI",Meiryo,sans-serif; }
+  header { position:sticky; top:0; z-index:5; display:flex; align-items:center; gap:10px; background:#1a1a1a; color:#fff; padding:12px 14px; }
+  header h1 { flex:1; margin:0; font-size:18px; font-weight:700; }
+  header button { background:#fff; color:#1a1a1a; border:0; border-radius:6px; padding:6px 12px; font-size:15px; font-weight:700; }
+  main { max-width:760px; margin:0 auto; padding:14px; }
+  .card { display:block; width:100%; text-align:left; background:var(--card); color:var(--ink); border:1px solid var(--line); border-radius:8px; padding:12px 14px; margin-bottom:10px; font-size:16px; }
+  .card b { display:block; font-size:17px; }
+  .sub { color:var(--sub); font-size:15px; }
+  .row { display:flex; gap:10px; padding:8px 0; border-bottom:1px solid #c4c4c4; }
+  .row:last-child { border-bottom:0; }
+  .row span:first-child { flex:0 0 7.5em; color:var(--sub); font-size:15px; }
+  .row span:last-child { flex:1; white-space:pre-wrap; word-break:break-word; }
+  a { color:var(--ink); font-weight:700; }
+  img.site { width:100%; border:1px solid var(--line); border-radius:8px; margin-bottom:10px; }
+  label { display:block; margin-top:10px; font-weight:700; }
+  input { width:100%; font-size:17px; padding:10px; border:1px solid var(--line); border-radius:6px; background:#fff; color:var(--ink); }
+  .btn { width:100%; margin-top:14px; padding:12px; font-size:17px; font-weight:700; background:#1a1a1a; color:#fff; border:0; border-radius:8px; }
+  .msg { padding:12px; background:#fff; border:1px solid var(--line); border-radius:8px; }
+  #speed { color:var(--sub); font-size:14px; margin:6px 2px 12px; }
+</style>
+</head>
+<body>
+<header>
+  <button id="back" hidden>← 一覧</button>
+  <h1 id="title">現場管理ポータル</h1>
+</header>
+<main>
+  <div id="speed"></div>
+  <div id="view"><div class="msg">準備しています…</div></div>
+</main>
+
+<script type="module">
+import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
+import { getAuth, onAuthStateChanged, signInWithCustomToken, signOut } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
+import { initializeFirestore, persistentLocalCache, collection, query, where, doc, onSnapshot } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
+
+/* 現場管理ポータル（試作）：見る画面だけ Firestore から出す。保存は今の現場管理のまま */
+const T0 = performance.now();
+const app = initializeApp({
+  apiKey: 'AIzaSyDVR4p4DO4s9h70uPlXUVlhNcMP9-YkQ5Q',
+  authDomain: 'genba-portal-9077b.firebaseapp.com',
+  projectId: 'genba-portal-9077b',
+  appId: '1:1005411376335:web:0129ce73c9988973e56bba'
+});
+const auth = getAuth(app);
+const db = initializeFirestore(app, { localCache: persistentLocalCache() });
+
+const GENBA_API = 'https://script.google.com/macros/s/AKfycbzVlXtdeBEba1Z1qhxOvSi9AOXs0LPfdSK_sXwBDf2eIhJKR6z7CdZ6yGIDiK9IIw7tAw/exec';   // 現場管理 本番
+const PORTAL_API = 'https://script.google.com/macros/s/AKfycbyW2hFHqIQuu-TsflPk_0zv7gquhoepspuvRG9-bMStPDSWSc2blcDFBtWs7MisP3f_/exec';
+const REMEMBER_KEY = 'genbaRemember';   // 現場管理と同じ保存場所（同じ端末ならログインを使い回す）
+
+const $ = id => document.getElementById(id);
+const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const sec = t => ((performance.now() - t) / 1000).toFixed(2) + '秒';
+function remembered() { try { const d = JSON.parse(localStorage.getItem(REMEMBER_KEY) || 'null'); return d && d.email && d.token ? d : null; } catch (e) { return null; } }
+function post(url, body) {
+  return fetch(url, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(body) })
+    .then(r => r.json()).then(d => { if (d && d.ok) return d.v; throw new Error((d && d.m) || 'サーバーでエラーが発生しました。'); });
+}
+function msg(t) { $('view').innerHTML = '<div class="msg">' + esc(t) + '</div>'; }
+
+/* ---------- ログイン ---------- */
+let started = false;
+onAuthStateChanged(auth, async user => {
+  if (started) return;
+  const rem = remembered();
+  if (user && (!rem || rem.email === user.uid)) { started = true; showList(user.uid); return; }
+  if (user) await signOut(auth);
+  if (rem) { started = true; enter(rem); } else showLogin();
+});
+
+async function enter(rem) {
+  msg('ログインを確認しています…');
+  try {
+    const r = await post(PORTAL_API, { fn: 'token', email: rem.email, token: rem.token });
+    const c = await signInWithCustomToken(auth, r.customToken);
+    showList(c.user.uid);
+  } catch (e) { started = false; showLogin(e.message); }
+}
+
+function showLogin(note) {
+  $('title').textContent = '現場管理ポータル';
+  $('back').hidden = true;
+  $('view').innerHTML = (note ? '<div class="msg">' + esc(note) + '</div>' : '') +
+    '<p class="sub">今の現場管理と同じ ID・パスワードで入れます。</p>' +
+    '<label>アカウントID</label><input id="id" type="email" autocomplete="username">' +
+    '<label>パスワード</label><input id="pw" type="password" autocomplete="current-password">' +
+    '<button class="btn" id="go">ログイン</button><div id="err" class="sub"></div>';
+  $('go').onclick = async () => {
+    $('err').textContent = '確認しています…';
+    try {
+      const r = await post(GENBA_API, { fn: 'authOrRegister', args: [$('id').value, $('pw').value] });
+      if (!r || !r.success) throw new Error((r && r.message) || 'ログインできませんでした。');
+      const data = { email: r.email, token: r.rememberToken, userName: r.userName, isMaster: !!r.isMaster, canAddSite: !!r.canAddSite, canDaily: !!r.canDaily };
+      localStorage.setItem(REMEMBER_KEY, JSON.stringify(data));
+      started = true;
+      enter(data);
+    } catch (e) { $('err').textContent = e.message; }
+  };
+}
+
+/* ---------- 現場一覧 ---------- */
+let stop = null, listDocs = [];
+function showList(uid) {
+  if (stop) stop();
+  const t = performance.now();
+  let first = true;
+  $('title').textContent = '現場一覧';
+  $('back').hidden = true;
+  stop = onSnapshot(query(collection(db, 'sites'), where('members', 'array-contains', uid)), { includeMetadataChanges: true }, snap => {
+    listDocs = snap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => a.order - b.order);
+    const server = !snap.metadata.fromCache;
+    if (first || server) {
+      $('speed').textContent = (server ? '最新を表示：' : '端末の控えを表示：') + sec(t) + '（開いてから ' + sec(T0) + '）';
+    }
+    first = false;
+    renderList();
+  }, e => msg('読み込めませんでした：' + e.message));
+}
+function renderList() {
+  if (!listDocs.length) { msg('見られる現場はありません。'); return; }
+  $('view').innerHTML = listDocs.map(s =>
+    '<button class="card" data-id="' + esc(s.id) + '"><b>' + esc(s.siteName) + '</b>' +
+    '<span class="sub">' + esc(s.flow) + '　' + esc(s.startDate) + ' 〜 ' + esc(s.endDate) + '</span></button>').join('');
+  $('view').querySelectorAll('.card').forEach(b => { b.onclick = () => showDetail(b.dataset.id); });
+}
+
+/* ---------- 現場詳細 ---------- */
+function thumb(link) {
+  const m = String(link || '').match(/\/d\/([a-zA-Z0-9_-]+)/) || String(link || '').match(/id=([a-zA-Z0-9_-]+)/);
+  return m ? 'https://drive.google.com/thumbnail?id=' + m[1] + '&sz=w800' : '';
+}
+function row(k, v, tel) {
+  if (!v) return '';
+  return '<div class="row"><span>' + esc(k) + '</span><span>' + (tel ? '<a href="tel:' + esc(String(v).replace(/[^0-9+]/g, '')) + '">' + esc(v) + '</a>' : esc(v)) + '</span></div>';
+}
+function showDetail(id) {
+  if (stop) stop();
+  const t = performance.now();
+  let first = true;
+  $('back').hidden = false;
+  stop = onSnapshot(doc(db, 'sites', id), { includeMetadataChanges: true }, d => {
+    if (!d.exists()) { if (!d.metadata.fromCache) msg('この現場は見られません。'); return; }
+    const s = d.data(), server = !d.metadata.fromCache;
+    if (first || server) $('speed').textContent = (server ? '最新を表示：' : '端末の控えを表示：') + sec(t);
+    first = false;
+    $('title').textContent = s.siteName;
+    const imgs = [s.imageUrl1, s.imageUrl2].map(thumb).filter(Boolean).map(u => '<img class="site" loading="lazy" alt="外観" src="' + esc(u) + '">').join('');
+    $('view').innerHTML = imgs + '<div class="card">' +
+      row('案件フロー', s.flow) + row('工期', s.startDate + ' 〜 ' + s.endDate) + row('住所', s.address) + row('連絡先', s.tel, true) + row('FAX', s.fax) +
+      row('EXD担当', s.exdChargeName) + row('EXD連絡先', s.exdChargeTel, true) +
+      row('代理人会社', s.agentCompany) + row('代理人', s.agentName) + row('代理人連絡先', s.agentTel, true) +
+      row('担当1 会社', s.siteStaff1Company) + row('担当1', s.siteStaff1Name) + row('担当1 連絡先', s.siteStaff1Tel, true) +
+      row('担当2 会社', s.siteStaff2Company) + row('担当2', s.siteStaff2Name) + row('担当2 連絡先', s.siteStaff2Tel, true) +
+      row('工事内容', s.workContent) + row('備考', s.notes) +
+      row('駐車', s.ruleParking) + row('土日祝', s.ruleHolidayWork) + row('喫煙', s.ruleSmoking) + row('トイレ', s.ruleToilet) + row('守衛', s.ruleGuard) + row('その他', s.ruleOther) +
+      '</div>';
+  }, e => msg('読み込めませんでした：' + e.message));
+}
+$('back').onclick = () => showList(auth.currentUser.uid);
+</script>
+</body>
+</html>
