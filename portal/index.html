@@ -28,7 +28,9 @@
   .fv-zoom { right: calc(10px + env(safe-area-inset-right, 0px)); bottom: calc(10px + var(--safe-b)); }
   .fv-info { left: calc(10px + env(safe-area-inset-left, 0px)); bottom: calc(10px + var(--safe-b)); }
   #offlineBadge { bottom: calc(128px + var(--safe-b)) !important; }
-  #speed { font-size: 0.7rem; color: var(--muted); padding: 2px 16px; min-height: 1.3em; }
+  /* 表示時間の行もヘッダーの下に止める。流れるとタブが上下に動くため（ユーザー指示 2026-10-31） */
+  #speed { font-size: 0.7rem; color: var(--muted); padding: 2px 16px; height: 21px; box-sizing: border-box; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; position: sticky; top: var(--hdrH, 76px); z-index: 14; background-color: #ffffff; }
+  .nav-tabs { top: calc(var(--hdrH, 76px) + 21px) !important; }
   .site-row { display: grid; grid-template-columns: 1fr 9.5em; gap: 8px; align-items: center; padding: 6px 0; border-bottom: 1px solid var(--border); }
   .check-row { display: flex; align-items: center; gap: 8px; font-size: 0.9rem; font-weight: 400; margin: 0; }
   .check-row input { width: 20px; height: 20px; flex: none; }
@@ -103,7 +105,7 @@ storage.maxUploadRetryTime = 60000;   // 電波が切れたら1分で一度あ�
 const auth = getAuth(app);
 auth.languageCode = 'ja';   // パスワード再設定のメールと画面を日本語にする
 const db = initializeFirestore(app, { localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }) });
-const APP_VER = 'Ver.20261031-09';
+const APP_VER = 'Ver.20261031-10';
 
 /* ---------- 電波なしでも使う（今の現場管理と同じ考え方） ----------
    ・保存は押した瞬間に完了の形。電波が戻ったら自動で送る（データは Firestore が端末に貯める）
