@@ -326,7 +326,17 @@ Object.assign(I18N_ES, {
   '人の管理': 'Gestión de personas', '通知設定': 'Notificaciones', '保存しました。': 'Guardado.', '現場情報': 'Datos de la obra', '＋ 人を追加': '+ Agregar persona',
   'この端末で通知を受け取る': 'Recibir notificaciones aquí', 'この端末の通知を止める': 'Detener notificaciones', 'テスト通知を送る': 'Enviar notificación de prueba', '🌐 表示言語': '🌐 Idioma'
 });
+var I18N_DOW = { '日': 'dom', '月': 'lun', '火': 'mar', '水': 'mié', '木': 'jue', '金': 'vie', '土': 'sáb' };
+Object.assign(I18N_ES, {
+  '元日': 'Año Nuevo', '成人の日': 'Día de la Mayoría de Edad', '建国記念の日': 'Día de la Fundación', '天皇誕生日': 'Cumpleaños del Emperador', '春分の日': 'Equinoccio de primavera',
+  '昭和の日': 'Día de Showa', '憲法記念日': 'Día de la Constitución', 'みどりの日': 'Día de la Naturaleza', 'こどもの日': 'Día de los Niños', '海の日': 'Día del Mar', '山の日': 'Día de la Montaña',
+  '敬老の日': 'Día del Respeto a los Mayores', '秋分の日': 'Equinoccio de otoño', 'スポーツの日': 'Día del Deporte', '文化の日': 'Día de la Cultura', '勤労感謝の日': 'Día del Trabajo', '国民の休日': 'Feriado nacional', '振替休日': 'Feriado compensatorio'
+});
 I18N_ES_RE.unshift(
+  [/^\(([日月火水木金土])\)$/, function(m, d) { return '(' + I18N_DOW[d] + ')'; }],
+  [/^(\d{1,2})月(\d{1,2})日\(([日月火水木金土])\)$/, function(m, a, b, d) { return b + '/' + a + ' (' + I18N_DOW[d] + ')'; }],
+  [/^(\d+\/\d+) · 脈拍 (\d+)$/, '$1 · Pulso $2'],
+  [/^(.+、.+)$/, function(m) { return m.split('、').map(function(p) { var h = i18nLookup(p); return h == null ? p : h; }).join(', '); }],
   [/^(?:(.+)　)?(最新を表示|端末の控えを表示|表示)：([\d.]+)秒(?:（開いてから ([\d.]+)秒）)?$/, function(m, a, b, c) { return (a ? a + ' · ' : '') + (b === '最新を表示' ? 'Actualizado' : b === '表示' ? 'Mostrado' : 'Copia local') + ': ' + c + ' s'; }],
   [/^(.+) あてに、パスワードを決めるメールを送りました。届かないときは迷惑メールも見てください。$/, 'Se envió un correo a $1 para definir la contraseña. Si no llega, revise el correo no deseado.'],
   [/^(.+) へ、パスワードを変えるメールを送りました。$/, 'Se envió a $1 un correo para cambiar la contraseña.'],
