@@ -112,7 +112,7 @@ storage.maxUploadRetryTime = 60000;   // 電波が切れたら1分で一度あ�
 const auth = getAuth(app);
 auth.languageCode = 'ja';   // パスワード再設定のメールと画面を日本語にする
 const db = initializeFirestore(app, { localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }) });
-const APP_VER = 'Ver.20261101-01';
+const APP_VER = 'Ver.20261101-02';
 
 /* ---------- 電波なしでも使う（今の現場管理と同じ考え方） ----------
    ・保存は押した瞬間に完了の形。電波が戻ったら自動で送る（データは Firestore が端末に貯める）
@@ -2344,7 +2344,7 @@ async function setOpen() {
     '<div class="form-group"><label for="acMb">携帯番号（伝票・注文書の注文者の欄に出ます）</label><input type="tel" id="acMb" value="' + esc(u.mobile) + '" placeholder="例: 090-1234-5678" inputmode="tel"></div>' +
     '<div class="form-group"><label for="acGo">googleアカウント</label><input type="text" id="acGo" value="' + esc(u.google) + '" placeholder="例: taro@gmail.com" autocomplete="off"></div>' +
     '<button type="button" id="acSave" class="btn btn-dark">アカウント設定を保存</button><button type="button" id="acPass" class="btn btn-sub" style="margin-top: 8px; width: 100%;">パスワードを変える（メールでご案内します）</button><div id="acMsg" class="set-note"></div></div>' +
-    (me.isMaster ? '<div class="info-card"><button type="button" id="goUsers" class="btn btn-outline">人の管理</button></div>' : '');
+    (me.isMaster ? '<div class="info-card"><button type="button" id="goUsers" class="btn btn-outline">人の管理</button><button type="button" id="goEnded" class="btn btn-outline" style="margin-top: 8px;">終了した現場</button></div>' : '');
   pushWire('setPush');
   updateLangButtons();
   $('verBtn').onclick = async () => {
@@ -2369,6 +2369,20 @@ async function setOpen() {
     catch (e) { $('acMsg').textContent = '送れませんでした：' + ((e && e.message) || ''); }
   };
   if ($('goUsers')) $('goUsers').onclick = () => showUsers();
+  if ($('goEnded')) $('goEnded').onclick = endedOpen;
+}
+/* 終了した現場（マスター用）：現場を削除すると、サーバーが10分ごとに見てドライブへ写す（gas の archiveSites） */
+async function endedOpen() {
+  show('panelSettings', '終了した現場', setOpen, '← 設定へ');
+  const P = $('panelSettings');
+  P.innerHTML = '<div class="info-card" style="text-align:center; color:var(--muted);">読み込んでいます…</div>';
+  try {
+    const list = (await getDocs(collection(db, 'endedSites'))).docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => (b.endedAt || 0) - (a.endedAt || 0));
+    if (!$('panelSettings').classList.contains('active')) return;
+    P.innerHTML = list.length ? list.map(s => '<div class="info-card" style="margin-bottom: 8px;"><div style="font-weight: 700;">' + esc(s.siteName) + '</div><div class="set-note">終了：' + esc(rWhen(s.endedAt)) + '</div><div style="font-size: 0.85rem; margin-top: 6px;">' +
+      (s.archivedAt ? '✅ ドライブへ写しました（' + esc(rWhen(s.archivedAt)) + '）' : 'ドライブへ写しています（10分ごとに進みます）') + (s.archiveUrl ? ' <a href="' + esc(s.archiveUrl) + '" target="_blank" rel="noopener noreferrer" style="color:var(--link-blue); text-decoration:underline;">フォルダを開く</a>' : '') +
+      ((s.archiveSkipped || []).length ? '<div style="color:var(--error-text);">大きすぎて写せなかったファイル：' + esc(s.archiveSkipped.join('、')) + '</div>' : '') + '</div></div>').join('') : '<div class="info-card" style="text-align:center; color:var(--muted);">終了した現場はありません。</div>';
+  } catch (e) { P.innerHTML = banner('読み込めませんでした：' + ((e && e.message) || ''), true); }
 }
 
 /* ---------- お知らせ（見た目は今の現場管理と同じ）----------
