@@ -186,7 +186,8 @@
     .cons-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 6px; }
     .cons-p { text-align: left; padding: 10px; border: 1.5px solid #8d9298; border-radius: 6px; background: #fff; font-weight: 700; font-size: 0.9rem; cursor: pointer; }
     .cons-p small { display: block; font-weight: 400; font-size: 0.78rem; color: #333; margin-top: 2px; }
-    .cons-tabs { display: flex; gap: 6px; flex-wrap: wrap; flex-basis: 100%; }
+    .cons-tabs { display: flex; gap: 6px; flex-wrap: nowrap; overflow-x: auto; flex-basis: 100%; padding-bottom: 4px; -webkit-overflow-scrolling: touch; }
+    .cons-tabs .chip { flex: none; }
     .rec-row { display: flex; align-items: center; gap: 10px; background: #fff; border: 1.5px solid #9e9e9e; border-radius: 6px; padding: 8px 10px; margin-bottom: 6px; cursor: pointer; }
     .rec-row input[type="checkbox"] { width: 22px; height: 22px; flex: none; }
     .rec-row .b { flex: 1; min-width: 0; }
