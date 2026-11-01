@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>消耗品注文</title>
-  <!-- Ver.20261102-01 -->
+  <!-- Ver.20261102-02 -->
   <style>
     /* 消耗品注文（フカガワの総合カタログの消耗品）。丸ダクト注文の注文書の仕組みを使う。2026-11-01 作成
        見た目は角ダクトの製作伝票にそろえる（白黒を基調に、薄い灰色は使わない） */
@@ -193,7 +193,7 @@
     .rec-row .b { flex: 1; min-width: 0; }
     .rec-row .q { width: 72px; flex: none; text-align: center; font-weight: 700; }
     .rec-row .u { flex: none; font-size: 0.85rem; }
-    .dp-cs col.n { width: 62mm; }
+    .dp-cs col.n { width: 56mm; }
     .dp-cs td.q { font-size: 10.5pt; }
   </style>
 </head>
@@ -488,6 +488,41 @@
         { n: 'その他（品名を入れる）', s: [], u: '個', free: true } ] }
     ];
 
+    /* 材質違いの同じ品は1行にまとめて、材質を選ぶ（ユーザー決定 2026-11-02）。mats＝[{ m:材質, s:その材質の仕様, d:説明 }] */
+    (function () {
+      var JOIN = [
+        ['ワンタッチビス', ['鉄 三価ユニクロ', 'ステンレス'], ['ワンタッチビス（鉄 三価ユニクロ）', 'ワンタッチビス（ステンレス）']],
+        ['ダクトダンバビス', ['鉄 三価ユニクロ', 'ステンレス'], ['ダクトダンバビス（鉄 三価ユニクロ）', 'ダクトダンバビス（ステンレス）']],
+        ['丸リベット', ['メッキ', 'ステンレス'], ['丸リベット（メッキ）', '丸リベット（ステンレス）']],
+        ['平リベット', ['メッキ', 'ステンレス'], ['平リベット（メッキ）', '平リベット（ステンレス）']],
+        ['ボルト', ['メッキ', 'ステンレス'], ['ボルト（メッキ）', 'ボルト（ステンレス）']],
+        ['ナット', ['メッキ', 'ステンレス'], ['ナット（メッキ）', 'ナット（ステンレス）']],
+        ['袋ナット', ['メッキ', 'ステンレス'], ['袋ナット（メッキ）', '袋ナット（ステンレス）']],
+        ['全ネジ', ['メッキ', 'ステンレス'], ['全ネジ（メッキ）', '全ネジ（ステンレス）']],
+        ['丸座金', ['メッキ', 'ステンレス'], ['丸座金（メッキ）', '丸座金（ステンレス）']]
+      ];
+      var SET = [
+        ['スチール締めバンド', 'スチール締めバンド', [['亜鉛', ['t0.4×幅13×100m', 't0.4×幅16×100m']], ['ステンレス', ['t0.4×幅13×100m', 't0.4×幅16×100m']]]],
+        ['バンドシール', 'バンドシール', [['亜鉛', ['オープン', 'オーバーラップ']], ['ステンレス', ['オープン', 'オーバーラップ']]]],
+        ['タイロット用テラー', 'タイロット用テラー', [['メッキ', ['W3/8×72×t0.8']], ['ステンレス', ['W3/8×72×t0.8']]]],
+        ['ハンガーアングル 両穴 LW-40', 'ハンガーアングル 両穴', [['ユニクロ', ['LW-40 L40×40×2500']], ['ドブ', ['LW-40 L40×40×2500']], ['ステンレス', ['LWS-40 L40×40×2500']]]],
+        ['ハンガーアングル 片穴 LS-40', 'ハンガーアングル 片穴', [['標準', ['LS-40 L40×40×2500']], ['ステンレス', ['LSS-40 L40×40×2500']]]]
+      ];
+      var DROP = ['ハンガーアングル ステンレス LWS-40（両穴）', 'ハンガーアングル ステンレス LSS-40（片穴）'];
+      CONS.forEach(function (g) {
+        JOIN.forEach(function (J) {
+          var ps = J[2].map(function (n) { return g.list.filter(function (x) { return x.n === n; })[0]; });
+          if (!ps[0]) return;
+          ps[0].mats = J[1].map(function (m, i) { return { m: m, s: ps[i].s, d: ps[i].d }; });
+          ps[0].n = J[0]; ps[0].s = []; delete ps[0].d;
+          g.list = g.list.filter(function (x) { return J[2].slice(1).indexOf(x.n) < 0; });
+        });
+        SET.forEach(function (Q) {
+          g.list.forEach(function (x) { if (x.n === Q[0]) { x.n = Q[1]; x.s = []; x.mats = Q[2].map(function (a) { return { m: a[0], s: a[1] }; }); } });
+        });
+        g.list = g.list.filter(function (x) { return DROP.indexOf(x.n) < 0; });
+      });
+    })();
     var OPT = { dest: ['会社', '引取', '現場', '伊丹'] };
     function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
     function num(v) { var n = parseFloat(String(v == null ? '' : v).replace(/[^\d.]/g, '')); return isNaN(n) ? 0 : n; }
@@ -518,13 +553,15 @@
     /* 消耗品1件の文字 */
     function consName(c) { return c.free ? (c.name || '') : c.n; }
     function sizeText(it) { return it.spec || ''; }
-    function itemSub(it) { return [it.spec, it.memo].filter(Boolean).join('　'); }
+    function itemSub(it) { return [it.mat, it.spec, it.memo].filter(Boolean).join('　'); }
     function itemErrors(c) {
       var e = [];
       if (c.free && !String(c.name || '').trim()) e.push('品名を入れてください。');
       if (!(num(c.qty) > 0)) e.push('数を入れてください。');
       return e;
     }
+    function matOf(p, mat) { return (p.mats || []).filter(function (x) { return x.m === mat; })[0] || null; }
+    function specsOf(p, mat) { var m = matOf(p, mat); return m ? m.s : (p.s || []); }
     function consProd(g, n) {
       for (var i = 0; i < CONS.length; i++) if (CONS[i].g === g) for (var j = 0; j < CONS[i].list.length; j++) if (CONS[i].list[j].n === n) return CONS[i].list[j];
       return null;
@@ -594,11 +631,11 @@
       var h = CONS.map(function (g, gi) {
         if (PICK_G && g.g !== PICK_G) return '';
         var list = g.list.map(function (p, pi) { return { p: p, pi: pi }; }).filter(function (x) {
-          return !q || (g.g + x.p.n + (x.p.d || '') + (x.p.s || []).join(' ')).indexOf(q) !== -1;
+          return !q || (g.g + x.p.n + (x.p.d || '') + (x.p.s || []).join(' ') + (x.p.mats || []).map(function (m) { return m.m + ' ' + m.s.join(' '); }).join(' ')).indexOf(q) !== -1;
         });
         if (!list.length) return '';
         return '<div class="cons-g"><div class="cons-gh">' + esc(g.g) + (g.p ? '　<span class="note">カタログ p.' + g.p + '〜</span>' : '') + '</div><div class="cons-list">' +
-          list.map(function (x) { return '<button type="button" class="cons-p" onclick="pickCons(' + gi + ',' + x.pi + ')">' + esc(x.p.n) + (x.p.d ? '<small>' + esc(x.p.d) + '</small>' : '') + '</button>'; }).join('') + '</div></div>';
+          list.map(function (x) { var sub = x.p.mats ? x.p.mats.map(function (m) { return m.m; }).join('・') : (x.p.d || ''); return '<button type="button" class="cons-p" onclick="pickCons(' + gi + ',' + x.pi + ')">' + esc(x.p.n) + (sub ? '<small>' + esc(sub) + '</small>' : '') + '</button>'; }).join('') + '</div></div>';
       }).join('');
       document.getElementById('consPick').innerHTML = h || '<div class="empty">見つかりません。「その他」から品名を入れてください。</div>';
     }
@@ -606,29 +643,37 @@
     function pickCons(gi, pi) {
       var g = CONS[gi], p = g.list[pi];
       closeSheet('pickerBg');
-      ED = { it: { id: uid(), g: g.g, n: p.n, free: !!p.free, name: '', spec: p.s.length ? p.s[0] : '', qty: 1, unit: p.u, memo: '' }, index: -1 };
+      var mat = p.mats ? p.mats[0].m : '', sp = specsOf(p, mat);
+      ED = { it: { id: uid(), g: g.g, n: p.n, free: !!p.free, name: '', mat: mat, spec: sp.length ? sp[0] : '', qty: 1, unit: p.u, memo: '' }, index: -1 };
       openEditor();
     }
     function backToPicker() { closeSheet('editorBg'); openPicker(); }
     function editItem(i) { if (revLocked()) { lockedToast(); return; } ED = { it: JSON.parse(JSON.stringify(S.items[i])), index: i }; openEditor(); }
     function openEditor() {
-      var c = ED.it, p = consProd(c.g, c.n) || { s: [], u: c.unit };
+      var c = ED.it, p = consProd(c.g, c.n) || { s: [], u: c.unit }, specs = specsOf(p, c.mat), m0 = matOf(p, c.mat);
       document.getElementById('edTitle').textContent = (c.free ? '消耗品' : c.n) + (ED.index >= 0 ? '（編集）' : '');
       document.getElementById('edDel').style.display = ED.index >= 0 ? '' : 'none';
       document.getElementById('edBack').style.display = ED.index >= 0 ? 'none' : '';
       var h = '<div class="edbox">';
       if (c.free) h += '<div class="fg"><label>品名</label><input type="text" value="' + esc(c.name) + '" oninput="ED.it.name=this.value; refreshEd()"></div>';
-      var inList = p.s.indexOf(c.spec) !== -1;
-      if (p.s.length) h += '<div class="fg"><label>仕様・サイズ</label><select onchange="edSpec(this.value)">' + p.s.map(function (v) { return '<option' + (c.spec === v ? ' selected' : '') + '>' + esc(v) + '</option>'; }).join('') + '<option value="__other"' + (!inList ? ' selected' : '') + '>ほかの仕様（文字で入れる）</option></select></div>';
-      if (!p.s.length || !inList) h += '<div class="fg"><label>' + (p.s.length ? 'ほかの仕様' : '仕様・サイズ・型番') + '</label><input type="text" id="edSpecTx" value="' + esc(c.spec) + '" placeholder="例：W3/8×20、φ150 など" oninput="ED.it.spec=this.value"></div>';
+      if (p.mats) h += '<div class="fg"><span class="lbl">材質</span><div class="chips">' + p.mats.map(function (x, i) { return '<span class="chip' + (x.m === c.mat ? ' on' : '') + '" onclick="edMat(' + i + ')">' + esc(x.m) + '</span>'; }).join('') + '</div></div>';
+      else h += '<div class="fg"><label>材質（あれば）</label><input type="text" value="' + esc(c.mat) + '" placeholder="例：ステンレス" oninput="ED.it.mat=this.value"></div>';
+      var inList = specs.indexOf(c.spec) !== -1;
+      if (specs.length) h += '<div class="fg"><label>仕様・サイズ</label><select onchange="edSpec(this.value)">' + specs.map(function (v) { return '<option' + (c.spec === v ? ' selected' : '') + '>' + esc(v) + '</option>'; }).join('') + '<option value="__other"' + (!inList ? ' selected' : '') + '>ほかの仕様（文字で入れる）</option></select></div>';
+      if (!specs.length || !inList) h += '<div class="fg"><label>' + (specs.length ? 'ほかの仕様' : '仕様・サイズ・型番') + '</label><input type="text" id="edSpecTx" value="' + esc(c.spec) + '" placeholder="例：W3/8×20、φ150 など" oninput="ED.it.spec=this.value"></div>';
       h += '<div class="fg"><label>数</label><div class="qty"><button type="button" onclick="edQty(-1)">－</button><input type="number" inputmode="numeric" id="edQty" value="' + esc(c.qty) + '" oninput="ED.it.qty=this.value; refreshEd()"><button type="button" onclick="edQty(1)">＋</button></div></div>';
       h += '<div class="fg"><label>単位</label><select onchange="ED.it.unit=this.value">' + UNITS.map(function (u) { return '<option' + (c.unit === u ? ' selected' : '') + '>' + u + '</option>'; }).join('') + '</select></div>';
       h += '<div class="fg"><label>メモ（注文書に出ます）</label><input type="text" value="' + esc(c.memo) + '" oninput="ED.it.memo=this.value"></div>';
-      if (p.d) h += '<div class="note">' + esc(p.d) + '</div>';
+      var note = (m0 && m0.d) || p.d; if (note) h += '<div class="note">' + esc(note) + '</div>';
       h += '</div><div id="edErr"></div>';
       document.getElementById('edForm').innerHTML = h;
       refreshEd();
       openSheet('editorBg');
+    }
+    function edMat(i) {
+      var p = consProd(ED.it.g, ED.it.n), m = p.mats[i], keep = m.s.indexOf(ED.it.spec) >= 0;
+      ED.it.mat = m.m; if (!keep) ED.it.spec = m.s.length ? m.s[0] : '';
+      openEditor();
     }
     function edSpec(v) { ED.it.spec = v === '__other' ? '' : v; openEditor(); if (v === '__other') document.getElementById('edSpecTx').focus(); }
     function edQty(d) { ED.it.qty = Math.max(0, num(ED.it.qty) + d); document.getElementById('edQty').value = ED.it.qty; refreshEd(); }
@@ -684,9 +729,9 @@
       CONS.map(function (g) { return g.g; }).forEach(function (g) { byG[g] = []; });
       S.items.forEach(function (it) {
         if (itemErrors(it).length) return;
-        var k = [it.g, consName(it), it.spec, it.unit, it.memo].join('|');
+        var k = [it.g, consName(it), it.mat, it.spec, it.unit, it.memo].join('|');
         if (seen[k]) { seen[k].qty += num(it.qty); seen[k].red = seen[k].red || itemRed(it); return; }
-        var r = { name: consName(it), spec: it.spec, qty: num(it.qty), unit: it.unit, memo: it.memo, red: itemRed(it) };
+        var r = { name: consName(it), mat: it.mat, spec: it.spec, qty: num(it.qty), unit: it.unit, memo: it.memo, red: itemRed(it) };
         seen[k] = r; (byG[it.g] = byG[it.g] || []).push(r);
       });
       Object.keys(byG).forEach(function (g) { if (byG[g].length) groups.push({ g: g, rows: byG[g] }); });
@@ -705,8 +750,8 @@
       return '<div class="dp-cont-head"><h1>注文書（続き）</h1>' + revTag() + '<span class="site">' + esc(S.site) + '</span><span class="no">（NO, ' + esc(S.no || '') + '）　ページNo, ' + page + '／' + pages + '</span></div>';
     }
     function consTable(rows) {
-      return '<table class="dp-cs"><colgroup><col class="n"><col><col style="width:14mm"><col style="width:12mm"><col style="width:34mm"></colgroup><tr><th>品名</th><th>仕様・サイズ</th><th>数</th><th>単位</th><th>メモ</th></tr>' +
-        rows.map(function (r) { return '<tr' + (r.red ? ' class="red"' : '') + '><td class="l wrap">' + esc(r.name) + '</td><td class="l wrap">' + esc(r.spec) + '</td><td class="q">' + esc(r.qty) + '</td><td>' + esc(r.unit) + '</td><td class="l wrap">' + esc(r.memo) + '</td></tr>'; }).join('') + '</table>';
+      return '<table class="dp-cs"><colgroup><col class="n"><col style="width:22mm"><col><col style="width:12mm"><col style="width:11mm"><col style="width:30mm"></colgroup><tr><th>品名</th><th>材質</th><th>仕様・サイズ</th><th>数</th><th>単位</th><th>メモ</th></tr>' +
+        rows.map(function (r) { return '<tr' + (r.red ? ' class="red"' : '') + '><td class="l wrap">' + esc(r.name) + '</td><td class="wrap">' + esc(r.mat || '') + '</td><td class="l wrap">' + esc(r.spec) + '</td><td class="q">' + esc(r.qty) + '</td><td>' + esc(r.unit) + '</td><td class="l wrap">' + esc(r.memo) + '</td></tr>'; }).join('') + '</table>';
     }
     function chgTable(rows) { return '<table class="dp-chgt"><colgroup><col></colgroup>' + rows.map(function (l) { return '<tr><td class="wrap">' + esc(l) + '</td></tr>'; }).join('') + '</table>'; }
     function buildPages() {
