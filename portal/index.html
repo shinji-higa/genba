@@ -112,7 +112,7 @@ storage.maxUploadRetryTime = 60000;   // 電波が切れたら1分で一度あ�
 const auth = getAuth(app);
 auth.languageCode = 'ja';   // パスワード再設定のメールと画面を日本語にする
 const db = initializeFirestore(app, { localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }) });
-const APP_VER = 'Ver.20261101-03';
+const APP_VER = 'Ver.20261101-04';
 
 /* ---------- 電波なしでも使う（今の現場管理と同じ考え方） ----------
    ・保存は押した瞬間に完了の形。電波が戻ったら自動で送る（データは Firestore が端末に貯める）
@@ -1359,9 +1359,12 @@ function xPrepare(file, kind) {
     img.src = url;
   });
 }
+const UP_MAX = 200 * 1024 * 1024;   // 1つ200MBまで（ユーザー決定 2026-11-01。storage.rules も同じ）
 async function xUpload(kind, folder, files, quiet) {
   let lastId = '', names = [];
-  for (const file of files) {
+  const over = [...files].filter(f => f.size > UP_MAX);
+  if (over.length) alert('1つ200MBを超えるファイルは追加できません：\n' + over.map(f => '・' + f.name + '（' + Math.round(f.size / 1048576) + 'MB）').join('\n'));
+  for (const file of [...files].filter(f => f.size <= UP_MAX)) {
     const p = await xPrepare(file, kind);
     const ref = doc(xSub('files')), siteId = X.s.id;
     const blob = new Blob([Uint8Array.from(atob(p.data), c => c.charCodeAt(0))], { type: p.mime });
@@ -1818,7 +1821,7 @@ function dOpen() {
   $('dSave').onclick = dSave;
   $('dDel').onclick = () => {
     if (!confirm('この日の日報を削除しますか？')) return;
-    fire(deleteDoc(doc(dCol(), dsId(D.sel))), '日報の削除');
+    fire(setDoc(doc(dCol(), dsId(D.sel)), { date: D.sel, deleted: true, at: Date.now(), by: me.uid }), '日報の削除');
   };
   const m = doc(db, 'meta', 'companyDays');
   oRead(() => getDoc(m), () => getDocFromCache(m)).then(d => { companyDays = (d.exists() && d.data().days) || {}; if (D) dRender(); }).catch(() => {});
@@ -1832,12 +1835,15 @@ function dLoad() {
   dRender();
   stop = onSnapshot(query(dCol(), where('date', '>=', pre + '01'), where('date', '<=', pre + '31')), s => {
     D.entries = {};
-    s.docs.forEach(d => { D.entries[d.data().date] = d.data(); });
+    s.docs.forEach(d => { if (!d.data().deleted) D.entries[d.data().date] = d.data(); });
     dRender();
   }, e => { $('dList').innerHTML = banner('読み込めませんでした：' + e.message, true); });
 }
+/* ポータルで開けるのは前月から。それより前はスプレッドシートにある */
+const dMonthOk = (y, m) => { const n = new Date(); return y * 12 + m - 1 >= n.getFullYear() * 12 + n.getMonth() - 1; };
 function dMove(diff) {
   const t = D.y * 12 + (D.m - 1) + diff, today = dsOf(new Date());
+  if (!dMonthOk(Math.floor(t / 12), t % 12 + 1)) { alert('ポータルで見られる日報は前月までです。'); return; }
   D.y = Math.floor(t / 12); D.m = t % 12 + 1;
   const pre = D.y + '/' + pad2(D.m);
   D.sel = today.indexOf(pre) === 0 ? today : pre + '/01';
@@ -1845,6 +1851,7 @@ function dMove(diff) {
 }
 function dSelect(ds) {
   const p = ds.split('/').map(Number);
+  if (!dMonthOk(p[0], p[1])) { alert('ポータルで見られる日報は前月までです。'); $('dDate').value = dsIso(D.sel); return; }
   D.sel = ds;
   if (p[0] !== D.y || p[1] !== D.m) { D.y = p[0]; D.m = p[1]; dLoad(); return; }
   dRender();
@@ -1990,7 +1997,7 @@ function hOpen() {
   const bp = (n, ph1, ph2, ph3) => '<div class="hl-bp"><div><small>上（最高）</small><input type="tel" inputmode="numeric" maxlength="3" id="hS' + n + '"' + ph1 + ' autocomplete="off"></div><div><small>下（最低）</small><input type="tel" inputmode="numeric" maxlength="3" id="hD' + n + '"' + ph2 + ' autocomplete="off"></div><div><small>脈拍（任意）</small><input type="tel" inputmode="numeric" maxlength="3" id="hP' + n + '"' + ph3 + ' autocomplete="off"></div></div>';
   let summerHead = false;
   $('panelHealth').innerHTML =
-    '<div id="hTabs" class="hl-tabs" style="display: none;"><button type="button" class="daily-kb" data-v="mine">自分の記録</button><button type="button" class="daily-kb" data-v="team">みんなの体調</button></div>' +
+    '<div id="hTabs" class="hl-tabs" style="display: none;"><button type="button" class="daily-kb" data-v="mine">自分の記録</button><button type="button" class="daily-kb" data-v="team">みんなの体調</button><button type="button" class="daily-kb" data-v="graph">グラフ</button></div>' +
     '<div id="hMine"><div id="hConsent" class="info-card" style="display: none;"><div class="card-header-row"><span style="font-weight: 700;">🩺 体調チェックを始める前に</span></div><div class="hl-howto"><ul><li>記録した血圧・体調・症状は、現場での事故やけがを防ぐために使います。</li><li>記録を見られるのは、あなたと、マスター、あなたの担当現場の現場管理者だけです。</li><li>「要確認」「作業不可」になったときは、その人たちに通知が届きます。</li></ul></div><button type="button" id="hAgree" class="btn btn-dark">同意して始める</button></div>' +
     '<div id="hResult" style="display: none;"></div>' +
     '<div id="hForm" class="info-card"><div class="card-header-row"><span style="font-weight: 700;">🩺 今朝の体調チェック</span><span id="hDateL" class="daily-daytype"></span></div>' +
@@ -2007,7 +2014,8 @@ function hOpen() {
     '<div class="form-group"><label for="hMemo">メモ</label><textarea id="hMemo" class="auto-expand" placeholder="気になることがあれば（任意）"></textarea></div>' +
     '<div style="display: flex; gap: 8px;"><button type="button" id="hSave" class="btn btn-dark" style="flex: 1;">記録する</button><button type="button" id="hCancel" class="btn btn-sub" style="display: none;">やめる</button></div></div>' +
     '<div class="info-card"><div class="card-header-row"><span style="font-weight: 700;">🗓 最近の記録</span></div><div id="hHist"></div></div></div>' +
-    '<div id="hTeam" style="display: none;"><div class="daily-month"><button type="button" class="dp-nav" id="hPrev" aria-label="前の日">‹</button><div id="hTeamDate" class="daily-month-label"></div><button type="button" class="dp-nav" id="hNext" aria-label="次の日">›</button></div><div id="hSum" class="hl-sum"></div><div class="info-card"><div id="hTeamList"></div></div></div>';
+    '<div id="hTeam" style="display: none;"><div class="daily-month"><button type="button" class="dp-nav" id="hPrev" aria-label="前の日">‹</button><div id="hTeamDate" class="daily-month-label"></div><button type="button" class="dp-nav" id="hNext" aria-label="次の日">›</button></div><div id="hSum" class="hl-sum"></div><div class="info-card"><div id="hTeamList"></div></div></div>' +
+    '<div id="hGraph" style="display: none;"><div class="info-card"><div id="hGPerson" class="form-group" style="display: none;"><label for="hGSel">見る人</label><select id="hGSel"></select></div><div id="hGBox"></div><div class="set-note">ポータルで見られるのは直近の約半年です。それより前は、ドライブの体調管理のスプレッドシートにあります。</div></div></div>';
   autoGrow($('panelHealth'));
   $('hTabs').querySelectorAll('[data-v]').forEach(b => { b.onclick = () => hView(b.dataset.v); });
   $('hQ').querySelectorAll('.hl-q').forEach(g => g.querySelectorAll('.daily-kb').forEach(b => { b.onclick = () => { H.ans[g.dataset.q] = b.dataset.v; H.dirty = true; hSync(); }; }));
@@ -2071,13 +2079,48 @@ function hView(v) {
   H.view = v;
   $('hMine').style.display = v === 'mine' ? '' : 'none';
   $('hTeam').style.display = v === 'team' ? '' : 'none';
+  $('hGraph').style.display = v === 'graph' ? '' : 'none';
   $('hTabs').querySelectorAll('[data-v]').forEach(b => b.classList.toggle('active', b.dataset.v === v));
   if (v === 'team') hTeamLoad();
+  if (v === 'graph') hGraphOpen();
+}
+/* グラフは本人とマスターだけ（ユーザー決定 2026-11-01）。マスターは見る人を選べる */
+function hGraphOpen() {
+  const box = $('hGPerson');
+  if (me.isMaster) {
+    const list = [{ uid: me.uid, name: me.name || '自分' }].concat((H.people || []).filter(p => p.uid !== me.uid));
+    box.style.display = '';
+    const cur = $('hGSel').value || me.uid;
+    $('hGSel').innerHTML = list.map(p => '<option value="' + esc(p.uid) + '"' + (p.uid === cur ? ' selected' : '') + '>' + esc(p.name || p.uid) + '</option>').join('');
+    $('hGSel').onchange = () => hGraphLoad($('hGSel').value);
+    hGraphLoad($('hGSel').value);
+  } else hGraphLoad(me.uid);
+}
+async function hGraphLoad(uid) {
+  $('hGBox').innerHTML = '<div style="text-align:center; color:var(--muted);">読み込んでいます…</div>';
+  try {
+    const q = query(collection(db, 'health'), where('uid', '==', uid));
+    const list = (await oRead(() => getDocs(q), () => getDocsFromCache(q))).docs.map(d => d.data()).filter(r => r.sys).sort((a, b) => String(a.date).localeCompare(String(b.date)));
+    if ($('hGBox')) $('hGBox').innerHTML = hGraphSvg(list);
+  } catch (e) { $('hGBox').innerHTML = banner('読み込めませんでした：' + ((e && e.message) || ''), true); }
+}
+function hGraphSvg(list) {
+  if (!list.length) return '<div style="text-align:center; color:var(--muted);">まだ記録がありません。</div>';
+  const W = 640, H_ = 300, L = 38, R = 12, T = 12, B = 34, top = 200, low = 40;
+  const x = i => L + (list.length < 2 ? (W - L - R) / 2 : i * (W - L - R) / (list.length - 1)), y = v => T + (top - Math.min(top, Math.max(low, v))) * (H_ - T - B) / (top - low);
+  const grid = [40, 80, 120, 160, 200].map(v => '<line x1="' + L + '" x2="' + (W - R) + '" y1="' + y(v) + '" y2="' + y(v) + '" stroke="#bbb" stroke-width="1"/><text x="' + (L - 6) + '" y="' + (y(v) + 4) + '" text-anchor="end" font-size="12" fill="#333">' + v + '</text>').join('');
+  const line = (k, color, dash) => { const pts = list.map((r, i) => [x(i), r[k]]).filter(p => Number(p[1]) > 0); return '<polyline fill="none" stroke="' + color + '" stroke-width="2.5"' + (dash ? ' stroke-dasharray="6 4"' : '') + ' points="' + pts.map(p => p[0].toFixed(1) + ',' + y(Number(p[1])).toFixed(1)).join(' ') + '"/>' + pts.map(p => '<circle cx="' + p[0].toFixed(1) + '" cy="' + y(Number(p[1])).toFixed(1) + '" r="3" fill="' + color + '"/>').join(''); };
+  const dLabel = r => String(r.date).slice(5).replace('/', '/');
+  const days = '<text x="' + L + '" y="' + (H_ - 12) + '" font-size="12" fill="#333">' + esc(dLabel(list[0])) + '</text><text x="' + (W - R) + '" y="' + (H_ - 12) + '" text-anchor="end" font-size="12" fill="#333">' + esc(dLabel(list[list.length - 1])) + '</text>';
+  const key = (c, t, dash) => '<span style="display:inline-flex; align-items:center; gap:4px; margin-right:12px;"><svg width="26" height="8"><line x1="0" x2="26" y1="4" y2="4" stroke="' + c + '" stroke-width="2.5"' + (dash ? ' stroke-dasharray="6 4"' : '') + '/></svg>' + t + '</span>';
+  const last = list[list.length - 1];
+  return '<div style="font-size:0.85rem; margin-bottom:6px;">' + key('#111', '血圧（上）') + key('#666', '血圧（下）') + key('#333', '脈拍', true) + '</div><svg viewBox="0 0 ' + W + ' ' + H_ + '" style="width:100%; height:auto; display:block;" role="img" aria-label="血圧と脈拍のグラフ">' + grid + line('sys', '#111') + line('dia', '#666') + line('pulse', '#333', true) + days + '</svg><div class="set-note">記録 ' + list.length + '日分　最新：' + esc(hBp(last)) + '</div>';
 }
 function hRender() {
   if (!H || !$('hMine')) return;
   if (!H.canMine && H.view === 'mine') { if (H.canTeam) hView('team'); else { $('hMine').style.display = 'none'; } }
-  $('hTabs').style.display = H.canMine && H.canTeam ? '' : 'none';
+  $('hTabs').style.display = H.canMine ? '' : 'none';
+  $('hTabs').querySelector('[data-v="team"]').style.display = H.canTeam ? '' : 'none';
   $('hTabs').querySelectorAll('[data-v]').forEach(b => b.classList.toggle('active', b.dataset.v === H.view));
   $('hDateL').textContent = hDate(dsOf(new Date()));
   let rec = hTodayRec();

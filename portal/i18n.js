@@ -322,6 +322,8 @@ Object.assign(I18N_ES, {
   'テスト通知を送っています…': 'Enviando notificación de prueba...', 'お返事がありません。少し待っても届かないときは、もう一度押してください。': 'Sin respuesta. Si no llega, toque de nuevo.', '送れませんでした。「この端末の通知を止める」を押してから、もう一度設定してください。': 'No se pudo enviar. Toque "Detener notificaciones" y configure de nuevo.',
   '読み込んでいます…': 'Cargando...', '📱 アプリの版': '📱 Versión de la app', '今の版：': 'Versión actual: ', '最新の版にする': 'Actualizar a la última versión', '新しい版が出ているときは、押すと入れ替わります。': 'Si hay una versión nueva, se actualizará al tocar.',
   '担当の現場はありません。': 'No tiene obras asignadas.', 'オフにした内容・現場は端末に通知しません（お知らせ一覧には表示されます）。自分が行った操作は通知されません。@で指定されたコメントと体調の知らせは、設定に関係なく届きます。': 'Lo desactivado no se notifica (sí aparece en Avisos). Sus propias acciones no se notifican. Los comentarios con @ y los avisos de salud siempre llegan.',
+  'グラフ': 'Gráfica', '見る人': 'Persona', 'まだ記録がありません。': 'Aún no hay registros.', '脈拍': 'Pulso', 'ポータルで見られる日報は前月までです。': 'En el portal solo se ve hasta el mes anterior.',
+  'ポータルで見られるのは直近の約半年です。それより前は、ドライブの体調管理のスプレッドシートにあります。': 'En el portal se ven los últimos seis meses aprox. Lo anterior está en la hoja de cálculo de Drive.',
   '名前': 'Nombre', 'グループ（マスターが決めます）': 'Grupo (lo define el Maestro)', '携帯番号（伝票・注文書の注文者の欄に出ます）': 'Celular (aparece en comprobantes y pedidos)', 'パスワードを変える（メールでご案内します）': 'Cambiar contraseña (por correo)',
   '人の管理': 'Gestión de personas', '通知設定': 'Notificaciones', '保存しました。': 'Guardado.', '現場情報': 'Datos de la obra', '＋ 人を追加': '+ Agregar persona',
   'この端末で通知を受け取る': 'Recibir notificaciones aquí', 'この端末の通知を止める': 'Detener notificaciones', 'テスト通知を送る': 'Enviar notificación de prueba', '🌐 表示言語': '🌐 Idioma'
@@ -333,6 +335,7 @@ Object.assign(I18N_ES, {
   '敬老の日': 'Día del Respeto a los Mayores', '秋分の日': 'Equinoccio de otoño', 'スポーツの日': 'Día del Deporte', '文化の日': 'Día de la Cultura', '勤労感謝の日': 'Día del Trabajo', '国民の休日': 'Feriado nacional', '振替休日': 'Feriado compensatorio'
 });
 I18N_ES_RE.unshift(
+  [/^記録 (\d+)日分　最新：(.*)$/, '$1 días registrados · Último: $2'],
   [/^\(([日月火水木金土])\)$/, function(m, d) { return '(' + I18N_DOW[d] + ')'; }],
   [/^(\d{1,2})月(\d{1,2})日\(([日月火水木金土])\)$/, function(m, a, b, d) { return b + '/' + a + ' (' + I18N_DOW[d] + ')'; }],
   [/^(\d+\/\d+) · 脈拍 (\d+)$/, '$1 · Pulso $2'],
