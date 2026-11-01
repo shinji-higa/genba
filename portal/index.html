@@ -34,6 +34,8 @@
   .site-row { display: grid; grid-template-columns: 1fr 9.5em; gap: 8px; align-items: center; padding: 6px 0; border-bottom: 1px solid var(--border); }
   .check-row { display: flex; align-items: center; gap: 8px; font-size: 0.9rem; font-weight: 400; margin: 0; }
   .check-row input { width: 20px; height: 20px; flex: none; }
+  #hTabs { display: flex; gap: 6px; }
+  #hTabs button { flex: 1; min-width: 0; padding-left: 4px; padding-right: 4px; white-space: nowrap; }
 </style>
 </head>
 <body>
@@ -112,7 +114,7 @@ storage.maxUploadRetryTime = 60000;   // 電波が切れたら1分で一度あ�
 const auth = getAuth(app);
 auth.languageCode = 'ja';   // パスワード再設定のメールと画面を日本語にする
 const db = initializeFirestore(app, { localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }) });
-const APP_VER = 'Ver.20261101-04';
+const APP_VER = 'Ver.20261101-05';
 
 /* ---------- 電波なしでも使う（今の現場管理と同じ考え方） ----------
    ・保存は押した瞬間に完了の形。電波が戻ったら自動で送る（データは Firestore が端末に貯める）
@@ -2015,7 +2017,7 @@ function hOpen() {
     '<div style="display: flex; gap: 8px;"><button type="button" id="hSave" class="btn btn-dark" style="flex: 1;">記録する</button><button type="button" id="hCancel" class="btn btn-sub" style="display: none;">やめる</button></div></div>' +
     '<div class="info-card"><div class="card-header-row"><span style="font-weight: 700;">🗓 最近の記録</span></div><div id="hHist"></div></div></div>' +
     '<div id="hTeam" style="display: none;"><div class="daily-month"><button type="button" class="dp-nav" id="hPrev" aria-label="前の日">‹</button><div id="hTeamDate" class="daily-month-label"></div><button type="button" class="dp-nav" id="hNext" aria-label="次の日">›</button></div><div id="hSum" class="hl-sum"></div><div class="info-card"><div id="hTeamList"></div></div></div>' +
-    '<div id="hGraph" style="display: none;"><div class="info-card"><div id="hGPerson" class="form-group" style="display: none;"><label for="hGSel">見る人</label><select id="hGSel"></select></div><div id="hGBox"></div><div class="set-note">ポータルで見られるのは直近の約半年です。それより前は、ドライブの体調管理のスプレッドシートにあります。</div></div></div>';
+    '<div id="hGraph" style="display: none;"><div class="info-card"><div id="hGPerson" class="form-group" style="display: none;"><label for="hGSel">見る人</label><select id="hGSel"></select></div><div id="hGBox"></div><div class="set-note">半年より前は月ごとの平均を表示します。毎日の記録は、ドライブの体調管理のスプレッドシートにあります。</div></div></div>';
   autoGrow($('panelHealth'));
   $('hTabs').querySelectorAll('[data-v]').forEach(b => { b.onclick = () => hView(b.dataset.v); });
   $('hQ').querySelectorAll('.hl-q').forEach(g => g.querySelectorAll('.daily-kb').forEach(b => { b.onclick = () => { H.ans[g.dataset.q] = b.dataset.v; H.dirty = true; hSync(); }; }));
@@ -2100,21 +2102,24 @@ async function hGraphLoad(uid) {
   $('hGBox').innerHTML = '<div style="text-align:center; color:var(--muted);">読み込んでいます…</div>';
   try {
     const q = query(collection(db, 'health'), where('uid', '==', uid));
-    const list = (await oRead(() => getDocs(q), () => getDocsFromCache(q))).docs.map(d => d.data()).filter(r => r.sys).sort((a, b) => String(a.date).localeCompare(String(b.date)));
-    if ($('hGBox')) $('hGBox').innerHTML = hGraphSvg(list);
+    const m = query(collection(db, 'healthMonthly'), where('uid', '==', uid));
+    const [a, b] = await Promise.all([oRead(() => getDocs(q), () => getDocsFromCache(q)), oRead(() => getDocs(m), () => getDocsFromCache(m)).catch(() => ({ docs: [] }))]);
+    const list = a.docs.map(d => d.data()).filter(r => r.sys).sort((x, y) => String(x.date).localeCompare(String(y.date)));
+    const months = b.docs.map(d => d.data()).filter(r => r.sys).sort((x, y) => String(x.month).localeCompare(String(y.month))).map(r => ({ ...r, date: r.month + '/01' }));
+    if ($('hGBox')) $('hGBox').innerHTML = '<div class="set-sub-title">直近の記録</div>' + hGraphSvg(list) + (months.length ? '<div class="set-sub-title" style="margin-top: 16px;">月ごとの平均（半年より前）</div>' + hGraphSvg(months, true) : '');
   } catch (e) { $('hGBox').innerHTML = banner('読み込めませんでした：' + ((e && e.message) || ''), true); }
 }
-function hGraphSvg(list) {
+function hGraphSvg(list, monthly) {
   if (!list.length) return '<div style="text-align:center; color:var(--muted);">まだ記録がありません。</div>';
   const W = 640, H_ = 300, L = 38, R = 12, T = 12, B = 34, top = 200, low = 40;
   const x = i => L + (list.length < 2 ? (W - L - R) / 2 : i * (W - L - R) / (list.length - 1)), y = v => T + (top - Math.min(top, Math.max(low, v))) * (H_ - T - B) / (top - low);
   const grid = [40, 80, 120, 160, 200].map(v => '<line x1="' + L + '" x2="' + (W - R) + '" y1="' + y(v) + '" y2="' + y(v) + '" stroke="#bbb" stroke-width="1"/><text x="' + (L - 6) + '" y="' + (y(v) + 4) + '" text-anchor="end" font-size="12" fill="#333">' + v + '</text>').join('');
   const line = (k, color, dash) => { const pts = list.map((r, i) => [x(i), r[k]]).filter(p => Number(p[1]) > 0); return '<polyline fill="none" stroke="' + color + '" stroke-width="2.5"' + (dash ? ' stroke-dasharray="6 4"' : '') + ' points="' + pts.map(p => p[0].toFixed(1) + ',' + y(Number(p[1])).toFixed(1)).join(' ') + '"/>' + pts.map(p => '<circle cx="' + p[0].toFixed(1) + '" cy="' + y(Number(p[1])).toFixed(1) + '" r="3" fill="' + color + '"/>').join(''); };
-  const dLabel = r => String(r.date).slice(5).replace('/', '/');
+  const dLabel = r => monthly ? String(r.date).slice(0, 7) : String(r.date).slice(5);
   const days = '<text x="' + L + '" y="' + (H_ - 12) + '" font-size="12" fill="#333">' + esc(dLabel(list[0])) + '</text><text x="' + (W - R) + '" y="' + (H_ - 12) + '" text-anchor="end" font-size="12" fill="#333">' + esc(dLabel(list[list.length - 1])) + '</text>';
   const key = (c, t, dash) => '<span style="display:inline-flex; align-items:center; gap:4px; margin-right:12px;"><svg width="26" height="8"><line x1="0" x2="26" y1="4" y2="4" stroke="' + c + '" stroke-width="2.5"' + (dash ? ' stroke-dasharray="6 4"' : '') + '/></svg>' + t + '</span>';
   const last = list[list.length - 1];
-  return '<div style="font-size:0.85rem; margin-bottom:6px;">' + key('#111', '血圧（上）') + key('#666', '血圧（下）') + key('#333', '脈拍', true) + '</div><svg viewBox="0 0 ' + W + ' ' + H_ + '" style="width:100%; height:auto; display:block;" role="img" aria-label="血圧と脈拍のグラフ">' + grid + line('sys', '#111') + line('dia', '#666') + line('pulse', '#333', true) + days + '</svg><div class="set-note">記録 ' + list.length + '日分　最新：' + esc(hBp(last)) + '</div>';
+  return '<div style="font-size:0.85rem; margin-bottom:6px;">' + key('#111', '血圧（上）') + key('#666', '血圧（下）') + key('#333', '脈拍', true) + '</div><svg viewBox="0 0 ' + W + ' ' + H_ + '" style="width:100%; height:auto; display:block;" role="img" aria-label="血圧と脈拍のグラフ">' + grid + line('sys', '#111') + line('dia', '#666') + line('pulse', '#333', true) + days + '</svg><div class="set-note">' + (monthly ? list.length + 'か月分' : '記録 ' + list.length + '日分　最新：' + esc(hBp(last))) + '</div>';
 }
 function hRender() {
   if (!H || !$('hMine')) return;
