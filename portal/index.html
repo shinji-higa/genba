@@ -112,7 +112,7 @@ storage.maxUploadRetryTime = 60000;   // 電波が切れたら1分で一度あ�
 const auth = getAuth(app);
 auth.languageCode = 'ja';   // パスワード再設定のメールと画面を日本語にする
 const db = initializeFirestore(app, { localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }) });
-const APP_VER = 'Ver.20261101-02';
+const APP_VER = 'Ver.20261101-03';
 
 /* ---------- 電波なしでも使う（今の現場管理と同じ考え方） ----------
    ・保存は押した瞬間に完了の形。電波が戻ったら自動で送る（データは Firestore が端末に貯める）
@@ -1506,8 +1506,11 @@ function showSiteForm(s) {
       showDetail(s.id);
     }
   };
-  if ($('delSite')) $('delSite').onclick = () => {
+  if ($('delSite')) $('delSite').onclick = async () => {
     if (!confirm('「' + s.siteName + '」を削除します。よろしいですか？')) return;
+    // 1つ50MBを超えるファイルはドライブへ写せない（ポータルに残り、「終了した現場」の画面からダウンロードできる）
+    const big = isOffline() ? [] : (await getDocs(collection(db, 'sites', s.id, 'files')).catch(() => ({ docs: [] }))).docs.map(d => d.data()).filter(f => !f.deleted && Number(f.size) > ARCHIVE_MAX);
+    if (big.length && !confirm('⚠️ 次のファイルは大きすぎて（1つ50MB超）ドライブへ写せません。\nポータルに残るので、「設定 → 終了した現場」からダウンロードしてください。\n\n' + big.map(f => '・' + f.name + '（' + Math.round(f.size / 1048576) + 'MB）').join('\n') + '\n\nこのまま削除しますか？')) return;
     const b = writeBatch(db), { id, ...rest } = s;
     b.set(doc(db, 'endedSites', s.id), { ...rest, endedAt: Date.now(), endedBy: me.uid });
     b.delete(doc(db, 'sites', s.id));
@@ -2371,7 +2374,9 @@ async function setOpen() {
   if ($('goUsers')) $('goUsers').onclick = () => showUsers();
   if ($('goEnded')) $('goEnded').onclick = endedOpen;
 }
-/* 終了した現場（マスター用）：現場を削除すると、サーバーが10分ごとに見てドライブへ写す（gas の archiveSites） */
+const ARCHIVE_MAX = 50 * 1024 * 1024;
+/* 終了した現場（マスター用）：現場を削除すると、サーバーが10分ごとに見てドライブへ写し、ポータルからは消す（gas の archiveSites）。
+   大きすぎて写せなかったファイルだけポータルに残るので、ここからダウンロードする */
 async function endedOpen() {
   show('panelSettings', '終了した現場', setOpen, '← 設定へ');
   const P = $('panelSettings');
@@ -2381,7 +2386,8 @@ async function endedOpen() {
     if (!$('panelSettings').classList.contains('active')) return;
     P.innerHTML = list.length ? list.map(s => '<div class="info-card" style="margin-bottom: 8px;"><div style="font-weight: 700;">' + esc(s.siteName) + '</div><div class="set-note">終了：' + esc(rWhen(s.endedAt)) + '</div><div style="font-size: 0.85rem; margin-top: 6px;">' +
       (s.archivedAt ? '✅ ドライブへ写しました（' + esc(rWhen(s.archivedAt)) + '）' : 'ドライブへ写しています（10分ごとに進みます）') + (s.archiveUrl ? ' <a href="' + esc(s.archiveUrl) + '" target="_blank" rel="noopener noreferrer" style="color:var(--link-blue); text-decoration:underline;">フォルダを開く</a>' : '') +
-      ((s.archiveSkipped || []).length ? '<div style="color:var(--error-text);">大きすぎて写せなかったファイル：' + esc(s.archiveSkipped.join('、')) + '</div>' : '') + '</div></div>').join('') : '<div class="info-card" style="text-align:center; color:var(--muted);">終了した現場はありません。</div>';
+      ((s.archiveSkippedFiles || []).length ? '<div style="color:var(--error-text); margin-top: 6px; font-weight: 700;">⚠️ 大きすぎてドライブへ写せなかったファイル（ポータルに残っています）</div>' + s.archiveSkippedFiles.map(f => '<div style="margin-top: 4px;"><a href="' + esc(f.url) + '" target="_blank" rel="noopener noreferrer" download style="color:var(--link-blue); text-decoration:underline;">⬇ ' + esc(f.name) + '（' + Math.round(f.size / 1048576) + 'MB）</a></div>').join('') : '') +
+      (s.archiveError ? '<div style="color:var(--error-text); margin-top: 6px;">写す途中で止まっています：' + esc(s.archiveError) + '</div>' : '') + '</div></div>').join('') : '<div class="info-card" style="text-align:center; color:var(--muted);">終了した現場はありません。</div>';
   } catch (e) { P.innerHTML = banner('読み込めませんでした：' + ((e && e.message) || ''), true); }
 }
 
