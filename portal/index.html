@@ -114,7 +114,7 @@ storage.maxUploadRetryTime = 60000;   // 電波が切れたら1分で一度あ�
 const auth = getAuth(app);
 auth.languageCode = 'ja';   // パスワード再設定のメールと画面を日本語にする
 const db = initializeFirestore(app, { localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }) });
-const APP_VER = 'Ver.20261101-05';
+const APP_VER = 'Ver.20261101-06';
 
 /* ---------- 電波なしでも使う（今の現場管理と同じ考え方） ----------
    ・保存は押した瞬間に完了の形。電波が戻ったら自動で送る（データは Firestore が端末に貯める）
@@ -1533,11 +1533,12 @@ function showSiteForm(s) {
    1枚の中身は sites/{id}/orderBody、一覧に出す情報は sites/{id}/orders、記録は sites/{id}/orderLog */
 const O_KIND = {
   kaku: { host: 'denpyoHost', src: 'denpyo.html?v=1', title: '角ダクト注文', word: '伝票', log: '角ダクト', fn: 'Denpyo' },
-  maru: { host: 'maruHost', src: 'maru.html?v=1', title: '丸ダクト注文', word: '注文書', log: '丸ダクト', fn: 'Maru' }
+  maru: { host: 'maruHost', src: 'maru.html?v=1', title: '丸ダクト注文', word: '注文書', log: '丸ダクト', fn: 'Maru' },
+  cons: { host: 'consHost', src: 'cons.html?v=1', title: '消耗品注文', word: '注文書', log: '消耗品', fn: 'Cons' }
 };
 function oOpen(s) {
   const btn = (k, ic, t, sub) => '<button type="button" class="order-btn' + (k ? ' on' : '') + '"' + (k ? ' data-o="' + k + '"' : ' disabled') + '><span class="order-ic">' + ic + '</span><span class="order-t">' + t + '</span><span class="order-s">' + sub + '</span></button>';
-  $('oRoot').innerHTML = '<div class="order-grid">' + btn('maru', '◯', '丸ダクト注文', '注文書の入力') + btn('kaku', '▢', '角ダクト注文', '製作伝票の入力') + btn('', '🧰', '消耗品注文', '準備中') + btn('', '🔩', '金物注文', '準備中') + '</div>';
+  $('oRoot').innerHTML = '<div class="order-grid">' + btn('maru', '◯', '丸ダクト注文', '注文書の入力') + btn('kaku', '▢', '角ダクト注文', '製作伝票の入力') + btn('cons', '🧰', '消耗品注文', '注文書の入力') + btn('', '🔩', '金物注文', '準備中') + '</div>';
   $('oRoot').querySelectorAll('[data-o]').forEach(b => { b.onclick = () => oShow(s, b.dataset.o); });
   // 電波が切れても一覧・会社の情報・ダクト仕様が出るように、電波のあるうちに読んで端末に控える
   if (!isOffline()) {
