@@ -15,6 +15,7 @@
 <link rel="stylesheet" href="app.css?v=1">
 <style>
   .site-card-btn { color: var(--text); }   /* iPhone でボタンの文字が青くなるのを防ぐ（リンクの色は変わらない） */
+  #panelSettings .site-card-btn { height: auto; margin-bottom: 8px; }   /* PC 幅の「カードの高さをそろえる」は現場一覧だけ。人の管理の行には効かせない */
   /* iPhone の丸い角・下の線に部品がかからないように、上下左右に余白を取る */
   :root { --safe-t: env(safe-area-inset-top, 0px); --safe-b: max(14px, env(safe-area-inset-bottom, 0px)); --safe-l: max(6px, env(safe-area-inset-left, 0px)); --safe-r: max(6px, env(safe-area-inset-right, 0px)); }
   header { padding-top: calc(8px + var(--safe-t)); padding-left: calc(14px + env(safe-area-inset-left, 0px)); padding-right: calc(14px + env(safe-area-inset-right, 0px)); }
@@ -114,7 +115,7 @@ storage.maxUploadRetryTime = 60000;   // 電波が切れたら1分で一度あ�
 const auth = getAuth(app);
 auth.languageCode = 'ja';   // パスワード再設定のメールと画面を日本語にする
 const db = initializeFirestore(app, { localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }) });
-const APP_VER = 'Ver.20261101-06';
+const APP_VER = 'Ver.20261102-03';
 
 /* ---------- 電波なしでも使う（今の現場管理と同じ考え方） ----------
    ・保存は押した瞬間に完了の形。電波が戻ったら自動で送る（データは Firestore が端末に貯める）
