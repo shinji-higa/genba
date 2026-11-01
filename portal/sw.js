@@ -3,7 +3,7 @@
    ・部品（Firebase・pdf.js）：一度受け取ったら端末のものを使う
    ・写真・資料（Cloud Storage）：一度開いたものは端末に残す（電波なしでも見られる。通信料も減る） */
 const SHELL = 'portal-shell-v1', LIB = 'portal-lib-v1', FILES = 'portal-files-v1', FILES_MAX = 1500;
-const SHELL_FILES = ['./', 'app.css', 'logo.png', 'manifest.json', 'denpyo.html', 'maru.html'];   // 注文の画面も電波なしで開く（ユーザー指示 2026-10-31）
+const SHELL_FILES = ['./', 'app.css', 'i18n.js', 'logo.png', 'manifest.json', 'denpyo.html', 'maru.html'];   // 注文の画面も電波なしで開く（ユーザー指示 2026-10-31）
 
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(SHELL).then(c => Promise.all(SHELL_FILES.map(u =>

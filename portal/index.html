@@ -87,6 +87,8 @@
   </div>
 </div>
 
+<script src="i18n.js"></script>
+<script>i18nStart();</script>
 <script type="module">
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, sendPasswordResetEmail, signOut } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
@@ -110,7 +112,7 @@ storage.maxUploadRetryTime = 60000;   // 電波が切れたら1分で一度あ�
 const auth = getAuth(app);
 auth.languageCode = 'ja';   // パスワード再設定のメールと画面を日本語にする
 const db = initializeFirestore(app, { localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }) });
-const APP_VER = 'Ver.20261031-16';
+const APP_VER = 'Ver.20261101-01';
 
 /* ---------- 電波なしでも使う（今の現場管理と同じ考え方） ----------
    ・保存は押した瞬間に完了の形。電波が戻ったら自動で送る（データは Firestore が端末に貯める）
@@ -300,6 +302,27 @@ function show(panel, title, back, backLabel) {
 }
 $('back').onclick = () => { if (backTo) backTo(); };
 const stopWatch = () => { if (stop) { stop(); stop = null; } xStop(); };
+/* 入力された文の表示。訳は保存のあとにサーバーが作り、同じ文書の tr に入る（{ src, out, of }）。見ている人の言語と違う文は訳を出し、「原文」で元の文を開ける。
+   mine：自分のコメントは元の文のまま出して「翻訳を見る」で訳を開ける。訳がまだ無いときと、元の文が直されたあとは、元の文を出す */
+const trOk = (text, tr) => tr && tr.out && tr.of === text ? tr : null;
+const trMain = (text, tr) => { const t = trOk(text, tr); return t && t.src !== portalLang() ? t.out : String(text == null ? '' : text); };
+function trShow(text, tr, render, mine) {
+  const s = String(text == null ? '' : text), t = trOk(s, tr), wrap = h => '<span data-i18n-skip>' + h + '</span>';
+  render = render || esc;
+  if (!t) return wrap(render(s));
+  const other = t.src !== portalLang();
+  if (!other && !mine) return wrap(render(s));
+  const label = open => '🌐 ' + (other ? window.T('自動翻訳') + ' · ' + window.T(open ? '原文を隠す' : '原文') : window.T(open ? '翻訳を隠す' : '翻訳を見る'));
+  return wrap(render(other ? t.out : s) + '<div class="tr-orig" hidden>' + render(other ? s : t.out) + '</div><div><button type="button" class="cm-tr tr-link" data-trl="' + esc(label(false)) + '" data-trh="' + esc(label(true)) + '">' + esc(label(false)) + '</button></div>');
+}
+document.addEventListener('click', e => {
+  const b = e.target.closest && e.target.closest('[data-trl]');
+  if (!b) return;
+  e.stopPropagation();
+  const o = b.parentNode.previousElementSibling;
+  o.hidden = !o.hidden;
+  b.textContent = o.hidden ? b.dataset.trl : b.dataset.trh;
+}, true);
 const banner = (t, ng) => '<div class="info-card" style="' + (ng ? 'background:var(--error-bg);color:var(--error-text);' : 'background:var(--success-bg);color:var(--success-text);') + 'font-weight:600;">' + esc(t) + '</div>';
 const autoGrow = root => root.querySelectorAll('textarea.auto-expand').forEach(a => {
   const f = () => { a.style.height = 'auto'; a.style.height = a.scrollHeight + 4 + 'px'; };
@@ -330,6 +353,7 @@ onAuthStateChanged(auth, async user => {
   nStart();
   setTimeout(upPump, 1500);
   setTimeout(pushRefresh, 2500);
+  langSync();
   try {
     const d = await getDoc(doc(db, 'users', user.uid));
     const x = d.exists() ? d.data() : {};
@@ -344,11 +368,13 @@ onAuthStateChanged(auth, async user => {
   } catch (e) {}
 });
 
+const LANG_SW = '<span class="lang-switch" data-i18n-skip><button type="button" data-lang-btn="ja">日本語</button><button type="button" data-lang-btn="es">Español</button></span>';
 function showLogin() {
   show('panelLogin', '現場管理ポータル');
   $('speed').textContent = '';
   $('panelLogin').innerHTML =
-    '<div class="info-card" style="margin-top: 40px; text-align: center;">' +
+    '<div style="text-align: right; margin: 16px 0 6px;">' + LANG_SW + '</div>' +
+    '<div class="info-card" style="text-align: center;">' +
     '<h2 style="font-size: 1.15rem; margin-bottom: 6px;">ログイン</h2>' +
     '<p style="font-size: 0.8rem; color: var(--muted); margin-bottom: 20px;">メールアドレスとパスワードを入力してください。</p>' +
     '<div style="text-align: left;">' +
@@ -357,6 +383,7 @@ function showLogin() {
     '<button type="button" id="go" class="btn btn-dark" style="margin-top: 10px;">ログイン</button>' +
     '<button type="button" id="forgot" class="btn btn-sub" style="margin-top: 14px; width: 100%;">初めての方・パスワードを忘れた方</button>' +
     '<div id="err" style="margin-top: 10px; font-size: 0.85rem;"></div></div></div>';
+  updateLangButtons();
   $('go').onclick = async () => {
     $('err').textContent = '確認しています…';
     try { await signInWithEmailAndPassword(auth, $('id').value.trim().toLowerCase(), $('pw').value); }
@@ -447,7 +474,7 @@ const imgBox = (s, n) => {
   const src = it && (it.url || (it.driveId ? 'https://lh3.googleusercontent.com/d/' + it.driveId + '=w800' : it.thumb));
   return '<div class="img-box">' + (it ? '<img loading="lazy" alt="' + label + '" data-ext="' + n + '" src="' + esc(src) + '">' : '<span style="font-size:0.78rem; color:var(--muted); font-weight:600;">' + label + ' なし</span>') + '</div>';
 };
-const opts = (list, cur) => list.map(o => '<option' + (o === cur ? ' selected' : '') + '>' + esc(o) + '</option>').join('');
+const opts = (list, cur) => list.map(o => '<option value="' + esc(o) + '"' + (o === cur ? ' selected' : '') + '>' + esc(o) + '</option>').join('');   // 値は日本語のまま（表示だけ訳される）
 let detailTab = '現場詳細', rulesEditing = false;
 
 function showDetail(id, saved) {
@@ -486,7 +513,7 @@ function renderDetail(s) {
         '<span class="flow-badge flow-color-' + esc(s.flow) + '">' + esc(s.flow) + '</span></div>' +
       '<div class="form-group"><label>現場住所 (押すとGoogle地図アプリが開きます)</label><div style="font-size:0.92rem; line-height:1.5;">' + addr + '</div>' + nearby + '</div>' +
       '<div class="grid-two-col form-group"><div><label>工期 着手</label><div style="font-size:0.92rem;">' + esc(s.startDate || '未設定') + '</div></div><div><label>工期 完成</label><div style="font-size:0.92rem;">' + esc(s.endDate || '未設定') + '</div></div></div>' +
-      '<div class="form-group"><label>工事内容</label><div class="dt-multiline">' + (esc(s.workContent) || '未設定') + '</div></div>' +
+      '<div class="form-group"><label>工事内容</label><div class="dt-multiline">' + (s.workContent ? trShow(s.workContent, (s.tr || {}).workContent) : '未設定') + '</div></div>' +
     '</div>' +
     '<div class="info-card">' +
       '<div class="form-group"><label>EXD案件担当者 / 連絡先</label><div>' + person('', s.exdChargeName, s.exdChargeTel) + '</div></div>' +
@@ -495,7 +522,7 @@ function renderDetail(s) {
       '<div class="form-group" style="margin-bottom: 0;"><label>現場担当者2 / 連絡先</label><div>' + person(s.siteStaff2Company, s.siteStaff2Name, s.siteStaff2Tel) + '</div></div>' +
     '</div>' +
     '<div class="images-row">' + imgBox(s, 1) + imgBox(s, 2) + '</div>' +
-    '<div class="info-card"><label>備考</label><div class="dt-multiline" style="margin-top:4px;">' + (esc(s.notes) || '特になし') + '</div></div>' +
+    '<div class="info-card"><label>備考</label><div class="dt-multiline" style="margin-top:4px;">' + (s.notes ? trShow(s.notes, (s.tr || {}).notes) : '特になし') + '</div></div>' +
     '<div class="info-card">' +
       '<div class="card-header-row"><span style="font-weight: 700; font-size: 0.92rem;">⚠️ 施工に関する注意事項</span><div>' +
         '<button type="button" id="rEdit" class="btn btn-sub">✏️ 編集</button>' +
@@ -544,7 +571,7 @@ function ruleFields(v, locked) {
     '<div class="grid-two-col form-group">' + sel(RULES[2]) + sel(RULES[3]) + '</div>' +
     '<div class="form-group">' + sel(RULES[4]) + '</div>' +
     '<div class="form-group" style="margin-top: 12px;"><label>その他ルール（全権限で編集可能・全文自動展開）</label>' +
-    '<textarea id="f_ruleOther" class="' + (locked ? 'rule-field ' : '') + 'auto-expand"' + (locked ? ' readonly' : '') + ' placeholder="特になし">' + esc(v.ruleOther) + '</textarea></div>';
+    '<textarea id="f_ruleOther" class="' + (locked ? 'rule-field ' : '') + 'auto-expand"' + (locked ? ' readonly' : '') + ' placeholder="特になし">' + esc(v.ruleOther) + '</textarea>' + (locked && trOk(v.ruleOther, (v.tr || {}).ruleOther) && v.tr.ruleOther.src !== portalLang() ? '<div class="dt-multiline" style="margin-top:6px;">' + trShow(v.ruleOther, v.tr.ruleOther) + '</div>' : '') + '</div>';
 }
 function readRules() {
   const data = {};
@@ -638,7 +665,7 @@ function cmDraw(p) {
     const mine = c.by === me.uid, un = !mine && (c.at || 0) > read;
     return (first && c === first && items[0] !== c ? '<div class="cm-divider">ここから未読</div>' : '') +
       '<div class="cm-row' + (mine ? ' mine' : '') + (un ? ' cm-unread' : '') + '" data-at="' + (c.at || 0) + '"><div class="cm-meta">' + (mine ? '' : esc(c.byName) + '　') + esc(rWhen(c.at)) +
-      (mine || me.isMaster ? '<button type="button" class="cm-del" data-del="' + esc(c.id) + '">削除</button>' : '') + '</div><div class="cm-bubble">' + (re ? esc(c.text).replace(re, '<span class="cm-mention">@$1</span>') : esc(c.text)) + '</div></div>';
+      (mine || me.isMaster ? '<button type="button" class="cm-del" data-del="' + esc(c.id) + '">削除</button>' : '') + '</div><div class="cm-bubble">' + trShow(c.text, (c.tr || {}).text, x => re ? esc(x).replace(re, '<span class="cm-mention">@$1</span>') : esc(x), mine) + '</div></div>';
   }).join('');
   list.querySelectorAll('[data-del]').forEach(b => {
     b.onclick = () => { if (confirm('このコメントを削除しますか？')) fire(updateDoc(doc(xSub('comments'), b.dataset.del), { deleted: true, deletedAt: Date.now() }), 'コメントの削除'); };
@@ -870,7 +897,7 @@ function rList() {
     return '<div class="info-card" style="margin-bottom:10px;" data-r="' + esc(r.id) + '">' +
       '<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px; font-size:0.8rem; color:var(--muted); border-bottom:1px solid #f0f0f0; padding-bottom:4px;"><div style="display:flex; align-items:center;"><span style="display:inline-block; font-size:0.78rem; font-weight:700; padding:2px 6px; border-radius:3px; background:#f0f0f2; color:#333; margin-right:6px;">' + esc(r.category) + '</span><span style="font-weight:700; color:var(--text);">' + esc(rWhen(r.at)) + '</span></div>' +
       '<div style="display:flex; align-items:center;"><span>' + esc(r.byName) + '</span>' + (rMay(r) ? '<button type="button" class="btn btn-sub" data-e="1" style="padding:2px 8px; font-size:0.75rem; margin-left:8px;">✏️ 編集</button>' : '') + '</div></div>' +
-      '<div class="r-view" style="font-size:0.9rem; line-height:1.5; white-space:pre-wrap; word-break:break-all;">' + rLink(r.content) + '</div>' + imgHtml + docHtml + cmInline('report', r.id) + '</div>';
+      '<div class="r-view" style="font-size:0.9rem; line-height:1.5; white-space:pre-wrap; word-break:break-all;">' + trShow(r.content, (r.tr || {}).content, rLink) + '</div>' + imgHtml + docHtml + cmInline('report', r.id) + '</div>';
   }).join('');
   Object.keys(drafts).forEach(key => { const id = key.split(':')[1]; if (list.some(r => r.id === id && !r.deleted)) cmInlineOpen('report', id, drafts[key]); else delete X.cmOpen[key]; });
   $('rBox').querySelectorAll('[data-open]').forEach(a => {
@@ -1009,7 +1036,7 @@ function xList() {
       (X.selMode ? '<input type="checkbox" class="bulk-checkbox"' + (chk ? ' checked' : '') + '>' : '') +
       '<div style="overflow:hidden; text-overflow:ellipsis; flex:1; padding-right:8px;"><a href="javascript:void(0)" data-a="open" style="color:var(--link-blue); text-decoration:underline;">' + (doc_ ? '📄 ' : '📷 ') + esc(it.name) + '</a>' +
       '<span style="font-size:0.78rem; color:var(--muted); margin-left:8px;">' + xDate(it.at) + '</span>' + (it.byName ? '<span style="font-size:0.78rem; color:var(--muted); margin-left:6px;">👤 ' + esc(it.byName) + '</span>' : '') + state(it) +
-      (it.comment ? '<div style="font-size:0.75rem; color:var(--muted); margin-top:2px;">💬 ' + esc(it.comment) + '</div>' : '') + '</div>' +
+      (it.comment ? '<div style="font-size:0.75rem; color:var(--muted); margin-top:2px;" data-i18n-skip>💬 ' + esc(trMain(it.comment, (it.tr || {}).comment)) + '</div>' : '') + '</div>' +
       '<div style="display:flex; gap:6px; flex-shrink:0;">' + cmBtn(kind, it.id, 'btn btn-sub cm-btn-row') + acts('class="btn btn-sub" style="padding:2px 6px; font-size:0.78rem;"').replace(/" style="color:var\(--error-text\);"/g, ' color:var(--error-text);"') + '</div></div>';
     return '<div class="photo-card' + (chk ? ' is-selected' : '') + '" data-id="' + id + '">' + cmBtn(kind, it.id, 'cm-badge') +
       (X.selMode ? '<div class="photo-card-check-wrap"><input type="checkbox" class="bulk-checkbox"' + (chk ? ' checked' : '') + '></div>' : '') +
@@ -1017,7 +1044,7 @@ function xList() {
       '<div class="photo-card-name" title="' + esc(it.name) + '">' + esc(it.name) + '</div>' +
       '<div style="font-size:0.74rem; color:var(--muted); text-align:center;">' + xDate(it.at) + state(it) + '</div>' +
       (it.byName ? '<div style="font-size:0.74rem; color:var(--muted); text-align:center;">👤 ' + esc(it.byName) + '</div>' : '') +
-      (it.comment ? '<div style="font-size:0.74rem; color:var(--muted); padding:0 4px 2px 4px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; text-align:center;">💬 ' + esc(it.comment) + '</div>' : '') +
+      (it.comment ? '<div style="font-size:0.74rem; color:var(--muted); padding:0 4px 2px 4px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; text-align:center;" data-i18n-skip>💬 ' + esc(trMain(it.comment, (it.tr || {}).comment)) + '</div>' : '') +
       '<div class="photo-card-actions">' + acts('class="photo-act-btn"') + '</div></div>';
   }).join('');
   box.querySelectorAll('[data-id]').forEach(el => {
@@ -1105,7 +1132,7 @@ function viewerShow() {
   ext.style.display = (it.url || it.driveId) && !isOffline() ? '' : 'none';
   const info = it.at ? [xDate(it.at)] : [];
   if (it.byName) info.push('👤 ' + it.byName);
-  $('fvInfo').textContent = info.join('　') + (it.comment ? '\n💬 ' + it.comment : '');
+  $('fvInfo').textContent = info.join('　') + (it.comment ? '\n💬 ' + trMain(it.comment, (it.tr || {}).comment) : '');
   $('fvInfo').style.whiteSpace = 'pre-line';
   if (/^image\//.test(it.mime || '') || it.kind === 'photo') viewerPhoto(it); else viewerDoc(it);
 }
@@ -2095,7 +2122,7 @@ function hCmDraw(id, root) {
   if (!box) return;
   if (!c.open) { box.innerHTML = ''; return; }
   const keep = box.querySelector('textarea') ? box.querySelector('textarea').value : '';
-  box.innerHTML = '<div style="margin-top: 6px;">' + c.items.map(m => '<div style="font-size: 0.82rem; padding: 4px 0; border-bottom: 1px solid #eee;"><b>' + esc(m.byName) + '</b> <small style="color: var(--muted);">' + hAt(m.at) + '</small><div style="white-space: pre-wrap;">' + esc(m.text) + '</div></div>').join('') + '</div>' +
+  box.innerHTML = '<div style="margin-top: 6px;">' + c.items.map(m => '<div style="font-size: 0.82rem; padding: 4px 0; border-bottom: 1px solid #eee;"><b>' + esc(m.byName) + '</b> <small style="color: var(--muted);">' + hAt(m.at) + '</small><div style="white-space: pre-wrap;">' + trShow(m.text, (m.tr || {}).text, esc, m.by === me.uid) + '</div></div>').join('') + '</div>' +
     '<div style="display: flex; gap: 6px; margin-top: 6px;"><textarea rows="1" style="flex: 1;" placeholder="コメントを入力"></textarea><button type="button" class="btn btn-dark" style="padding: 4px 12px;">送信</button></div>';
   const ta = box.querySelector('textarea');
   ta.value = keep;
@@ -2305,6 +2332,7 @@ async function setOpen() {
   const types = [['report', '報告の追加・編集'], ['photo', '写真の追加・編集'], ['doc', '資料の追加・編集'], ['site', '現場情報の追加・編集']];
   P.innerHTML =
     '<div class="info-card"><div class="card-header-row"><span style="font-weight: 700;">📱 アプリの版</span></div><div style="font-size: 0.95rem; margin-bottom: 10px;">今の版：<b>' + APP_VER + '</b></div><button type="button" id="verBtn" class="btn btn-dark">最新の版にする</button><div class="set-note">新しい版が出ているときは、押すと入れ替わります。</div></div>' +
+    '<div class="info-card"><div class="card-header-row" style="margin-bottom: 0;"><span style="font-weight: 700;">🌐 表示言語</span>' + LANG_SW + '</div></div>' +
     '<div class="info-card"><div class="card-header-row"><span style="font-weight: 700;">🔔 お知らせ通知設定</span></div>' + pushBoxHtml('setPush') +
     '<div class="set-sub-title">通知する内容</div>' + sw('pfAll', 'お知らせを通知する（全体）', pf.enabled !== false) + types.map(a => sw('pf_' + a[0], a[1], t[a[0]] !== false)).join('') +
     '<div class="set-sub-title">通知する現場</div>' + (allSites.length ? allSites.map(s => '<label class="switch-row"><span>' + esc(s.siteName) + '</span><input type="checkbox" data-site="' + esc(s.id) + '"' + (muted.includes(s.id) ? '' : ' checked') + '></label>').join('') : '<div class="set-note">担当の現場はありません。</div>') +
@@ -2318,6 +2346,7 @@ async function setOpen() {
     '<button type="button" id="acSave" class="btn btn-dark">アカウント設定を保存</button><button type="button" id="acPass" class="btn btn-sub" style="margin-top: 8px; width: 100%;">パスワードを変える（メールでご案内します）</button><div id="acMsg" class="set-note"></div></div>' +
     (me.isMaster ? '<div class="info-card"><button type="button" id="goUsers" class="btn btn-outline">人の管理</button></div>' : '');
   pushWire('setPush');
+  updateLangButtons();
   $('verBtn').onclick = async () => {
     $('verBtn').textContent = '入れ替えています…';
     try { const r = await fetch('./?check=' + Date.now(), { cache: 'no-store' }); if (r.ok && window.caches) await (await caches.open('portal-shell-v1')).put('./', r); } catch (e) {}
@@ -2327,7 +2356,7 @@ async function setOpen() {
     const types_ = {}, mutedSites = [];
     types.forEach(a => { types_[a[0]] = $('pf_' + a[0]).checked; });
     P.querySelectorAll('[data-site]').forEach(c => { if (!c.checked) mutedSites.push(c.dataset.site); });
-    fire(setDoc(pushRef(), { prefs: { enabled: $('pfAll').checked, types: types_, mutedSites } }, { merge: true }), '通知設定');
+    fire(setDoc(pushRef(), { prefs: { enabled: $('pfAll').checked, types: types_, mutedSites, lang: portalLang() } }, { merge: true }), '通知設定');
     $('pfSave').textContent = '保存しました ✓';
     setTimeout(() => { if ($('pfSave')) $('pfSave').textContent = 'お知らせ通知設定を保存'; }, 1500);
   };
@@ -2423,7 +2452,7 @@ function nRender() {
     html += '<div class="notice-card' + (read ? '' : ' unread') + '" data-n="' + esc(it.id) + '"><div class="notice-card-top">' + (read ? '' : '<span class="notice-new">未読</span>') +
       '<span class="notice-type t-' + esc(it.type) + '">' + esc(N_TYPES[it.type] || 'お知らせ') + '</span>' + ((it.mentions || []).includes(me.uid) ? '<span class="notice-mention">@あなた</span>' : '') +
       '<span style="flex:1;"></span><span>' + esc(rWhen(it.at)) + '</span></div>' + (nSort === 'site' ? '' : '<div class="notice-site">' + esc(it.siteName) + '</div>') +
-      '<div class="notice-text">' + esc(it.text) + '</div><div class="notice-foot"><span>👤 ' + esc(it.byName) + '</span><span style="flex:1;"></span><button type="button" class="btn btn-sub" data-open="' + esc(it.site) + '" style="padding:2px 8px; font-size:0.75rem;">' + (it.type === 'health' ? '体調を開く' : '現場を開く') + '</button></div></div>';
+      '<div class="notice-text">' + trShow(it.text, (it.tr || {}).text) + '</div><div class="notice-foot"><span>👤 ' + esc(it.byName) + '</span><span style="flex:1;"></span><button type="button" class="btn btn-sub" data-open="' + esc(it.site) + '" style="padding:2px 8px; font-size:0.75rem;">' + (it.type === 'health' ? '体調を開く' : '現場を開く') + '</button></div></div>';
   });
   if (rest > 0) html += '<button type="button" class="btn btn-sub" id="nMore" style="width:100%; margin-top:8px;">▼ 以前のお知らせを表示（残り' + rest + '件）</button>';
   $('nBox').innerHTML = html;
@@ -2443,6 +2472,20 @@ function nRender() {
 
 /* ---------- マスター用の管理 ---------- */
 $('admin').onclick = setOpen;
+/* 言語の切り替え。言語は本人ごとに push/{本人} の prefs.lang に残す（通知の言語にも使う） */
+document.addEventListener('click', e => {
+  const b = e.target.closest && e.target.closest('[data-lang-btn]');
+  if (!b) return;
+  setLang(b.dataset.langBtn);
+  if (me) fire(setDoc(pushRef(), { prefs: { lang: portalLang() } }, { merge: true }), '表示言語');
+});
+async function langSync() {
+  try {
+    const d = await getDoc(pushRef()), l = d.exists() && (d.data().prefs || {}).lang;
+    if (l && l !== portalLang()) setLang(l);
+    else if (!l && portalLang() !== 'ja') fire(setDoc(pushRef(), { prefs: { lang: portalLang() } }, { merge: true }), '表示言語');
+  } catch (e) {}
+}
 async function showUsers(note) {
   stopWatch();
   show('panelSettings', '人の管理', showList);
