@@ -115,7 +115,7 @@ storage.maxUploadRetryTime = 60000;   // 電波が切れたら1分で一度あ�
 const auth = getAuth(app);
 auth.languageCode = 'ja';   // パスワード再設定のメールと画面を日本語にする
 const db = initializeFirestore(app, { localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }) });
-const APP_VER = 'Ver.20261102-23';
+const APP_VER = 'Ver.20261102-24';
 
 /* ---------- 電波なしでも使う（今の現場管理と同じ考え方） ----------
    ・保存は押した瞬間に完了の形。電波が戻ったら自動で送る（データは Firestore が端末に貯める）
@@ -1654,8 +1654,16 @@ function oHost(s, k) {
     async nextOrderNo() {
       if (isOffline()) throw new Error('工場へ提出は、電波のある所で行ってください。入力した内容は保存されています。');
       const ref = doc(db, 'sites', s.id, 'orderCounter', 'no');
-      const no = await runTransaction(db, async t => { const c = await t.get(ref), n = (c.exists() ? Number(c.data().n) || 0 : 0) + 1; t.set(ref, { n }); return n; });
-      return { no };
+      // 同時に提出すると、後の人は古い番号を見て書こうとしてルールに断られる（権限のエラーになる）ので、読み直してやり直す
+      for (let i = 0; ; i++) {
+        try {
+          const no = await runTransaction(db, async t => { const c = await t.get(ref), n = (c.exists() ? Number(c.data().n) || 0 : 0) + 1; t.set(ref, { n }); return n; });
+          return { no };
+        } catch (e) {
+          if (i >= 7 || !e || e.code !== 'permission-denied') throw e;
+          await new Promise(ok => setTimeout(ok, 150 + Math.random() * 450));
+        }
+      }
     },
     async getDenpyoFolders() {
       if (isOffline()) throw new Error('工場へ提出は、電波のある所で行ってください。入力した内容は保存されています。');
