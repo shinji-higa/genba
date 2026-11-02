@@ -328,7 +328,7 @@
         <div class="card">
           <div class="card-h">伝票情報</div>
           <div class="g2">
-            <div class="fg"><label for="fNo">伝票NO</label><input type="text" id="fNo" data-k="no"></div>
+            <div class="fg"><label for="fNo">注文書NO</label><input type="text" id="fNo" data-k="no" readonly placeholder="提出時に自動" style="background:#ececec;"></div>
             <div class="fg"><label for="fOrderer">注文発注者</label><input type="text" id="fOrderer" data-k="orderer"></div>
           </div>
           <div class="fg"><label for="fSite">現場名</label><input type="text" id="fSite" data-k="site"></div>
@@ -5709,6 +5709,7 @@
         var fs = r.folders || [], pick = fs.filter(function (f) { return f.id === S.pdfFolderId; })[0] || fs.filter(function (f) { return f.path === '製作伝票'; })[0];
         body.innerHTML =
           (bad.length ? '<div class="pdf-msg err" style="margin:0 0 10px;">⚠ 確認が必要な部材が ' + bad.length + ' 件あります（部材一覧の赤い印）。このまま提出もできます。</div>' : '') +
+          (needNo() ? '<div class="note" style="margin-bottom:8px;">注文書NOは「PDFを作って保存」を押すと自動で付き、ファイル名にも入ります。</div>' : '') +
           '<div class="fg"><label for="pdfName">ファイル名</label><input type="text" id="pdfName" value="' + esc(pdfDefaultName()) + '"></div>' +
           '<div style="font-size:0.85rem;font-weight:700;margin:12px 0 6px;">保存先フォルダ（' + esc(r.rootName || '資料') + ' の中）</div>' +
           fs.map(function (f) { return '<label class="pdf-f"><input type="radio" name="pdfDir" value="' + esc(f.id) + '"' + (pick && pick.id === f.id ? ' checked' : '') + '>' + esc(f.path) + '</label>'; }).join('') +
@@ -5736,14 +5737,20 @@
         }, Promise.resolve()).then(function () { tmp.remove(); return pdf.output('datauristring').split(',')[1]; }, function (e) { tmp.remove(); throw e; });
       });
     }
+    /* 注文書NOは現場ごとに1から（角・丸・消耗品・金物で続き番号）。工場へ提出するときに自動で付く（ユーザー指示 2026-11-02）。修正版は同じNOのまま */
+    function needNo() { return !S.noAuto && (S.status !== 'editing' || !S.no); }
+    function ensureNo() {
+      if (!needNo()) return Promise.resolve();
+      return HOST.call('nextOrderNo', []).then(function (r) { S.no = String(r.no); S.noAuto = true; SRV.dirty = true; renderAll(); return hostSaveNow(); });
+    }
     function submitPdf() {
       var r = document.querySelector('input[name="pdfDir"]:checked'), dir = r ? r.value : '', nf = dir ? '' : (document.getElementById('pdfNewDir').value || '').trim();
-      var name = (document.getElementById('pdfName').value || '').trim() || pdfDefaultName();
+      var typed = (document.getElementById('pdfName').value || '').trim(), sameName = !typed || typed === pdfDefaultName(), name = typed;
       var msg = document.getElementById('pdfMsg'), go = document.getElementById('pdfGo');
       if (!dir && !nf) { msg.className = 'pdf-msg err'; msg.textContent = '保存先のフォルダを選ぶか、新しいフォルダの名前を入れてください'; return; }
       go.disabled = true; msg.className = 'pdf-msg'; msg.textContent = 'PDFを作っています…（部材が多いと少し時間がかかります）';
       var rev = nextRev(), t0 = Date.now(), t1 = 0;
-      makePdfBase64().then(function (b64) {
+      ensureNo().then(function () { if (sameName) name = pdfDefaultName(); return makePdfBase64(); }).then(function (b64) {
         msg.textContent = '保存しています…'; t1 = Date.now();
         return HOST.call('saveDenpyoPdf', [HOST.site, dir, nf, b64, name, S.pdfId || '', rev, S.no]);   // 前の版のPDFは削除フォルダへ（上書き）
       }).then(function (res) {
@@ -5903,7 +5910,7 @@
         var list = r.list || [];
         el.innerHTML = list.length ? list.map(function (x) {
           var d = new Date(x.updated || 0), cur = x.id === SRV.fileId;
-          return '<div class="slip-row' + (cur ? ' cur' : '') + '"><div class="b" onclick="loadSlip(\'' + x.id + '\')"><div class="t">' + (x.no ? 'NO.' + esc(x.no) : '（伝票NOなし）') + (cur ? '　<span style="font-size:0.75rem;">（開いている伝票）</span>' : '') + '</div>' +
+          return '<div class="slip-row' + (cur ? ' cur' : '') + '"><div class="b" onclick="loadSlip(\'' + x.id + '\')"><div class="t">' + (x.no ? 'NO.' + esc(x.no) : '（NOは提出時に付きます）') + (cur ? '　<span style="font-size:0.75rem;">（開いている伝票）</span>' : '') + '</div>' +
             '<div class="m">' + esc(x.room || '') + '　部材' + (x.n || 0) + '件　更新 ' + (d.getMonth() + 1) + '/' + d.getDate() + ' ' + d.getHours() + ':' + ('0' + d.getMinutes()).slice(-2) + (x.byName ? '　' + esc(x.byName) : '') + '</div></div>' +
             '<button type="button" class="btn btn-sub" onclick="copySlip(\'' + x.id + '\')">複製</button>' +
             (x.canDelete ? '<button type="button" class="btn btn-sub del" onclick="deleteSlip(\'' + x.id + '\')">削除</button>' : '') + '</div>';
@@ -5948,14 +5955,14 @@
         hostSaveNow().catch(noop).then(function () { return HOST.call('getDenpyo', [HOST.site, id]); }).then(function (r) {
           var c = clone(r.slip); c.id = uid(); c.no = ''; c.orderDate = today(); c.delivDate = ''; c.updated = Date.now(); c.site = c.site || HOST.site;
           if (ME) { c.oi = meSnap(); c.orderer = ME.name; }   // 複製した人が注文者
-          ['status', 'rev', 'subAt', 'subSnap', 'base', 'pdfId', 'pdfUrl'].forEach(function (k) { delete c[k]; });   // 複製は新しい伝票（未提出）
+          ['noAuto', 'status', 'rev', 'subAt', 'subSnap', 'base', 'pdfId', 'pdfUrl'].forEach(function (k) { delete c[k]; });   // 複製は新しい伝票（未提出）
           closeSheet('slipsBg');
           return hostOpen(c, '', 0).then(function () { SRV.dirty = true; return hostSaveNow(); }).then(function () { toast('伝票を複製しました'); });
         }).catch(function (e) { toast('複製できませんでした：' + ((e && e.message) || '')); });
         return;
       }
       var x = loadStore().filter(function (s) { return s.id === id; })[0]; if (!x) return;
-      S = normSlip(clone(x)); S.id = uid(); S.no = ''; S.orderDate = today(); S.delivDate = ''; S.updated = Date.now();
+      S = normSlip(clone(x)); S.id = uid(); S.no = ''; delete S.noAuto; S.orderDate = today(); S.delivDate = ''; S.updated = Date.now();
       closeSheet('slipsBg'); renderAll(); saveSlip(false); toast('伝票を複製しました');
     }
     function newSlip() {
