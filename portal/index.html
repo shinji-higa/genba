@@ -141,7 +141,7 @@ storage.maxUploadRetryTime = 60000;   // 電波が切れたら1分で一度あ�
 const auth = getAuth(app);
 auth.languageCode = 'ja';   // パスワード再設定のメールと画面を日本語にする
 const db = initializeFirestore(app, { localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }) });
-const APP_VER = 'Ver.20261102-31';
+const APP_VER = 'Ver.20261102-32';
 
 /* ---------- 電波なしでも使う（今の現場管理と同じ考え方） ----------
    ・保存は押した瞬間に完了の形。電波が戻ったら自動で送る（データは Firestore が端末に貯める）
@@ -1863,8 +1863,8 @@ function dOpen() {
   stopWatch();
   show('panelDaily', '日報', showList);
   $('speed').textContent = '';
-  const t = new Date(), hours = Array.from({ length: 48 }, (_, i) => '<option value="' + i / 2 + '">' + hm(i / 2) + '</option>').join('');
-  D = { y: t.getFullYear(), m: t.getMonth() + 1, entries: {}, sel: dsOf(t), kubun: '出勤', sites: [] };
+  const t = new Date(), pm = dPayMonth(dsOf(t)), hours = Array.from({ length: 48 }, (_, i) => '<option value="' + i / 2 + '">' + hm(i / 2) + '</option>').join('');
+  D = { y: pm[0], m: pm[1], entries: {}, sel: dsOf(t), kubun: '出勤', sites: [] };
   $('panelDaily').innerHTML =
     '<div class="info-card"><div class="card-header-row"><span style="font-weight: 700;">📝 日報入力</span><span id="dType" class="daily-daytype"></span></div>' +
     '<div class="form-group"><label for="dDate">日付</label><input type="date" id="dDate" class="date-input"></div>' +
@@ -1874,8 +1874,8 @@ function dOpen() {
     '<div class="form-group"><label for="dSite">現場</label><div id="dChips" class="daily-chips"></div><div class="daily-site-add"><input type="text" id="dSite" list="dSites" placeholder="現場名を入力して「追加」" autocomplete="off"><button type="button" class="btn btn-sub" id="dAdd">追加</button></div><datalist id="dSites">' + allSites.map(s => '<option value="' + esc(s.siteName) + '"></option>').join('') + '</datalist></div>' +
     '<div class="form-group"><label for="dMemo">メモ</label><textarea id="dMemo" class="auto-expand" placeholder="作業内容など（任意）"></textarea></div>' +
     '<div class="daily-save-row" style="display: flex; gap: 8px;"><button type="button" id="dSave" class="btn btn-dark" style="flex: 1;">この内容で保存</button><button type="button" id="dDel" class="btn btn-sub" style="display: none;">削除</button></div></div>' +
-    '<div class="daily-month"><button type="button" class="dp-nav" id="dPrev" aria-label="前の月">‹</button><div id="dLabel" class="daily-month-label"></div><button type="button" class="dp-nav" id="dNext" aria-label="次の月">›</button></div>' +
-    '<div class="info-card"><div class="card-header-row"><span style="font-weight: 700;">🗓 この月の日報</span></div><div id="dList"></div></div>';
+    '<div class="daily-month"><button type="button" class="dp-nav" id="dPrev" aria-label="前の期間">‹</button><div id="dLabel" class="daily-month-label"></div><button type="button" class="dp-nav" id="dNext" aria-label="次の期間">›</button></div>' +
+    '<div class="info-card"><div class="card-header-row"><span style="font-weight: 700;">🗓 この期間の日報</span></div><div id="dList"></div></div>';
   autoGrow($('panelDaily'));
   $('dDate').onchange = () => { if (!$('dDate').value) { $('dDate').value = dsIso(D.sel); return; } dSelect(isoDs($('dDate').value)); };
   $('dKubun').querySelectorAll('[data-k]').forEach(b => { b.onclick = () => { if (b.dataset.k !== '出勤' && dayType(D.sel).type !== '平日') return; D.kubun = b.dataset.k; dKubun(); }; });
@@ -1893,40 +1893,44 @@ function dOpen() {
   oRead(() => getDoc(m), () => getDocFromCache(m)).then(d => { companyDays = (d.exists() && d.data().days) || {}; if (D) dRender(); }).catch(() => {});
   dLoad();
 }
+/* 日報の表示は締めの期間（前月21日〜当月20日）。D.y・D.m はその期間が終わる月（給与の月）。ユーザー指示 2026-11-02 */
+const D_CLOSE = 20;
+const dPayMonth = ds => { const p = String(ds).split('/').map(Number), n = p[0] * 12 + p[1] - 1 + (p[2] > D_CLOSE ? 1 : 0); return [Math.floor(n / 12), n % 12 + 1]; };
+const dRange = (y, m) => ({ from: new Date(y, m - 2, D_CLOSE + 1), to: new Date(y, m - 1, D_CLOSE) });
 function dLoad() {
   if (stop) stop();
-  const pre = D.y + '/' + pad2(D.m) + '/';
-  $('dLabel').textContent = D.y + '年' + D.m + '月';
+  const r = dRange(D.y, D.m);
+  $('dLabel').textContent = D.y + '年' + D.m + '月分（' + (r.from.getMonth() + 1) + '/' + r.from.getDate() + '〜' + (r.to.getMonth() + 1) + '/' + r.to.getDate() + '）';
   D.entries = {};
   dRender();
-  stop = onSnapshot(query(dCol(), where('date', '>=', pre + '01'), where('date', '<=', pre + '31')), s => {
+  stop = onSnapshot(query(dCol(), where('date', '>=', dsOf(r.from)), where('date', '<=', dsOf(r.to))), s => {
     D.entries = {};
     s.docs.forEach(d => { if (!d.data().deleted) D.entries[d.data().date] = d.data(); });
     dRender();
   }, e => { $('dList').innerHTML = banner('読み込めませんでした：' + e.message, true); });
 }
-/* ポータルで開けるのは前月から。それより前はスプレッドシートにある */
-const dMonthOk = (y, m) => { const n = new Date(); return y * 12 + m - 1 >= n.getFullYear() * 12 + n.getMonth() - 1; };
+/* ポータルで開けるのは前の期間まで。それより前はスプレッドシートにある */
+const dMonthOk = (y, m) => { const n = dPayMonth(dsOf(new Date())); return y * 12 + m - 1 >= n[0] * 12 + n[1] - 2; };
 function dMove(diff) {
   const t = D.y * 12 + (D.m - 1) + diff, today = dsOf(new Date());
-  if (!dMonthOk(Math.floor(t / 12), t % 12 + 1)) { alert('ポータルで見られる日報は前月までです。'); return; }
+  if (!dMonthOk(Math.floor(t / 12), t % 12 + 1)) { alert('ポータルで見られる日報は前の期間までです。'); return; }
   D.y = Math.floor(t / 12); D.m = t % 12 + 1;
-  const pre = D.y + '/' + pad2(D.m);
-  D.sel = today.indexOf(pre) === 0 ? today : pre + '/01';
+  const r = dRange(D.y, D.m), f = dsOf(r.from), e = dsOf(r.to);
+  D.sel = today >= f && today <= e ? today : f;
   dLoad();
 }
 function dSelect(ds) {
-  const p = ds.split('/').map(Number);
-  if (!dMonthOk(p[0], p[1])) { alert('ポータルで見られる日報は前月までです。'); $('dDate').value = dsIso(D.sel); return; }
+  const p = dPayMonth(ds);
+  if (!dMonthOk(p[0], p[1])) { alert('ポータルで見られる日報は前の期間までです。'); $('dDate').value = dsIso(D.sel); return; }
   D.sel = ds;
   if (p[0] !== D.y || p[1] !== D.m) { D.y = p[0]; D.m = p[1]; dLoad(); return; }
   dRender();
 }
 function dRender() {
   if (!$('dList')) return;
-  const today = dsOf(new Date()), last = new Date(D.y, D.m, 0).getDate(), rows = [];
-  for (let n = 1; n <= last; n++) {
-    const d = dayType(D.y + '/' + pad2(D.m) + '/' + pad2(n)), e = D.entries[d.date];
+  const today = dsOf(new Date()), rg = dRange(D.y, D.m), rows = [];
+  for (let c = new Date(rg.from); c <= rg.to; c.setDate(c.getDate() + 1)) {
+    const d = dayType(dsOf(c)), e = D.entries[d.date];
     let body = '';
     if (e) {
       if (e.kubun === '出勤') {
