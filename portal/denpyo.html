@@ -5526,14 +5526,14 @@
     }
     function placedHtml(place, hot) { return place.map(function (pl) { return cellHtml(pl.e, hot, 'grid-row:' + (pl.r + 1) + ' / span ' + pl.sr + '; grid-column:' + (pl.c + 1) + ' / span ' + pl.sc + ';'); }).join(''); }
     function isRowItem(it) { return it.type === 'straight' && /^(短管|定尺)$/.test(kindOf(it)) && !(it.openings || []).length && hkInfo(it).auto && !tkInfo(it).n; }
-    /* MEMOの残り文字数（ユーザー指示 2026-11-02）。伝票の欄と同じ幅・一番小さい文字（fitText の 5px）で測る。図は1枠の幅で測る。マイナスは切れる文字数 */
+    /* MEMOの残り文字数（ユーザー指示 2026-11-02）。伝票の欄（表231px・図226px）より5%狭い幅と一番小さい文字（fitText の 5px）で測り、切れる少し手前で知らせる。図は1枠の幅で測る。マイナスは切れる文字数 */
     var MEMO_BOX = null;
     function memoRoom(it) {
       var row = isRowItem(it), keep = it.memo, base;
       it.memo = '';
       try { base = row ? [shapeName(it)].concat(memoLines(it)).join(' ') : cellMemo(it); } finally { it.memo = keep; }
       if (!MEMO_BOX) { MEMO_BOX = document.createElement('div'); document.body.appendChild(MEMO_BOX); }
-      MEMO_BOX.style.cssText = 'position:fixed;left:-9999px;top:0;visibility:hidden;font-size:5px;width:' + (row ? 231 : 226) + 'px;line-height:' + (row ? 1.15 : 1.25) + ';white-space:' + (row ? 'normal' : 'pre-wrap') + ';';
+      MEMO_BOX.style.cssText = 'position:fixed;left:-9999px;top:0;visibility:hidden;font-size:5px;width:' + (row ? 219 : 214) + 'px;line-height:' + (row ? 1.15 : 1.25) + ';white-space:' + (row ? 'normal' : 'pre-wrap') + ';';
       var limit = row ? 24.9 : 37.8, head = base ? base + (row ? ' ' : '　') : '', memo = String(keep || '');
       var fits = function (s) { MEMO_BOX.textContent = head + s; return MEMO_BOX.scrollHeight <= limit + 1; };
       var over = !fits(memo), src = over ? memo : memo + new Array(1001).join('材'), lo = over ? 0 : memo.length, hi = src.length;
