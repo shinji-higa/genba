@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="robots" content="noindex,nofollow">
 <title>給与管理</title>
-<link rel="manifest" href="manifest.json">
+<link rel="manifest" href="manifest.json"><link rel="icon" href="icon192.png">
 <style>
   :root { --ink: #14202e; --sub: #47566a; --line: #c5ced9; --bg: #f1f4f8; --card: #fff; --accent: #0b4f8a; --accent2: #e8f1fa; --warn: #b3261e; --ok: #1a7f4e; }
   * { box-sizing: border-box; }
@@ -73,12 +73,12 @@
 </header>
 <main id="m"></main>
 
-<script src="tax.js"></script>
-<script src="calc.js"></script>
+<script src="tax.js?v=6"></script>
+<script src="calc.js?v=6"></script>
 <script type="module">
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
-const APP_VER = 'Ver.20261102-05';
+const APP_VER = 'Ver.20261102-06';
 const API = 'https://script.google.com/macros/s/AKfycbyW2hFHqIQuu-TsflPk_0zv7gquhoepspuvRG9-bMStPDSWSc2blcDFBtWs7MisP3f_/exec';
 const app = initializeApp({ apiKey: 'AIzaSyDVR4p4DO4s9h70uPlXUVlhNcMP9-YkQ5Q', authDomain: 'genba-portal-9077b.firebaseapp.com', projectId: 'genba-portal-9077b' });
 const auth = getAuth(app);
