@@ -4644,9 +4644,10 @@
       } else if (T.split) h += '<label class="chk"><input type="checkbox" data-c="split"' + (ED.split ? ' checked' : '') + '>2割（2つ割り）</label>';
       if (!T.optFlags) (T.flags || []).forEach(function (f) { h += '<label class="chk"><input type="checkbox" data-f="' + f[0] + '"' + (ED.flags[f[0]] ? ' checked' : '') + '>' + esc(f[1]) + '</label>'; });   // optFlags の部材（キャンバス）はオプションの欄に出す
       h += '<div class="spec-row"><span class="lbl">伝票の図</span><div class="chips" id="edSpan">' + [['', '自動（<span id="edSpanA"></span>）'], ['1', '1枠'], ['v', '縦2枠'], ['h', '横2枠'], ['v3', '縦3枠'], ['h3', '横3枠'], ['4', '4枠（縦2×横2）'], ['6', '6枠（縦3×横2）'], ['9', '9枠（縦3×横3）']].filter(function (o) { return ED.type !== 'other' || /^(|1|4|9)$/.test(o[0]); }).map(function (o) { return '<span class="chip' + ((ED.span || '') === o[0] ? ' on' : '') + '" data-v="' + o[0] + '">' + o[1] + '</span>'; }).join('') + '</div></div>';   // 図が小さくて見えないときは2枠に
-      h += '<div class="fg" style="margin-top:8px;"><label>MEMO（伝票に載せる注意事項）</label><textarea data-e="memo" rows="3">' + esc(ED.memo) + '</textarea></div>';
+      h += '<div class="fg" style="margin-top:8px;"><label>MEMO（伝票に載せる注意事項）</label><textarea data-e="memo" rows="3">' + esc(ED.memo) + '</textarea><div id="edMemoRoom" style="font-size:0.8rem;margin-top:3px;"></div></div>';
       var form = document.getElementById('edForm');
       form.innerHTML = h;
+      memoRoomShow();
       if (ED.type === 'other') skSetup();   // 手書きの紙
       // 見出し（.sec）ごとに、次の見出しまでを枠（.edbox）で囲む。最初の見出しの前（部材NO・本数）も1つの枠に
       (function () {
@@ -4873,7 +4874,7 @@
           }
         }
       }
-      else if (t.hasAttribute('data-e')) { var ek = t.getAttribute('data-e'); ED[ek] = (ek === 'baseVal' || ek === 'opL' || ek === 'qty') ? cap(t.value, false) : t.value; }
+      else if (t.hasAttribute('data-e')) { var ek = t.getAttribute('data-e'); ED[ek] = (ek === 'baseVal' || ek === 'opL' || ek === 'qty') ? cap(t.value, false) : t.value; if (ek === 'memo') memoRoomShow(); }
       else if (t.hasAttribute('data-c')) ED[t.getAttribute('data-c')] = t.checked;
       else if (t.hasAttribute('data-f')) ED.flags[t.getAttribute('data-f')] = t.checked;
       else if (t.hasAttribute('data-hk')) {   // 本数を変えたら位置の欄の数が変わるので作り直す
@@ -5524,6 +5525,30 @@
       return out;
     }
     function placedHtml(place, hot) { return place.map(function (pl) { return cellHtml(pl.e, hot, 'grid-row:' + (pl.r + 1) + ' / span ' + pl.sr + '; grid-column:' + (pl.c + 1) + ' / span ' + pl.sc + ';'); }).join(''); }
+    function isRowItem(it) { return it.type === 'straight' && /^(短管|定尺)$/.test(kindOf(it)) && !(it.openings || []).length && hkInfo(it).auto && !tkInfo(it).n; }
+    /* MEMOの残り文字数（ユーザー指示 2026-11-02）。伝票の欄と同じ幅・一番小さい文字（fitText の 5px）で測る。図は1枠の幅で測る。マイナスは切れる文字数 */
+    var MEMO_BOX = null;
+    function memoRoom(it) {
+      var row = isRowItem(it), keep = it.memo, base;
+      it.memo = '';
+      try { base = row ? [shapeName(it)].concat(memoLines(it)).join(' ') : cellMemo(it); } finally { it.memo = keep; }
+      if (!MEMO_BOX) { MEMO_BOX = document.createElement('div'); document.body.appendChild(MEMO_BOX); }
+      MEMO_BOX.style.cssText = 'position:fixed;left:-9999px;top:0;visibility:hidden;font-size:5px;width:' + (row ? 231 : 226) + 'px;line-height:' + (row ? 1.15 : 1.25) + ';white-space:' + (row ? 'normal' : 'pre-wrap') + ';';
+      var limit = row ? 24.9 : 37.8, head = base ? base + (row ? ' ' : '　') : '', memo = String(keep || '');
+      var fits = function (s) { MEMO_BOX.textContent = head + s; return MEMO_BOX.scrollHeight <= limit + 1; };
+      var over = !fits(memo), src = over ? memo : memo + new Array(1001).join('材'), lo = over ? 0 : memo.length, hi = src.length;
+      while (lo < hi) { var mid = Math.ceil((lo + hi) / 2); if (fits(src.slice(0, mid))) lo = mid; else hi = mid - 1; }
+      return lo - memo.length;
+    }
+    function memoRoomShow() {
+      var el = document.getElementById('edMemoRoom'), ta = document.querySelector('#edForm [data-e="memo"]');
+      if (!el || !ta || !ED) return;
+      var r = memoRoom(ED);
+      el.textContent = r >= 0 ? '伝票に入るのは あと' + r + '文字' : '伝票で切れます。あと' + (-r) + '文字減らしてください';
+      el.style.color = r >= 0 ? '#333' : '#b3261e';
+      el.style.fontWeight = r >= 0 ? '400' : '700';
+      ta.style.borderColor = r >= 0 ? '' : '#b3261e';
+    }
     function buildPages() {
       var rows = [], cells = [];
       SLIP_DIFF = slipDiff();   // 前の版から変わった所（修正中・提出済みの第2版以降）
@@ -5532,7 +5557,7 @@
         // 開口がなく、横補強も自動（等間隔）の直管は表の行に。補強の位置を変えた直管は図が要るので図の枠に
         // 縦補強のある直管は、部材詳細（図の枠）の下に縦補強を書くので図の枠へ
         // 直管の管末勾配・変形短管・内共面指定は形を図で見せるので図の枠へ
-        if (it.type === 'straight' && /^(短管|定尺)$/.test(kindOf(it)) && !(it.openings || []).length && hkInfo(it).auto && !tkInfo(it).n) rows.push(e); else cells.push(e);
+        if (isRowItem(it)) rows.push(e); else cells.push(e);
       });
       // 直管リストの用紙を先に全部、そのあと図の用紙。直管がなければ1枚目から図
       var plan = [];
