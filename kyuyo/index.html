@@ -74,12 +74,12 @@
 <main id="m"></main>
 
 <script src="tax.js?v=7"></script>
-<script src="calc.js?v=7"></script>
+<script src="calc.js?v=13"></script>
 <script type="module">
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
 import { getFirestore, collection, doc, getDoc, getDocs, setDoc, writeBatch, query, where } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
-const APP_VER = 'Ver.20261102-12';
+const APP_VER = 'Ver.20261102-13';
 const API = 'https://script.google.com/macros/s/AKfycbyW2hFHqIQuu-TsflPk_0zv7gquhoepspuvRG9-bMStPDSWSc2blcDFBtWs7MisP3f_/exec';
 const app = initializeApp({ apiKey: 'AIzaSyDVR4p4DO4s9h70uPlXUVlhNcMP9-YkQ5Q', authDomain: 'genba-portal-9077b.firebaseapp.com', projectId: 'genba-portal-9077b' });
 const auth = getAuth(app);
@@ -207,7 +207,7 @@ async function pay(action, data) { return FAST_ACT[action] ? FAST_ACT[action](da
 
 /* ---------- 初期値。設定画面で変えられる（説明は CFG_DEF の横の文）---------- */
 const DEF = {
-  companyOff: 0, stdH: 8, close: 20, step: 30, ot: 1.25, hol: 1.6, holOt: 2, night: 1.6, tripNight: 3500,
+  companyOff: 0, stdH: 8, close: 20, step: 30, ot: 1.25, holSho: 1.6, holHou: 1.6, otSho: 2, otHou: 2, night: 1.6, tripNight: 3500,
   rates: [
     { from: '2026-03', health: 10.12, care: 1.62, child: 0, pension: 18.3, emp: 0.65 },
     { from: '2026-04', health: 10.12, care: 1.62, child: 0.23, pension: 18.3, emp: 0.6 }
@@ -222,9 +222,11 @@ const CFG_DEF = [
   ]],
   ['掛率', [
     ['ot', '時間外（平日）', '倍', '平日に8時間を超えた1時間の割増です。時間単価に掛けます。法律の下限は1.25です。'],
-    ['hol', '休日出勤（所定・法定）', '倍', '土曜・日曜・祝日に出勤した日の掛率です。日額に掛けます。法定休日の法律の下限は1.35です。'],
-    ['holOt', '休日の時間外', '倍', '休日に8時間を超えた1時間の掛率です。時間単価に掛けます。'],
-    ['night', '夜間作業', '倍', '日報で「夜間作業」にチェックした日の掛率です。昼の1日分に掛けます。平日は基本給に入っている1倍を除いた分を足します。休日は休日の掛率にこの上乗せ分を足します。']
+    ['holSho', '所定休日の出勤', '倍', '土曜と会社休日に出勤した日の掛率です。日額に掛けます。'],
+    ['holHou', '法定休日の出勤', '倍', '日曜と祝日（振替休日を含む）に出勤した日の掛率です。日額に掛けます。法律の下限は1.35です。'],
+    ['otSho', '所定休日の時間外', '倍', '土曜と会社休日に8時間を超えた1時間の掛率です。時間単価に掛けます。'],
+    ['otHou', '法定休日の時間外', '倍', '日曜と祝日に8時間を超えた1時間の掛率です。時間単価に掛けます。'],
+    ['night', '夜間作業', '倍', '日報で「夜間作業」にチェックした日の掛率です。昼の1日分に掛けます。平日は基本給に入っている1倍を除いた分を足します。休日はその日の掛率（所定か法定）にこの上乗せ分を足します。']
   ]],
   ['手当', [
     ['tripNight', '出張手当（1泊）', '円', '泊数に掛けます。明細に載せて振込に足します。税金と社会保険の計算には入れません。']

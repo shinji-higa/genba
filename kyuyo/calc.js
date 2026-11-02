@@ -78,10 +78,10 @@
     const o = {};
     o.base = base;
     o.ot = yen(hourly * cfg.ot * n('otH'));
-    o.shoDay = yen(daily * cfg.hol * n('shoDays'));
-    o.shoOt = yen(hourly * cfg.holOt * n('shoOtH'));
-    o.houDay = yen(daily * cfg.hol * n('houDays'));
-    o.houOt = yen(hourly * cfg.holOt * n('houOtH'));
+    o.shoDay = yen(daily * (cfg.holSho != null ? cfg.holSho : cfg.hol) * n('shoDays'));
+    o.shoOt = yen(hourly * (cfg.otSho != null ? cfg.otSho : cfg.holOt) * n('shoOtH'));
+    o.houDay = yen(daily * (cfg.holHou != null ? cfg.holHou : cfg.hol) * n('houDays'));
+    o.houOt = yen(hourly * (cfg.otHou != null ? cfg.otHou : cfg.holOt) * n('houOtH'));
     o.night = yen(daily * (cfg.night - 1) * (n('nightDays') + n('nightShoDays') + n('nightHouDays')));
     o.family = Number(emp.family) || 0;
     o.commute = Number(emp.commute) || 0;
