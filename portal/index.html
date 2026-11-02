@@ -141,7 +141,7 @@ storage.maxUploadRetryTime = 60000;   // 電波が切れたら1分で一度あ�
 const auth = getAuth(app);
 auth.languageCode = 'ja';   // パスワード再設定のメールと画面を日本語にする
 const db = initializeFirestore(app, { localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }) });
-const APP_VER = 'Ver.20261102-29';
+const APP_VER = 'Ver.20261102-30';
 
 /* ---------- 電波なしでも使う（今の現場管理と同じ考え方） ----------
    ・保存は押した瞬間に完了の形。電波が戻ったら自動で送る（データは Firestore が端末に貯める）
@@ -1832,6 +1832,7 @@ function dayType(ds) {
   if (dow === 0 || hn) return { date: ds, day: p[2], type: '法定休日', name: hn || '', dow };
   return { date: ds, day: p[2], type: dow === 6 ? '所定休日' : '平日', name: '', dow };
 }
+const hm = v => Math.floor(v) + ':' + (v % 1 ? '30' : '00');
 function payCalc(kubun, start, end, night, type) {
   const r = { brk: 0, hours: 0, ot: 0, early: 0, night: 0 };
   if (kubun !== '出勤') return r;
@@ -1852,14 +1853,14 @@ function dOpen() {
   stopWatch();
   show('panelDaily', '日報', showList);
   $('speed').textContent = '';
-  const t = new Date(), hours = Array.from({ length: 24 }, (_, h) => '<option value="' + h + '">' + h + ':00</option>').join('');
+  const t = new Date(), hours = Array.from({ length: 48 }, (_, i) => '<option value="' + i / 2 + '">' + hm(i / 2) + '</option>').join('');
   D = { y: t.getFullYear(), m: t.getMonth() + 1, entries: {}, sel: dsOf(t), kubun: '出勤', sites: [] };
   $('panelDaily').innerHTML =
     '<div class="info-card"><div class="card-header-row"><span style="font-weight: 700;">📝 日報入力</span><span id="dType" class="daily-daytype"></span></div>' +
     '<div class="form-group"><label for="dDate">日付</label><input type="date" id="dDate" class="date-input"></div>' +
     '<div class="form-group"><label>区分</label><div id="dKubun" class="daily-kb-row">' + ['出勤', '欠勤', '有給'].map(k => '<button type="button" class="daily-kb" data-k="' + k + '">' + k + '</button>').join('') + '</div></div>' +
     '<div id="dTime" class="grid-two-col form-group"><div><label for="dStart">出勤時刻</label><select id="dStart">' + hours + '</select></div><div><label for="dEnd">退勤時刻</label><select id="dEnd">' + hours + '</select></div></div>' +
-    '<label id="dNightW" class="daily-check"><input type="checkbox" id="dNight"> <span>夜勤</span></label>' +
+    '<label id="dNightW" class="daily-check"><input type="checkbox" id="dNight"> <span>夜間作業</span></label>' +
     '<div class="form-group"><label for="dSite">現場</label><div id="dChips" class="daily-chips"></div><div class="daily-site-add"><input type="text" id="dSite" list="dSites" placeholder="現場名を入力して「追加」" autocomplete="off"><button type="button" class="btn btn-sub" id="dAdd">追加</button></div><datalist id="dSites">' + allSites.map(s => '<option value="' + esc(s.siteName) + '"></option>').join('') + '</datalist></div>' +
     '<div class="form-group"><label for="dMemo">メモ</label><textarea id="dMemo" class="auto-expand" placeholder="作業内容など（任意）"></textarea></div>' +
     '<div class="daily-save-row" style="display: flex; gap: 8px;"><button type="button" id="dSave" class="btn btn-dark" style="flex: 1;">この内容で保存</button><button type="button" id="dDel" class="btn btn-sub" style="display: none;">削除</button></div></div>' +
@@ -1922,9 +1923,9 @@ function dRender() {
         const sub = [];
         if (e.ot) sub.push('時間外 ' + e.ot + '時間');
         if (e.early) sub.push('<span class="ds-missing">早退 ' + e.early + '時間</span>');
-        if (e.night) sub.push('🌙夜勤');
+        if (e.night) sub.push('🌙夜間作業');
         if (e.site) sub.push(esc(e.site));
-        body = '<div>' + e.start + ':00〜' + e.end + ':00</div>' + (sub.length ? '<div class="dl-sub">' + sub.join(' · ') + '</div>' : '');
+        body = '<div>' + hm(+e.start) + '〜' + hm(+e.end) + '</div>' + (sub.length ? '<div class="dl-sub">' + sub.join(' · ') + '</div>' : '');
       } else body = '<b>' + esc(e.kubun) + '</b>';
     } else if (d.type === '平日' && d.date <= today) body = '<span class="dl-miss">未入力</span>';
     rows.push('<div class="dl-row' + (d.date === D.sel ? ' sel' : '') + (d.type === '所定休日' ? ' sat' : d.type === '法定休日' ? ' hol' : '') + '" data-d="' + d.date + '"><div class="dl-date">' + d.day + '<small>(' + DOW[d.dow] + ')</small></div>' +
@@ -1971,7 +1972,7 @@ function dKubun() {
 }
 function dSave() {
   const k = D.kubun, work = k === '出勤', start = +$('dStart').value, end = +$('dEnd').value, night = work && $('dNight').checked;
-  if (work && end <= start && !night) { alert('退勤が出勤より前になっています（夜勤のときは「夜勤」にチェックしてください）。'); return; }
+  if (work && end <= start && !night) { alert('退勤が出勤より前になっています（夜間作業のときは「夜間作業」にチェックしてください）。'); return; }
   dAddSite();
   try { if (D.sites.length) localStorage.setItem('portalDailySites:' + me.uid, JSON.stringify(D.sites)); } catch (x) {}
   const t = dayType(D.sel), c = payCalc(k, start, end, night, t.type);
@@ -2779,6 +2780,7 @@ async function showUser(uid, note) {
       '<label class="check-row" style="margin-top: 8px;"><input id="ca" type="checkbox"' + (d.canAddSite ? ' checked' : '') + '>新規現場追加者</label>' +
       '<label class="check-row" style="margin-top: 8px;"><input id="cd" type="checkbox"' + (d.canDaily ? ' checked' : '') + '>日報</label>' +
       '<label class="check-row" style="margin-top: 8px;"><input id="sn" type="checkbox"' + (d.isSenior ? ' checked' : '') + '>60歳以上</label>' +
+      '<label class="check-row" style="margin-top: 8px;"><input id="cp" type="checkbox"' + (d.canPayroll ? ' checked' : '') + '>給与管理</label>' +
       '<div class="form-group" style="margin-top: 10px;"><label>携帯番号（伝票・注文書の注文者の欄に出ます）</label><input type="tel" id="mb" value="' + esc(d.mobile) + '" placeholder="例: 090-1234-5678"></div>' +
       '<div class="form-group" style="margin-top: 10px;"><label>グループ</label><select id="g">' + ['', 'エクスケア社員', 'エクスケア', 'マルトク', 'NAFA'].map(g => '<option value="' + g + '"' + ((d.group || '') === g ? ' selected' : '') + '>' + (g || '（空欄：エクスケアとして扱う）') + '</option>').join('') + '</select></div></div>' +
       '<div class="info-card"><div class="card-header-row"><span style="font-weight: 700;">担当現場</span></div>' + list.map(s => {
@@ -2794,7 +2796,7 @@ async function showUser(uid, note) {
       try {
         const b = writeBatch(db);
         const g = $('g').value;
-        b.update(doc(db, 'users', uid), { name: $('n').value.trim(), isMaster: $('m').checked, canAddSite: $('ca').checked, canDaily: $('cd').checked, isSenior: $('sn').checked, mobile: $('mb').value.trim(), group: g, home: (g === 'マルトク' || g === 'NAFA') ? g : 'エクスケア' });
+        b.update(doc(db, 'users', uid), { name: $('n').value.trim(), isMaster: $('m').checked, canAddSite: $('ca').checked, canDaily: $('cd').checked, isSenior: $('sn').checked, canPayroll: $('cp').checked, mobile: $('mb').value.trim(), group: g, home: (g === 'マルトク' || g === 'NAFA') ? g : 'エクスケア' });
         list.forEach(s => {
           const on = P.querySelector('[data-s="' + s.id + '"]').checked, role = P.querySelector('[data-r="' + s.id + '"]').value;
           const members = (s.members || []).filter(x => x !== uid), roles = { ...(s.roles || {}) };
