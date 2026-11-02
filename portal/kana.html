@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>金物注文（添付）</title>
-  <!-- Ver.20261102-01 -->
+  <!-- Ver.20261102-02 -->
   <style>
     /* 金物注文（添付）。PDFか写真を付けて提出する注文書。消耗品注文の注文書の仕組みを使う。2026-11-02 作成
        見た目は角ダクトの製作伝票にそろえる（白黒を基調に、薄い灰色は使わない） */
@@ -193,7 +193,7 @@
     .rec-row .b { flex: 1; min-width: 0; }
     .rec-row .q { width: 72px; flex: none; text-align: center; font-weight: 700; }
     .rec-row .u { flex: none; font-size: 0.85rem; }
-    .dp-att { flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center; overflow: hidden; }
+    .dp-att { flex: 1; min-height: 0; margin-top: 2mm; display: flex; align-items: flex-start; justify-content: center; overflow: hidden; }
     .dp-att img { max-width: 100%; max-height: 100%; object-fit: contain; }
     .dp-cs td.q { font-size: 10.5pt; }
   </style>
@@ -460,26 +460,25 @@
     function contHead(page, pages) {
       return '<div class="dp-cont-head"><h1>注文書（続き）</h1>' + revTag() + '<span class="site">' + esc(S.site) + '</span><span class="no">（NO, ' + esc(S.no || '') + '）　ページNo, ' + page + '／' + pages + '</span></div>';
     }
-    function attTable() {
-      return '<table class="dp-cs"><colgroup><col style="width:10mm"><col><col style="width:22mm"><col style="width:60mm"></colgroup><tr><th>No</th><th>添付</th><th>ページ</th><th>メモ</th></tr>' +
-        S.items.map(function (it, i) { return '<tr' + (itemRed(it) ? ' class="red"' : '') + '><td>' + (i + 1) + '</td><td class="l wrap">' + esc(it.name) + '</td><td>' + (/pdf/i.test(it.mime) ? (it.pages || 1) + 'ページ' : '写真') + '</td><td class="l wrap">' + esc(it.memo) + '</td></tr>'; }).join('') + '</table>';
-    }
     function chgTable(rows) { return '<table class="dp-chgt"><colgroup><col></colgroup>' + rows.map(function (l) { return '<tr><td class="wrap">' + esc(l) + '</td></tr>'; }).join('') + '</table>'; }
+    /* 添付は注文書の用紙に貼って出す。1枚目はいつもの上側の下に貼る（ユーザー指示 2026-11-02）。提出するとこの用紙のままPDFになる */
+    function pasted(a) {
+      return (a.p === 0 && a.it.memo ? '<div class="dp-sec gt">' + esc(a.it.memo) + '</div>' : '') +
+        '<div class="dp-att">' + (a.src ? '<img src="' + a.src + '" alt="">' : '<div class="empty">読み込んでいます…</div>') + '</div>';
+    }
     function buildPages() {
       SLIP_DIFF = slipDiff();
       var att = [];
-      S.items.forEach(function (it, i) {
+      S.items.forEach(function (it) {
         var pgs = CACHE[it.path], n = pgs ? pgs.length : (it.pages || 1);
-        for (var p = 0; p < n; p++) att.push({ it: it, i: i, p: p, n: n, src: pgs ? pgs[p] : '' });
+        for (var p = 0; p < n; p++) att.push({ it: it, p: p, src: pgs ? pgs[p] : '' });
       });
-      var total = 1 + att.length;
-      var h = headHtml(1, total) + '<div class="dp-sec gt">■ 添付</div>' + (S.items.length ? attTable() : '<div class="dp-sec">（添付がまだありません）</div>');
+      var total = Math.max(1, att.length);
+      var h = headHtml(1, total);
       if (SLIP_DIFF && SLIP_DIFF.lines.length) h += '<div class="dp-sec gt">■ 修正内容（' + revLabel() + '・前の版から変わった所）</div>' + chgTable(SLIP_DIFF.lines);
+      h += att.length ? pasted(att[0]) : '<div class="dp-sec">（添付がまだありません）</div>';
       var pages = ['<div class="dp">' + h + '</div>'];
-      att.forEach(function (a, x) {
-        pages.push('<div class="dp">' + contHead(x + 2, total) + '<div class="dp-sec gt">添付' + (a.i + 1) + '　' + esc(a.it.name) + (a.n > 1 ? '　' + (a.p + 1) + '／' + a.n + 'ページ' : '') + '</div>' +
-          '<div class="dp-att">' + (a.src ? '<img src="' + a.src + '" alt="">' : '<div class="empty">読み込んでいます…</div>') + '</div></div>');
-      });
+      att.slice(1).forEach(function (a, x) { pages.push('<div class="dp">' + contHead(x + 2, total) + pasted(a) + '</div>'); });
       return pages;
     }
     function renderPreview() {
