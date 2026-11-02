@@ -120,7 +120,7 @@
 <script>i18nStart();</script>
 <script type="module">
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
-import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, sendPasswordResetEmail, signOut } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
+import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
 import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager, collection, query, where, doc, getDoc, getDocs, getDocFromCache, getDocsFromCache, setDoc, updateDoc, writeBatch, onSnapshot, disableNetwork, enableNetwork, deleteDoc, orderBy, limit, waitForPendingWrites, runTransaction } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
 import { getStorage, ref as stRef, uploadBytesResumable, getDownloadURL } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-storage.js';
@@ -141,7 +141,7 @@ storage.maxUploadRetryTime = 60000;   // 電波が切れたら1分で一度あ�
 const auth = getAuth(app);
 auth.languageCode = 'ja';   // パスワード再設定のメールと画面を日本語にする
 const db = initializeFirestore(app, { localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }) });
-const APP_VER = 'Ver.20261102-30';
+const APP_VER = 'Ver.20261102-31';
 
 /* ---------- 電波なしでも使う（今の現場管理と同じ考え方） ----------
    ・保存は押した瞬間に完了の形。電波が戻ったら自動で送る（データは Firestore が端末に貯める）
@@ -357,6 +357,16 @@ const autoGrow = root => root.querySelectorAll('textarea.auto-expand').forEach(a
   const f = () => { a.style.height = 'auto'; a.style.height = a.scrollHeight + 4 + 'px'; };
   a.oninput = f; f();
 });
+/* パスワード再設定のメールはサーバーから会社のアドレスで送る（Firebase の送り主だと迷惑メールに入るため） */
+async function resetMail(email) {
+  const d = await fetch(PORTAL_API, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ fn: 'reset', data: { email } }) }).then(r => r.json());
+  if (!d || !d.ok) throw new Error((d && d.m) || '送れませんでした');
+}
+/* 日報が届いたら、すぐスプレッドシートへ書くようにサーバーへ頼む。電波が無くて失敗した分は毎晩の処理が拾う */
+const dailyPush = p => p.then(async () => {
+  const idToken = await auth.currentUser.getIdToken();
+  await fetch(PORTAL_API, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ fn: 'daily', idToken }) });
+}).catch(e => { window.portalLastError = e && e.code; });
 async function admin(action, data) {
   const idToken = await auth.currentUser.getIdToken();
   const d = await fetch(PORTAL_API, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ fn: 'admin', idToken, action, data }) }).then(r => r.json());
@@ -422,8 +432,8 @@ function showLogin() {
   $('forgot').onclick = async () => {
     const em = $('id').value.trim().toLowerCase();
     if (!em) { $('err').textContent = '先にメールアドレスを入れてください。'; return; }
-    try { await sendPasswordResetEmail(auth, em); $('err').textContent = em + ' あてに、パスワードを決めるメールを送りました。届かないときは迷惑メールも見てください。'; }
-    catch (e) { $('err').textContent = AUTH_MSG[e.code] || 'メールを送れませんでした。'; }
+    try { await resetMail(em); $('err').textContent = em + ' あてに、パスワードを決めるメールを送りました。'; }
+    catch (e) { $('err').textContent = 'メールを送れませんでした。'; }
   };
 }
 $('out').onclick = async () => { await pushDrop().catch(() => {}); signOut(auth); };
@@ -1877,7 +1887,7 @@ function dOpen() {
   $('dSave').onclick = dSave;
   $('dDel').onclick = () => {
     if (!confirm('この日の日報を削除しますか？')) return;
-    fire(setDoc(doc(dCol(), dsId(D.sel)), { date: D.sel, deleted: true, at: Date.now(), by: me.uid }), '日報の削除');
+    dailyPush(fire(setDoc(doc(dCol(), dsId(D.sel)), { date: D.sel, deleted: true, at: Date.now(), by: me.uid }), '日報の削除'));
   };
   const m = doc(db, 'meta', 'companyDays');
   oRead(() => getDoc(m), () => getDocFromCache(m)).then(d => { companyDays = (d.exists() && d.data().days) || {}; if (D) dRender(); }).catch(() => {});
@@ -1976,7 +1986,7 @@ function dSave() {
   dAddSite();
   try { if (D.sites.length) localStorage.setItem('portalDailySites:' + me.uid, JSON.stringify(D.sites)); } catch (x) {}
   const t = dayType(D.sel), c = payCalc(k, start, end, night, t.type);
-  fire(setDoc(doc(dCol(), dsId(D.sel)), { date: D.sel, dow: DOW[t.dow], type: t.type, kubun: k, start: work ? start : '', end: work ? end : '', brk: c.brk, hours: c.hours, ot: c.ot, early: c.early, night: !!c.night, site: D.sites.join('、').slice(0, 500), memo: $('dMemo').value.trim().slice(0, 500), at: Date.now(), by: me.uid, byName: me.name || me.uid }), '日報');
+  dailyPush(fire(setDoc(doc(dCol(), dsId(D.sel)), { date: D.sel, dow: DOW[t.dow], type: t.type, kubun: k, start: work ? start : '', end: work ? end : '', brk: c.brk, hours: c.hours, ot: c.ot, early: c.early, night: !!c.night, site: D.sites.join('、').slice(0, 500), memo: $('dMemo').value.trim().slice(0, 500), at: Date.now(), by: me.uid, byName: me.name || me.uid }), '日報'));
   const b = $('dSave');
   b.textContent = '保存しました ✓';
   setTimeout(() => { if ($('dSave')) $('dSave').textContent = 'この内容で保存'; }, 1500);
@@ -2590,7 +2600,7 @@ async function setOpen() {
     $('acMsg').textContent = '保存しました。';
   };
   $('acPass').onclick = async () => {
-    try { await sendPasswordResetEmail(auth, me.uid); $('acMsg').textContent = me.uid + ' へ、パスワードを変えるメールを送りました。'; }
+    try { await resetMail(me.uid); $('acMsg').textContent = me.uid + ' へ、パスワードを変えるメールを送りました。'; }
     catch (e) { $('acMsg').textContent = '送れませんでした：' + ((e && e.message) || ''); }
   };
   $('bugGo').onclick = () => bugOpen(false);
