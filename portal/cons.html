@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>消耗品注文</title>
-  <!-- Ver.20261102-16 -->
+  <!-- Ver.20261102-17 -->
   <style>
     /* 消耗品注文（フカガワの総合カタログの消耗品）。丸ダクト注文の注文書の仕組みを使う。2026-11-01 作成
        見た目は角ダクトの製作伝票にそろえる（白黒を基調に、薄い灰色は使わない） */
@@ -250,7 +250,7 @@
   <div class="sheet-bg" id="pickerBg" onclick="if(event.target===this)closeSheet('pickerBg')">
     <div class="sheet">
       <div class="sheet-h"><span class="ttl">消耗品を選ぶ</span><button type="button" class="btn btn-sub" onclick="closeSheet('pickerBg')">閉じる</button>
-        <input type="text" id="consFind" placeholder="品名でさがす（例：バンド、アルミ、全ネジ）" oninput="renderPick()" style="flex-basis:100%;"><div class="cons-tabs" id="consTabs"></div></div>
+        <input type="text" id="consFind" placeholder="品名でさがす（例：バンド、アルミ、全ネジ）" oninput="renderPick()" style="flex-basis:100%;"><div class="cons-tabs" id="consTabs"></div><div class="cons-tabs" id="consSub" style="display:none;"></div></div>
       <div class="sheet-b"><div id="consPick"></div></div>
     </div>
   </div>
@@ -557,8 +557,8 @@
         { n: 'クロスロック Xタイプ', s: ['FL-X W3/8'], u: '梱包' },
         { n: 'クロスロック Wタイプ', s: ['FL-W W3/8'], u: '梱包' },
         { n: '振れ軽減機能付き防振吊り金具 BGK', s: ['BGK-S15 W3/8 許容15kgf', 'BGK-S30 W3/8 許容30kgf'], u: '梱包' } ] },
-      { g: 'その他', p: 0, list: [
-        { n: 'その他（品名を入れる）', s: [], u: '個', free: true } ] }
+      { g: 'フリー入力', p: 0, list: [
+        { n: 'フリー入力', s: [], u: '個', free: true } ] }
     ];
 
     /* 材質違いの同じ品は1行にまとめて、材質を選ぶ（ユーザー決定 2026-11-02）。mats＝[{ m:材質, s:その材質の仕様, d:説明 }] */
@@ -632,7 +632,7 @@
     }
 
     /* 消耗品1件の文字 */
-    function consName(c) { return c.free ? (c.name || '') : c.n; }
+    function consName(c) { return c.free ? [c.maker, c.name].filter(Boolean).join('　') : c.n; }
     function sizeText(it) { return it.spec || ''; }
     function itemSub(it) { return [it.mat, it.spec, it.memo].filter(Boolean).join('　'); }
     function itemErrors(c) {
@@ -712,23 +712,34 @@
     });
 
     /* ===== 消耗品を選ぶ・入れる ===== */
-    var PICK_G = '';   // 分類の絞り込み
+    var PICK_G = '', PICK_S = '';   // 分類の絞り込み・「その他」の中の分類（チェックのない品。ユーザー指示 2026-11-02）
+    function hiddenGroups() { return CONS.filter(function (g) { return g.list.some(function (p) { return HIDE.indexOf(p.n) >= 0; }); }).map(function (g) { return g.g; }); }
     function openPicker() {
       if (revLocked()) { lockedToast(); return; }
       document.getElementById('consFind').value = '';
-      document.getElementById('consTabs').innerHTML = [''].concat(CONS.filter(function (g) { return g.list.some(function (p) { return HIDE.indexOf(p.n) < 0; }); }).map(function (g) { return g.g; })).map(function (g) {
+      document.getElementById('consTabs').innerHTML = [''].concat(CONS.filter(function (g) { return g.g !== 'フリー入力' && g.list.some(function (p) { return HIDE.indexOf(p.n) < 0; }); }).map(function (g) { return g.g; }), ['フリー入力', 'その他']).map(function (g) {
         return '<span class="chip' + (g === PICK_G ? ' on' : '') + '" onclick="pickG(this,\'' + g + '\')">' + esc(g || 'すべて') + '</span>';
       }).join('');
-      renderPick();
+      renderSub(); renderPick();
       openSheet('pickerBg');
     }
-    function pickG(el, g) { PICK_G = g; [].forEach.call(document.querySelectorAll('#consTabs .chip'), function (c) { c.classList.toggle('on', c === el); }); renderPick(); }
+    function pickG(el, g) {
+      if (g === 'フリー入力') { var gi = CONS.findIndex(function (x) { return x.g === g; }); pickCons(gi, 0); return; }   // 押したらすぐ入力欄へ
+      PICK_G = g; PICK_S = ''; [].forEach.call(document.querySelectorAll('#consTabs .chip'), function (c) { c.classList.toggle('on', c === el); }); renderSub(); renderPick();
+    }
+    function renderSub() {
+      var el = document.getElementById('consSub'), on = PICK_G === 'その他';
+      el.style.display = on ? '' : 'none';
+      if (on) el.innerHTML = [''].concat(hiddenGroups()).map(function (g) { return '<span class="chip' + (g === PICK_S ? ' on' : '') + '" onclick="pickS(this,\'' + g + '\')">' + esc(g || 'ぜんぶ') + '</span>'; }).join('');
+    }
+    function pickS(el, g) { PICK_S = g; [].forEach.call(document.querySelectorAll('#consSub .chip'), function (c) { c.classList.toggle('on', c === el); }); renderPick(); }
     function renderPick() {
       var q = document.getElementById('consFind').value.trim();
       var h = CONS.map(function (g, gi) {
-        if (PICK_G && g.g !== PICK_G) return '';
+        var other = PICK_G === 'その他';
+        if (other ? (PICK_S && g.g !== PICK_S) : (PICK_G && g.g !== PICK_G)) return '';
         var list = g.list.map(function (p, pi) { return { p: p, pi: pi }; }).filter(function (x) {
-          return HIDE.indexOf(x.p.n) < 0 && (!q || (g.g + x.p.n + (x.p.d || '') + (x.p.s || []).join(' ') + (x.p.mats || []).map(function (m) { return m.m + ' ' + m.s.join(' '); }).join(' ')).indexOf(q) !== -1);
+          return (HIDE.indexOf(x.p.n) >= 0) === other && (!q || (g.g + x.p.n + (x.p.d || '') + (x.p.s || []).join(' ') + (x.p.mats || []).map(function (m) { return m.m + ' ' + m.s.join(' '); }).join(' ')).indexOf(q) !== -1);
         });
         if (!list.length) return '';
         return '<div class="cons-g"><div class="cons-gh">' + esc(g.g) + (g.p ? '　<span class="note">カタログ p.' + g.p + '〜</span>' : '') + '</div><div class="cons-list">' +
@@ -741,19 +752,21 @@
       var g = CONS[gi], p = g.list[pi];
       closeSheet('pickerBg');
       var df = DEF[p.n] || [], mat = p.mats ? (matOf(p, df[0]) ? df[0] : p.mats[0].m) : '', sp = specsOf(p, mat);
-      ED = { it: { id: uid(), g: g.g, n: p.n, free: !!p.free, name: '', mat: mat, spec: sp.indexOf(df[1]) >= 0 ? df[1] : (sp.length ? sp[0] : ''), qty: 1, unit: p.u, memo: '' }, index: -1 };
+      ED = { it: { id: uid(), g: g.g, n: p.n, free: !!p.free, maker: '', name: '', mat: mat, spec: sp.indexOf(df[1]) >= 0 ? df[1] : (sp.length ? sp[0] : ''), qty: 1, unit: p.u, memo: '' }, index: -1 };
       fitUnit(); openEditor();
     }
     function backToPicker() { closeSheet('editorBg'); openPicker(); }
     function editItem(i) { if (revLocked()) { lockedToast(); return; } ED = { it: JSON.parse(JSON.stringify(S.items[i])), index: i }; openEditor(); }
     function openEditor() {
       var c = ED.it, p = consProd(c.g, c.n) || { s: [], u: c.unit }, specs = specsOf(p, c.mat), m0 = matOf(p, c.mat);
-      document.getElementById('edTitle').textContent = (c.free ? '消耗品' : c.n) + (ED.index >= 0 ? '（編集）' : '');
+      document.getElementById('edTitle').textContent = (c.free ? 'フリー入力' : c.n) + (ED.index >= 0 ? '（編集）' : '');
       document.getElementById('edDel').style.display = ED.index >= 0 ? '' : 'none';
       document.getElementById('edBack').style.display = ED.index >= 0 ? 'none' : '';
       var h = '<div class="edbox">';
-      if (c.free) h += '<div class="fg"><label>品名</label><input type="text" value="' + esc(c.name) + '" oninput="ED.it.name=this.value; refreshEd()"></div>';
-      if (p.mats) h += '<div class="fg"><span class="lbl">' + esc(p.ml || '材質') + '</span><div class="chips">' + p.mats.map(function (x, i) { return '<span class="chip' + (x.m === c.mat ? ' on' : '') + '" onclick="edMat(' + i + ')">' + esc(x.m) + '</span>'; }).join('') + '</div></div>';
+      if (c.free) h += '<div class="fg"><label>メーカー名</label><input type="text" value="' + esc(c.maker) + '" oninput="ED.it.maker=this.value"></div>' +
+        '<div class="fg"><label>品名</label><input type="text" value="' + esc(c.name) + '" oninput="ED.it.name=this.value; refreshEd()"></div>' +
+        '<div class="fg"><label>サイズ・材質など</label><input type="text" value="' + esc(c.spec) + '" oninput="ED.it.spec=this.value"></div>';
+      else if (p.mats) h += '<div class="fg"><span class="lbl">' + esc(p.ml || '材質') + '</span><div class="chips">' + p.mats.map(function (x, i) { return '<span class="chip' + (x.m === c.mat ? ' on' : '') + '" onclick="edMat(' + i + ')">' + esc(x.m) + '</span>'; }).join('') + '</div></div>';
       else h += '<div class="fg"><label>材質（あれば）</label><input type="text" value="' + esc(c.mat) + '" placeholder="例：ステンレス" oninput="ED.it.mat=this.value"></div>';
       var inList = specs.indexOf(c.spec) !== -1;
       if (specs.length && p.split && inList) {
@@ -762,7 +775,7 @@
         h += '<div class="fg"><label>' + esc(p.split[0]) + '</label><select onchange="edSplit(0,this.value)">' + ds.map(function (v) { return '<option' + (v === sp2[0] ? ' selected' : '') + '>' + esc(v) + '</option>'; }).join('') + '</select></div>';
         h += '<div class="fg"><label>' + esc(p.split[1]) + '</label><select onchange="edSplit(1,this.value)">' + ls.map(function (v) { return '<option value="' + esc(v) + '"' + (v === sp2[1] ? ' selected' : '') + '>' + esc(v + p.split[2]) + '</option>'; }).join('') + '<option value="__other">ほかの仕様（文字で入れる）</option></select></div>';
       } else if (specs.length) h += '<div class="fg"><label>仕様・サイズ</label><select onchange="edSpec(this.value)">' + specs.map(function (v) { return '<option' + (c.spec === v ? ' selected' : '') + '>' + esc(v) + '</option>'; }).join('') + '<option value="__other"' + (!inList ? ' selected' : '') + '>ほかの仕様（文字で入れる）</option></select></div>';
-      if (!specs.length || !inList) h += '<div class="fg"><label>' + (specs.length ? 'ほかの仕様' : '仕様・サイズ・型番') + '</label><input type="text" id="edSpecTx" value="' + esc(c.spec) + '" placeholder="例：W3/8×20、φ150 など" oninput="ED.it.spec=this.value"></div>';
+      if (!c.free && (!specs.length || !inList)) h += '<div class="fg"><label>' + (specs.length ? 'ほかの仕様' : '仕様・サイズ・型番') + '</label><input type="text" id="edSpecTx" value="' + esc(c.spec) + '" placeholder="例：W3/8×20、φ150 など" oninput="ED.it.spec=this.value"></div>';
       h += '<div class="fg"><label>数</label><div class="qty"><button type="button" onclick="edQty(-1)">－</button><input type="number" inputmode="numeric" id="edQty" value="' + esc(c.qty) + '" oninput="ED.it.qty=this.value; refreshEd()"><button type="button" onclick="edQty(1)">＋</button></div></div>';
       var k = pkOf(c.n, c.mat, c.spec);
       var uo = k ? [[k.b, k.b + '（バラ）']].concat(k.p.map(function (x) { return [x[0], x[0] + '（' + x[1].toLocaleString() + k.b + '）']; })) : UNITS.map(function (u) { return [u, u]; });
