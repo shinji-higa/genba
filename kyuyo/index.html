@@ -79,7 +79,7 @@
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
 import { getFirestore, collection, doc, getDoc, getDocs, setDoc, writeBatch, query, where } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
-const APP_VER = 'Ver.20261102-14';
+const APP_VER = 'Ver.20261102-15';
 const API = 'https://script.google.com/macros/s/AKfycbyW2hFHqIQuu-TsflPk_0zv7gquhoepspuvRG9-bMStPDSWSc2blcDFBtWs7MisP3f_/exec';
 const app = initializeApp({ apiKey: 'AIzaSyDVR4p4DO4s9h70uPlXUVlhNcMP9-YkQ5Q', authDomain: 'genba-portal-9077b.firebaseapp.com', projectId: 'genba-portal-9077b' });
 const auth = getAuth(app);
@@ -207,7 +207,7 @@ async function pay(action, data) { return FAST_ACT[action] ? FAST_ACT[action](da
 
 /* ---------- 初期値。設定画面で変えられる（説明は CFG_DEF の横の文）---------- */
 const DEF = {
-  companyOff: 0, stdH: 8, close: 20, step: 30, ot: 1.25, holSho: 1.6, holHou: 1.6, otSho: 2, otHou: 2, night: 1.6, tripNight: 3500,
+  stdH: 8, close: 20, step: 30, ot: 1.25, holSho: 1.6, holHou: 1.6, otSho: 2, otHou: 2, night: 1.6, tripNight: 3500,
   rates: [
     { from: '2026-03', health: 10.12, care: 1.62, child: 0, pension: 18.3, emp: 0.65 },
     { from: '2026-04', health: 10.12, care: 1.62, child: 0.23, pension: 18.3, emp: 0.6 }
@@ -215,7 +215,6 @@ const DEF = {
 };
 const CFG_DEF = [
   ['基本の時間', [
-    ['companyOff', '会社休日（年間）', '日', '夏季休暇や年末年始など、平日に会社が休む日数の合計です。祝日と土日は入れません。ここから年間の所定労働日数を自動で計算します。毎年1月に見直します。'],
     ['stdH', '1日の所定労働時間', '時間', '8:00〜17:00（休憩1時間）の8時間です。時間単価と日額の元になります。'],
     ['close', '締め日', '日', '20なら「前月21日〜当月20日」を今月の給与として計算します。'],
     ['step', '時間外の刻み', '分', '時間外を何分単位で数えるかです。端数は切り捨てます。30なら45分は30分になります。']
@@ -235,7 +234,7 @@ const CFG_DEF = [
 const EMP_KIND = ['社員', '役員', 'その他'];
 let ST = { me: null, cfg: null, emps: [], tab: 'month', ym: '' };
 const yearOf = ym => Number(String(ym || ST.ym || defaultYm()).slice(0, 4));
-const cfgOf = ym => { const c = ST.cfg, w = KY.workYear(yearOf(ym), c.companyOff); return { ...c, workDays: w.days, work: w, monthHours: w.days * c.stdH / 12 }; };
+const cfgOf = ym => { const c = ST.cfg, w = KY.workYear(yearOf(ym), 0); return { ...c, workDays: w.days, work: w, monthHours: w.days * c.stdH / 12 }; };
 const taxFor = ym => TAX[ym.slice(0, 4)] || TAX[Object.keys(TAX).sort().pop()];
 function defaultYm() { const d = new Date(); return d.getFullYear() + '-' + pad(d.getMonth() + 1); }
 const ymLabel = ym => Number(ym.slice(0, 4)) + '年' + Number(ym.slice(5)) + '月';
@@ -461,9 +460,9 @@ function editEmp(e0) {
 
 /* 設定 */
 function drawSet() {
-  const c = ST.cfg, y0 = yearOf(), w = { ...KY.workYear(y0, c.companyOff), year: y0 }, mh = Math.round(cfgOf().monthHours * 10) / 10;
+  const c = ST.cfg, y0 = yearOf(), w = { ...KY.workYear(y0, 0), year: y0 }, mh = Math.round(cfgOf().monthHours * 10) / 10;
   M.innerHTML = '<div class="card"><h2>アプリの版</h2><div>今の版：<b>' + APP_VER + '</b></div><div style="margin-top:8px;"><button class="b dark" id="ver">最新の版にする</button></div><div class="note">新しい版が出ているときは、押すと入れ替わります。</div></div>' +
-    CFG_DEF.map(([h, fs]) => '<div class="card"><h2>' + h + '</h2>' + fs.map(f => '<div class="set"><div class="k">' + f[1] + '</div><div class="row" style="flex-wrap:nowrap;gap:6px;"><input type="number" step="any" data-c="' + f[0] + '" value="' + esc(c[f[0]]) + '"><span>' + f[2] + '</span></div><div class="d">' + f[3] + '</div></div>').join('') + (h === '基本の時間' ? '<div class="note" style="margin-top:8px;">' + w.year + '年の所定労働日数：平日 ' + w.weekdays + '日 − 祝日 ' + w.holidays + '日 − 会社休日 ' + w.companyOff + '日 ＝ <b>' + w.days + '日</b><br>月平均所定時間：<b>' + mh + '時間</b>（' + w.days + '日 × ' + c.stdH + '時間 ÷ 12）。時間単価＝基本給 ÷ この時間です。</div>' : '') + '</div>').join('') +
+    CFG_DEF.map(([h, fs]) => '<div class="card"><h2>' + h + '</h2>' + fs.map(f => '<div class="set"><div class="k">' + f[1] + '</div><div class="row" style="flex-wrap:nowrap;gap:6px;"><input type="number" step="any" data-c="' + f[0] + '" value="' + esc(c[f[0]]) + '"><span>' + f[2] + '</span></div><div class="d">' + f[3] + '</div></div>').join('') + (h === '基本の時間' ? '<div class="note" style="margin-top:8px;">' + w.year + '年の所定労働日数：平日 ' + w.weekdays + '日 − 祝日 ' + w.holidays + '日 ＝ <b>' + w.days + '日</b><br>月平均所定時間：<b>' + mh + '時間</b>（' + w.days + '日 × ' + c.stdH + '時間 ÷ 12）。時間単価＝基本給 ÷ この時間です。</div>' : '') + '</div>').join('') +
     '<div class="card"><h2>保険料率（適用月ごと）</h2><div class="note">変わるときは行を足します。健康保険・介護保険・支援金・厚生年金は「保険の月」、雇用保険は「給与の月」で使います。社会保険は前月分を今月の給与から引くので、3月分の率は4月の給与から効きます。</div><div class="wrapx"><table class="t" id="rt"></table></div><button class="b" id="ra" style="margin-top:8px;">＋ 行を足す</button>' +
     '<div class="set" style="border:0;"><div class="k">健康保険</div><div></div><div class="d">協会けんぽ兵庫の率（全体）です。本人はこの半分です。毎年3月分から変わります。</div><div class="k">介護保険</div><div></div><div class="d">40〜64歳の人だけにかかります（全体の率）。全国共通です。</div><div class="k">支援金</div><div></div><div class="d">子ども・子育て支援金です（全体の率）。明細では健康保険料に含めます。</div><div class="k">厚生年金</div><div></div><div class="d">全体の率です。本人はこの半分です。</div><div class="k">雇用保険</div><div></div><div class="d">本人負担の率です（建設の事業）。毎年4月に変わります。</div></div></div>' +
     '<div class="card"><div class="row"><button class="b dark" id="sv">設定を保存</button><span id="sm" class="note"></span></div></div>';
