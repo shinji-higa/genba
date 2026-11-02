@@ -37,6 +37,26 @@
   .check-row input { width: 20px; height: 20px; flex: none; }
   #hTabs { display: flex; gap: 6px; }
   #hTabs button { flex: 1; min-width: 0; padding-left: 4px; padding-right: 4px; white-space: nowrap; }
+  /* 不具合修正の報告：ボタンはすごく目立つ色で（ユーザー指示 2026-11-02） */
+  #bugFab { position: fixed; right: 0; top: 36%; z-index: 9800; display: none; writing-mode: vertical-rl; padding: 14px 7px; background: #e60012; color: #ffffff; font-size: 0.95rem; font-weight: 800; letter-spacing: 0.12em; border: 2px solid #ffffff; border-right: 0; border-radius: 10px 0 0 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.45); cursor: pointer; font-family: inherit; }
+  #bugFab.on { display: block; }
+  #bugFab:disabled { background: #7a0009; }
+  #bugOv { position: fixed; inset: 0; z-index: 9900; background: rgba(17,17,17,0.55); display: flex; align-items: center; justify-content: center; padding: 12px; }
+  .bug-box { background: #fff; color: #111; width: min(620px, 100%); max-height: 100%; overflow: auto; border-radius: 10px; padding: 14px; box-sizing: border-box; }
+  .bug-h { display: flex; justify-content: space-between; align-items: center; gap: 8px; font-weight: 800; font-size: 1.05rem; margin-bottom: 10px; }
+  .bug-img { display: block; width: 100%; max-height: 36vh; object-fit: contain; background: #e9e9ec; border: 1px solid #666; }
+  .bug-noimg { padding: 18px 10px; text-align: center; background: #f2f2f4; border: 1px dashed #666; color: #333; font-size: 0.9rem; font-weight: 600; }
+  .bug-box textarea { width: 100%; box-sizing: border-box; min-height: 110px; font-size: 16px; padding: 8px; border: 1px solid #555; border-radius: 4px; font-family: inherit; }
+  .bug-meta { font-size: 0.84rem; color: #333; line-height: 1.6; margin: 8px 0; }
+  .bug-msg { font-size: 0.9rem; font-weight: 700; margin-top: 8px; color: #b3261e; }
+  .bug-row { border: 1px solid #777; border-radius: 6px; padding: 10px; margin-bottom: 10px; background: #fff; }
+  .bug-row.done { background: #f2f2f4; }
+  .bug-row .t { white-space: pre-wrap; word-break: break-word; font-size: 0.95rem; font-weight: 600; margin: 6px 0; color: #111; }
+  .bug-row .m { font-size: 0.82rem; color: #333; line-height: 1.6; }
+  .bug-row img { display: block; max-width: 100%; max-height: 240px; border: 1px solid #666; margin: 6px 0; cursor: zoom-in; }
+  .bug-st { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 0.8rem; font-weight: 800; background: #e60012; color: #fff; }
+  .bug-st.done { background: #444; }
+  .bug-tabs { display: flex; gap: 6px; margin-bottom: 10px; }
 </style>
 </head>
 <body>
@@ -115,7 +135,7 @@ storage.maxUploadRetryTime = 60000;   // 電波が切れたら1分で一度あ�
 const auth = getAuth(app);
 auth.languageCode = 'ja';   // パスワード再設定のメールと画面を日本語にする
 const db = initializeFirestore(app, { localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }) });
-const APP_VER = 'Ver.20261102-26';
+const APP_VER = 'Ver.20261102-27';
 
 /* ---------- 電波なしでも使う（今の現場管理と同じ考え方） ----------
    ・保存は押した瞬間に完了の形。電波が戻ったら自動で送る（データは Firestore が端末に貯める）
@@ -2311,6 +2331,124 @@ function hTeamDraw() {
   hCmWire(box);
 }
 
+/* ---------- 不具合修正の報告（ユーザー指示 2026-11-02）----------
+   テスト運用の間はマスターが設定で入れると、ログイン後の全画面の右端に赤いボタンが出る。切ったあとは設定画面の「不具合を報告する」から送る。
+   ボタンを押すとそのときの画面を写す → 説明を書いて送る → bugReports に1か所に集まる。誰が・いつ・どの画面かは自動で記録。見るのはマスター（設定の「不具合報告の一覧」） */
+const BUG_LIB = 'https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js';
+const bugRef = () => doc(db, 'meta', 'bugReport');
+const bugFrame = () => document.querySelector('#denpyoOverlay.open iframe');
+let bugUnsub = null, bugShow = false;
+function bugFab() {
+  let b = $('bugFab');
+  if (!b) {
+    b = document.createElement('button'); b.type = 'button'; b.id = 'bugFab'; b.textContent = '不具合修正';
+    b.onclick = () => bugOpen(true);
+    document.body.appendChild(b);
+  }
+  return b;
+}
+onAuthStateChanged(auth, u => {
+  if (bugUnsub) { bugUnsub(); bugUnsub = null; }
+  bugShow = false; bugFab().classList.remove('on');
+  if (u) bugUnsub = onSnapshot(bugRef(), s => { bugShow = !!(s.exists() && s.data().on); bugFab().classList.toggle('on', bugShow); }, e => { window.portalLastError = e && e.code; });
+});
+const bugWhere = () => { const f = bugFrame(), t = $('title').textContent; return f ? f.title + '（' + t + '）' : t; };
+const bugDevice = () => { const u = navigator.userAgent, n = /iPhone/.test(u) ? 'iPhone' : /iPad|Macintosh.*Mobile/.test(u) ? 'iPad' : /Android/.test(u) ? 'Android' : /Windows/.test(u) ? 'Windows' : /Mac/.test(u) ? 'Mac' : 'その他'; return n + ' ' + innerWidth + '×' + innerHeight; };
+const bugTime = t => { const d = new Date(t); return d.getFullYear() + '/' + pad2(d.getMonth() + 1) + '/' + pad2(d.getDate()) + ' ' + pad2(d.getHours()) + ':' + pad2(d.getMinutes()); };
+function bugBlob(cv) {
+  const w = Math.min(1600, cv.width), c = document.createElement('canvas');
+  c.width = w; c.height = Math.round(cv.height * w / cv.width);
+  c.getContext('2d').drawImage(cv, 0, 0, c.width, c.height);
+  return new Promise(ok => c.toBlob(ok, 'image/jpeg', 0.75));
+}
+/* 今見えている範囲を写す。注文の画面は枠の中を写す。写せないときは報告だけできるようにする */
+async function bugShot() {
+  if (!window.html2canvas) await new Promise((ok, ng) => { const s = document.createElement('script'); s.src = BUG_LIB; s.onload = ok; s.onerror = ng; document.head.appendChild(s); });
+  const f = bugFrame(), w = f ? f.contentWindow : window, W = w.innerWidth, H = w.innerHeight;
+  const cv = await Promise.race([
+    window.html2canvas(w.document.documentElement, { x: w.scrollX, y: w.scrollY, width: W, height: H, windowWidth: W, windowHeight: H, scrollX: 0, scrollY: 0, scale: Math.min(1.5, window.devicePixelRatio || 1), useCORS: true, logging: false, backgroundColor: '#ffffff', ignoreElements: e => e.id === 'bugFab' || e.id === 'bugOv' }),
+    new Promise((_, ng) => setTimeout(() => ng(new Error('timeout')), 15000))
+  ]);
+  return bugBlob(cv);
+}
+function bugFile(file) {
+  return new Promise((ok, ng) => {
+    const u = URL.createObjectURL(file), im = new Image();
+    im.onload = async () => { const c = document.createElement('canvas'); c.width = im.naturalWidth; c.height = im.naturalHeight; c.getContext('2d').drawImage(im, 0, 0); URL.revokeObjectURL(u); ok(await bugBlob(c)); };
+    im.onerror = ng; im.src = u;
+  });
+}
+async function bugOpen(shot) {
+  if (!me || $('bugOv')) return;
+  const where = shot ? bugWhere() : '設定画面から報告', at = Date.now(), fab = bugFab();
+  let blob = null;
+  if (shot) {
+    fab.disabled = true; fab.textContent = '写しています';
+    try { blob = await bugShot(); } catch (e) { window.portalLastError = 'bugShot'; }
+    fab.disabled = false; fab.textContent = '不具合修正';
+  }
+  const ov = document.createElement('div'); ov.id = 'bugOv';
+  ov.innerHTML = '<div class="bug-box"><div class="bug-h"><span>不具合修正の報告</span><button type="button" class="btn btn-sub" id="bugClose">閉じる</button></div>' +
+    '<div id="bugPic"></div><input type="file" id="bugIn" accept="image/*" style="display:none;"><button type="button" class="btn btn-sub" id="bugPick" style="width:100%;margin-top:6px;">写真を選ぶ</button>' +
+    '<div class="form-group" style="margin-top:10px;"><label for="bugText">どこが、どうおかしいか</label><textarea id="bugText" maxlength="4000" placeholder="例：注文書の数が1つ少なく出ます"></textarea></div>' +
+    '<div class="bug-meta">報告者：<span data-i18n-skip>' + esc(me.name || me.uid) + '</span><br>日時：' + bugTime(at) + '<br>画面：<span data-i18n-skip>' + esc(where) + '</span></div>' +
+    '<button type="button" class="btn btn-dark" id="bugSend" style="width:100%;">送る</button><div class="bug-msg" id="bugMsg"></div></div>';
+  document.body.appendChild(ov);
+  const pic = () => { if ($('bugPic')) $('bugPic').innerHTML = blob ? '<img class="bug-img" src="' + URL.createObjectURL(blob) + '" alt="">' : '<div class="bug-noimg">' + (shot ? '画面を写せませんでした。' : '') + 'スマホやパソコンで撮った画面の写真を選べます。</div>'; };
+  pic();
+  $('bugClose').onclick = () => ov.remove();
+  $('bugPick').onclick = () => $('bugIn').click();
+  $('bugIn').onchange = async e => { const f = e.target.files[0]; if (!f) return; try { blob = await bugFile(f); pic(); } catch (x) { $('bugMsg').textContent = 'この写真は読み込めませんでした。'; } };
+  $('bugSend').onclick = async () => {
+    const text = $('bugText').value.trim();
+    if (!text) { $('bugMsg').textContent = '説明を書いてください。'; return; }
+    $('bugSend').disabled = true;
+    const ref = doc(collection(db, 'bugReports')), p = blob ? 'bugReports/' + ref.id + '.jpg' : '';
+    try {
+      if (blob) { await upTx('readwrite', q => q.put({ id: p, rawPath: p, siteId: '', name: '不具合の画面', mime: 'image/jpeg', blob, t: Date.now() })); upPump(); }
+      fire(setDoc(ref, { at, by: me.uid, byName: me.name || me.uid, group: me.group || '', text, screen: where, ver: APP_VER, device: bugDevice(), path: p, status: 'open', doneAt: 0, doneBy: '' }), '不具合の報告');
+      ov.querySelector('.bug-box').innerHTML = '<div style="padding:26px 8px;text-align:center;font-weight:800;font-size:1.05rem;">送りました。ありがとうございます。</div>';
+      setTimeout(() => ov.remove(), 1300);
+    } catch (e) { $('bugSend').disabled = false; $('bugMsg').textContent = '送れませんでした：' + ((e && e.message) || ''); }
+  };
+}
+/* 不具合報告の一覧（マスター）。未対応が上の見方が基本 */
+async function bugList(view) {
+  view = view || 'open';
+  show('panelSettings', '不具合報告の一覧', setOpen, '← 設定へ');
+  const P = $('panelSettings');
+  P.innerHTML = '<div class="info-card" style="text-align:center; color:var(--muted);">読み込んでいます…</div>';
+  let all = [];
+  try { all = (await getDocs(query(collection(db, 'bugReports'), orderBy('at', 'desc')))).docs.map(d => ({ id: d.id, ...d.data() })); }
+  catch (e) { P.innerHTML = banner('読み込めませんでした：' + ((e && e.message) || ''), true); return; }
+  if (!$('panelSettings').classList.contains('active')) return;
+  const open = all.filter(x => x.status !== 'done'), list = view === 'open' ? open : view === 'done' ? all.filter(x => x.status === 'done') : all;
+  const tab = (k, t) => '<button type="button" class="btn ' + (k === view ? 'btn-dark' : 'btn-sub') + '" data-bv="' + k + '">' + t + '</button>';
+  P.innerHTML = '<div class="bug-tabs">' + tab('open', '未対応 ' + open.length) + tab('done', '対応済み ' + (all.length - open.length)) + tab('all', 'すべて ' + all.length) + '</div>' +
+    (list.length ? list.map(x => {
+      const dn = x.status === 'done';
+      return '<div class="bug-row' + (dn ? ' done' : '') + '"><span class="bug-st' + (dn ? ' done' : '') + '">' + (dn ? '対応済み' : '未対応') + '</span>' +
+        '<div class="t" data-i18n-skip>' + esc(x.text) + '</div><div data-bimg="' + esc(x.path || '') + '"></div>' +
+        '<div class="m">報告者：<span data-i18n-skip>' + esc(x.byName || x.by) + (x.group ? '（' + esc(x.group) + '）' : '') + '</span><br>日時：' + bugTime(x.at) + '<br>画面：<span data-i18n-skip>' + esc(x.screen) + '</span><br>版：' + esc(x.ver) + '　端末：' + esc(x.device) +
+        (dn ? '<br>対応：<span data-i18n-skip>' + esc(x.doneBy) + '</span>　' + bugTime(x.doneAt) : '') + '</div>' +
+        '<button type="button" class="btn btn-sub" style="margin-top:8px;" data-bd="' + esc(x.id) + '" data-to="' + (dn ? 'open' : 'done') + '">' + (dn ? '未対応に戻す' : '対応済みにする') + '</button></div>';
+    }).join('') : '<div class="info-card" style="text-align:center;">報告はありません。</div>');
+  P.querySelectorAll('[data-bv]').forEach(b => { b.onclick = () => bugList(b.dataset.bv); });
+  P.querySelectorAll('[data-bd]').forEach(b => {
+    b.onclick = async () => {
+      b.disabled = true;
+      const on = b.dataset.to === 'done';
+      await fire(updateDoc(doc(db, 'bugReports', b.dataset.bd), { status: on ? 'done' : 'open', doneAt: on ? Date.now() : 0, doneBy: on ? (me.name || me.uid) : '' }), '不具合の報告');
+      bugList(view);
+    };
+  });
+  P.querySelectorAll('[data-bimg]').forEach(async h => {
+    const p = h.dataset.bimg; if (!p) return;
+    try { const u = await getDownloadURL(stRef(storage, p)); h.innerHTML = '<a href="' + esc(u) + '" target="_blank" rel="noopener"><img src="' + esc(u) + '" alt=""></a>'; }
+    catch (e) { h.innerHTML = '<div class="m">画面の画像はまだ届いていません（送った人の電波が戻ると届きます）。</div>'; }
+  });
+}
+
 /* ---------- 音の出る通知と設定画面 ----------
    送るのは Cloud Functions（functions/index.js）。端末と通知設定は push/{人}。通知の表示は sw.js が行う（アプリを閉じていても届く）。
    iPhone はホーム画面のアイコンから開いたときだけ受け取れる */
@@ -2422,6 +2560,8 @@ async function setOpen() {
     '<div class="form-group"><label for="acMb">携帯番号（伝票・注文書の注文者の欄に出ます）</label><input type="tel" id="acMb" value="' + esc(u.mobile) + '" placeholder="例: 090-1234-5678" inputmode="tel"></div>' +
     '<div class="form-group"><label for="acGo">googleアカウント</label><input type="text" id="acGo" value="' + esc(u.google) + '" placeholder="例: taro@gmail.com" autocomplete="off"></div>' +
     '<button type="button" id="acSave" class="btn btn-dark">アカウント設定を保存</button><button type="button" id="acPass" class="btn btn-sub" style="margin-top: 8px; width: 100%;">パスワードを変える（メールでご案内します）</button><div id="acMsg" class="set-note"></div></div>' +
+    '<div class="info-card"><div class="card-header-row"><span style="font-weight: 700;">🛠 不具合の報告</span></div><button type="button" id="bugGo" class="btn btn-dark">不具合を報告する</button><div class="set-note">おかしな所を見つけたら、説明と画面の写真を送ってください。</div>' +
+    (me.isMaster ? '<div class="set-sub-title">マスター</div><label class="switch-row"><span>各画面に不具合修正ボタンを出す（テスト運用の間）</span><input type="checkbox" id="bugSw"' + (bugShow ? ' checked' : '') + '></label><button type="button" id="bugAll" class="btn btn-outline" style="margin-top: 8px;">不具合報告の一覧</button>' : '') + '</div>' +
     (me.isMaster ? '<div class="info-card"><button type="button" id="goUsers" class="btn btn-outline">人の管理</button><button type="button" id="goEnded" class="btn btn-outline" style="margin-top: 8px;">終了した現場</button></div>' : '');
   pushWire('setPush');
   updateLangButtons();
@@ -2446,6 +2586,9 @@ async function setOpen() {
     try { await sendPasswordResetEmail(auth, me.uid); $('acMsg').textContent = me.uid + ' へ、パスワードを変えるメールを送りました。'; }
     catch (e) { $('acMsg').textContent = '送れませんでした：' + ((e && e.message) || ''); }
   };
+  $('bugGo').onclick = () => bugOpen(false);
+  if ($('bugSw')) $('bugSw').onchange = e => fire(setDoc(bugRef(), { on: e.target.checked, at: Date.now(), by: me.uid }), '不具合修正ボタンの設定');
+  if ($('bugAll')) $('bugAll').onclick = () => bugList();
   if ($('goUsers')) $('goUsers').onclick = () => showUsers();
   if ($('goEnded')) $('goEnded').onclick = endedOpen;
 }

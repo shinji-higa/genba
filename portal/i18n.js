@@ -78,6 +78,7 @@
       '担当者一覧を読み込んでいます...': 'Cargando personal...', '担当者一覧を再読み込み': 'Recargar personal', '登録者が存在しません。': 'No hay personal registrado.',
       '編集を完了': 'Terminar edición',
       // お知らせ
+      '不具合修正': 'Reportar fallo', '不具合修正の報告': 'Reportar un fallo', '閉じる': 'Cerrar', '写真を選ぶ': 'Elegir foto', 'どこが、どうおかしいか': 'Qué falla y dónde', '送る': 'Enviar', '送りました。ありがとうございます。': 'Enviado. Gracias.', '説明を書いてください。': 'Escriba una explicación.', '不具合を報告する': 'Reportar un fallo', '🛠 不具合の報告': '🛠 Reportar fallos', 'おかしな所を見つけたら、説明と画面の写真を送ってください。': 'Si ve algo raro, envíe una explicación y una foto de la pantalla.', 'スマホやパソコンで撮った画面の写真を選べます。': 'Puede elegir una foto de la pantalla tomada con el móvil o el ordenador.',
       'お知らせ通知': 'Avisos', 'すべて': 'Todos', '未読': 'No leídos', '既読済': 'Leídos', '並び順': 'Orden', '年月日順': 'Por fecha',
       '現場別': 'Por obra', '通知者': 'Autor', '全員': 'Todos', 'すべて既読にする': 'Marcar todo como leído',
       'お知らせを読み込んでいます...': 'Cargando avisos...', 'お知らせを更新しています...': 'Actualizando avisos...', 'お知らせを再読み込み': 'Recargar avisos',
