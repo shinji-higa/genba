@@ -141,7 +141,7 @@ storage.maxUploadRetryTime = 60000;   // 電波が切れたら1分で一度あ�
 const auth = getAuth(app);
 auth.languageCode = 'ja';   // パスワード再設定のメールと画面を日本語にする
 const db = initializeFirestore(app, { localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }) });
-const APP_VER = 'Ver.20261102-35';
+const APP_VER = 'Ver.20261102-36';
 
 /* ---------- 電波なしでも使う（今の現場管理と同じ考え方） ----------
    ・保存は押した瞬間に完了の形。電波が戻ったら自動で送る（データは Firestore が端末に貯める）
@@ -1573,7 +1573,7 @@ const O_KIND = {
   maru: { host: 'maruHost', src: 'maru.html?v=4', title: '丸ダクト注文', word: '注文書', log: '丸ダクト', fn: 'Maru' },
   cons: { host: 'consHost', src: 'cons.html?v=18', title: '消耗品注文', word: '注文書', log: '消耗品', fn: 'Cons' },
   kana: { host: 'kanaHost', src: 'kana.html?v=5', title: '金物注文（添付）', word: '注文書', log: '金物（添付）', fn: 'Kana' },
-  hood: { host: 'hoodHost', src: 'hood.html?v=2', title: 'フード注文', word: '注文書', log: 'フード', fn: 'Hood' }   // 厨房フード（箱型・山型外装付二重。図面＋寸法表の注文書。2026-11-02）
+  hood: { host: 'hoodHost', src: 'hood.html?v=3', title: 'フード注文', word: '注文書', log: 'フード', fn: 'Hood' }   // 厨房フード（箱型・山型外装付二重。図面＋寸法表の注文書。2026-11-02）
 };
 function oOpen(s) {
   const btn = (k, ic, t, sub) => '<button type="button" class="order-btn' + (k ? ' on' : '') + '"' + (k ? ' data-o="' + k + '"' : ' disabled') + '><span class="order-ic">' + ic + '</span><span class="order-t">' + t + '</span><span class="order-s">' + sub + '</span></button>';
@@ -2407,10 +2407,15 @@ function dpOpen(input) {
 function dpBind(d) {
   if (!d || d.__dpBound) return;
   d.__dpBound = true;
-  const lock = () => d.querySelectorAll('input[type="date"]:not([readonly])').forEach(i => { i.readOnly = true; });
+  // iPhone は readonly の日付欄でも標準の日付選択が開き、自分のカレンダーと二重に出る（2026-11-02 ユーザー報告）。触ると開かないよう、押した瞬間に焦点を外して自分のカレンダーだけ出す
+  const lock = () => d.querySelectorAll('input[type="date"]:not([data-dp])').forEach(i => { i.readOnly = true; i.dataset.dp = '1'; i.setAttribute('inputmode', 'none'); });
   lock();
   new d.defaultView.MutationObserver(lock).observe(d.documentElement, { childList: true, subtree: true });
-  d.addEventListener('click', e => { const i = e.target; if (i && i.matches && i.matches('input[type="date"]') && !i.disabled) { e.preventDefault(); dpOpen(i); } }, true);
+  const isDate = i => i && i.matches && i.matches('input[type="date"]') && !i.disabled;
+  d.addEventListener('touchstart', e => { const i = e.target; if (isDate(i)) { e.preventDefault(); i.blur(); dpOpen(i); } }, { capture: true, passive: false });
+  d.addEventListener('mousedown', e => { const i = e.target; if (isDate(i)) e.preventDefault(); }, true);
+  d.addEventListener('focus', e => { const i = e.target; if (isDate(i)) { i.blur(); if (!d.querySelector('.dp-overlay')) dpOpen(i); } }, true);
+  d.addEventListener('click', e => { const i = e.target; if (isDate(i)) { e.preventDefault(); dpOpen(i); } }, true);
   d.addEventListener('keydown', e => { const o = d.querySelector('.dp-overlay'); if (e.key === 'Escape' && o) o.remove(); });
 }
 dpBind(document);
