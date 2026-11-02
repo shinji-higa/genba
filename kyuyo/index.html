@@ -79,7 +79,7 @@
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
 import { getFirestore, collection, doc, getDoc, getDocs, setDoc, writeBatch, query, where } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
-const APP_VER = 'Ver.20261102-08';
+const APP_VER = 'Ver.20261102-09';
 const API = 'https://script.google.com/macros/s/AKfycbyW2hFHqIQuu-TsflPk_0zv7gquhoepspuvRG9-bMStPDSWSc2blcDFBtWs7MisP3f_/exec';
 const app = initializeApp({ apiKey: 'AIzaSyDVR4p4DO4s9h70uPlXUVlhNcMP9-YkQ5Q', authDomain: 'genba-portal-9077b.firebaseapp.com', projectId: 'genba-portal-9077b' });
 const auth = getAuth(app);
@@ -306,6 +306,7 @@ function mailText(e, r, ym) {
 }
 async function sendSlips(list, ym) {
   try {
+    await mirrorQ;   // 確定の控えが書き終わってから送る（サーバーは控えで確定を確かめる）
     const r = await pay('mail', { ym, list: list.map(e => ({ id: e.id, name: e.name, subject: ymLabel(ym) + '分 給与明細（エクスケアダクト）', body: mailText(e, MON.res[e.id], ym) })) });
     alert(r.list.map(x => x.name + '：' + (x.ng ? '送れませんでした（' + x.ng + '）' : x.to + ' へ送りました')).join('\n'));
   } catch (x) { alert('送れませんでした：' + x.message); }
@@ -449,7 +450,7 @@ onAuthStateChanged(auth, async u => {
   busy();
   try {
     const r = await pay('boot');
-    ST.me = r.me; ST.cfg = { ...DEF, ...r.cfg }; ST.emps = r.emps;
+    ST.me = r.me; ST.cfg = { ...DEF, ...r.cfg }; ST.emps = r.emps.sort((a, b) => String(a.code || '').localeCompare(String(b.code || ''), 'ja', { numeric: true }));
     $('who').textContent = r.me.name; $('hd').style.display = ''; draw();
   } catch (e) { await signOut(auth).catch(() => {}); login(e.message); }
 });
