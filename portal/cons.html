@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>消耗品注文</title>
-  <!-- Ver.20261102-03 -->
+  <!-- Ver.20261102-04 -->
   <style>
     /* 消耗品注文（フカガワの総合カタログの消耗品）。丸ダクト注文の注文書の仕組みを使う。2026-11-01 作成
        見た目は角ダクトの製作伝票にそろえる（白黒を基調に、薄い灰色は使わない） */
@@ -382,9 +382,7 @@
       { g: 'テープ', p: 251, list: [
         { n: 'アルミテープ（ツヤなし）', s: ['幅50×25m', '幅50×50m', '幅75×50m', '幅100×50m'], u: '巻' },
         { n: 'アルミテープ（ツヤあり）', s: ['幅50×25m', '幅50×50m', '幅75×50m', '幅100×50m'], u: '巻' },
-        { n: 'インターテープ', s: ['幅48×25m', '幅48×50m'], u: '巻' },
-        { n: '布粘着テープ NO.3326', s: ['幅50×25m'], u: '巻' },
-        { n: 'FKダクトテープ', s: ['幅50×25m'], u: '巻' },
+        { n: '布粘着テープ', s: ['幅50×25m'], u: '巻' },
         { n: 'キッチンテープ', s: ['t1.0×幅40×5m（白）'], u: '巻' },
         { n: 'ブチルシーリングテープ', s: ['t1.0×幅40×5m（黄）'], u: '巻' },
         { n: 'ブチルテープ（黒）', s: ['t1.0×幅40×5m（黒）'], u: '巻' },
@@ -392,7 +390,7 @@
         { n: '養生テープ', s: ['幅50×25m'], u: '巻' },
         { n: 'アルミクラフト粘着テープ', s: [], u: '巻' },
         { n: 'ALGCテープ', s: [], u: '巻' },
-        { n: '黒アルミテープ', s: [], u: '巻' } ] },
+        { n: '黒アルミテープ', s: ['幅50×50m'], u: '巻' } ] },
       { g: 'ビス', p: 249, list: [
         { n: 'ワンタッチビス（鉄 三価ユニクロ）', s: ['13mm', '16mm', '19mm'], u: '小箱', d: '首下の長さを選ぶ' },
         { n: 'ワンタッチビス（ステンレス）', s: ['13mm', '16mm', '19mm'], u: '小箱', d: '首下の長さを選ぶ' },
@@ -489,6 +487,7 @@
     /* 材質違いの同じ品は1行にまとめて、材質を選ぶ（ユーザー決定 2026-11-02）。mats＝[{ m:材質, s:その材質の仕様, d:説明 }] */
     (function () {
       var JOIN = [
+        ['アルミテープ', ['ツヤなし', 'ツヤあり'], ['アルミテープ（ツヤなし）', 'アルミテープ（ツヤあり）'], 'ツヤ'],
         ['ワンタッチビス', ['鉄 三価ユニクロ', 'ステンレス'], ['ワンタッチビス（鉄 三価ユニクロ）', 'ワンタッチビス（ステンレス）']],
         ['丸リベット', ['メッキ', 'ステンレス'], ['丸リベット（メッキ）', '丸リベット（ステンレス）']],
         ['平リベット', ['メッキ', 'ステンレス'], ['平リベット（メッキ）', '平リベット（ステンレス）']],
@@ -512,6 +511,7 @@
           if (!ps[0]) return;
           ps[0].mats = J[1].map(function (m, i) { return { m: m, s: ps[i].s, d: ps[i].d }; });
           ps[0].n = J[0]; ps[0].s = []; delete ps[0].d;
+          if (J[3]) ps[0].ml = J[3];
           g.list = g.list.filter(function (x) { return J[2].slice(1).indexOf(x.n) < 0; });
         });
         SET.forEach(function (Q) {
@@ -653,7 +653,7 @@
       document.getElementById('edBack').style.display = ED.index >= 0 ? 'none' : '';
       var h = '<div class="edbox">';
       if (c.free) h += '<div class="fg"><label>品名</label><input type="text" value="' + esc(c.name) + '" oninput="ED.it.name=this.value; refreshEd()"></div>';
-      if (p.mats) h += '<div class="fg"><span class="lbl">材質</span><div class="chips">' + p.mats.map(function (x, i) { return '<span class="chip' + (x.m === c.mat ? ' on' : '') + '" onclick="edMat(' + i + ')">' + esc(x.m) + '</span>'; }).join('') + '</div></div>';
+      if (p.mats) h += '<div class="fg"><span class="lbl">' + esc(p.ml || '材質') + '</span><div class="chips">' + p.mats.map(function (x, i) { return '<span class="chip' + (x.m === c.mat ? ' on' : '') + '" onclick="edMat(' + i + ')">' + esc(x.m) + '</span>'; }).join('') + '</div></div>';
       else h += '<div class="fg"><label>材質（あれば）</label><input type="text" value="' + esc(c.mat) + '" placeholder="例：ステンレス" oninput="ED.it.mat=this.value"></div>';
       var inList = specs.indexOf(c.spec) !== -1;
       if (specs.length) h += '<div class="fg"><label>仕様・サイズ</label><select onchange="edSpec(this.value)">' + specs.map(function (v) { return '<option' + (c.spec === v ? ' selected' : '') + '>' + esc(v) + '</option>'; }).join('') + '<option value="__other"' + (!inList ? ' selected' : '') + '>ほかの仕様（文字で入れる）</option></select></div>';
