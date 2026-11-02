@@ -79,7 +79,7 @@
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
 import { getFirestore, collection, doc, getDoc, getDocs, setDoc, writeBatch, query, where } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
-const APP_VER = 'Ver.20261102-13';
+const APP_VER = 'Ver.20261102-14';
 const API = 'https://script.google.com/macros/s/AKfycbyW2hFHqIQuu-TsflPk_0zv7gquhoepspuvRG9-bMStPDSWSc2blcDFBtWs7MisP3f_/exec';
 const app = initializeApp({ apiKey: 'AIzaSyDVR4p4DO4s9h70uPlXUVlhNcMP9-YkQ5Q', authDomain: 'genba-portal-9077b.firebaseapp.com', projectId: 'genba-portal-9077b' });
 const auth = getAuth(app);
@@ -222,10 +222,10 @@ const CFG_DEF = [
   ]],
   ['掛率', [
     ['ot', '時間外（平日）', '倍', '平日に8時間を超えた1時間の割増です。時間単価に掛けます。法律の下限は1.25です。'],
-    ['holSho', '所定休日の出勤', '倍', '土曜と会社休日に出勤した日の掛率です。日額に掛けます。'],
-    ['holHou', '法定休日の出勤', '倍', '日曜と祝日（振替休日を含む）に出勤した日の掛率です。日額に掛けます。法律の下限は1.35です。'],
-    ['otSho', '所定休日の時間外', '倍', '土曜と会社休日に8時間を超えた1時間の掛率です。時間単価に掛けます。'],
-    ['otHou', '法定休日の時間外', '倍', '日曜と祝日に8時間を超えた1時間の掛率です。時間単価に掛けます。'],
+    ['holSho', '所定休日の出勤', '倍', '土曜日に出勤した日の掛率です。日額に掛けます。'],
+    ['holHou', '法定休日の出勤', '倍', '日曜・祭日・休日に出勤した日の掛率です。日額に掛けます。法律の下限は1.35です。'],
+    ['otSho', '所定休日の時間外', '倍', '土曜日に8時間を超えた1時間の掛率です。時間単価に掛けます。'],
+    ['otHou', '法定休日の時間外', '倍', '日曜・祭日・休日に8時間を超えた1時間の掛率です。時間単価に掛けます。'],
     ['night', '夜間作業', '倍', '日報で「夜間作業」にチェックした日の掛率です。昼の1日分に掛けます。平日は基本給に入っている1倍を除いた分を足します。休日はその日の掛率（所定か法定）にこの上乗せ分を足します。']
   ]],
   ['手当', [
