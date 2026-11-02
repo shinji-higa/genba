@@ -57,6 +57,7 @@
   .bug-st { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 0.8rem; font-weight: 800; background: #e60012; color: #fff; }
   .bug-st.done { background: #444; }
   .bug-tabs { display: flex; gap: 6px; margin-bottom: 10px; }
+  .bug-tabs .btn { flex: 1 1 0; width: auto; white-space: nowrap; padding-left: 4px; padding-right: 4px; }
 </style>
 </head>
 <body>
@@ -135,7 +136,7 @@ storage.maxUploadRetryTime = 60000;   // 電波が切れたら1分で一度あ�
 const auth = getAuth(app);
 auth.languageCode = 'ja';   // パスワード再設定のメールと画面を日本語にする
 const db = initializeFirestore(app, { localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }) });
-const APP_VER = 'Ver.20261102-27';
+const APP_VER = 'Ver.20261102-28';
 
 /* ---------- 電波なしでも使う（今の現場管理と同じ考え方） ----------
    ・保存は押した瞬間に完了の形。電波が戻ったら自動で送る（データは Firestore が端末に貯める）
