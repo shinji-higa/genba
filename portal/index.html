@@ -141,7 +141,7 @@ storage.maxUploadRetryTime = 60000;   // 電波が切れたら1分で一度あ�
 const auth = getAuth(app);
 auth.languageCode = 'ja';   // パスワード再設定のメールと画面を日本語にする
 const db = initializeFirestore(app, { localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }) });
-const APP_VER = 'Ver.20261102-32';
+const APP_VER = 'Ver.20261102-33';
 
 /* ---------- 電波なしでも使う（今の現場管理と同じ考え方） ----------
    ・保存は押した瞬間に完了の形。電波が戻ったら自動で送る（データは Firestore が端末に貯める）
@@ -1591,6 +1591,7 @@ function oShow(s, k) {
   if (!ov) { ov = document.createElement('div'); ov.id = 'denpyoOverlay'; document.body.appendChild(ov); }
   window[K.host] = oHost(s, k);
   ov.innerHTML = '<iframe class="denpyo-frame" title="' + K.title + '" src="' + K.src + '"></iframe>';
+  ov.querySelector('iframe').addEventListener('load', e => { try { dpBind(e.target.contentDocument); } catch (x) {} });
   ov.classList.add('open');
   document.body.style.overflow = 'hidden';
 }
@@ -2351,6 +2352,67 @@ function hTeamDraw() {
   }; });
   hCmWire(box);
 }
+
+/* ---------- 日付のカレンダー（ユーザー指示 2026-11-02）----------
+   ブラウザ標準のカレンダーは文字の色を変えられず、画面の写しにも写らず、他を押すと閉じる。自前のものに替える。土曜は青、日曜・祝日は赤。
+   注文の画面（枠の中）にも同じものを出す。開いたまま不具合修正ボタンを押せば、カレンダーごと写る */
+const DP_CSS = `
+.dp-overlay { position: fixed; inset: 0; z-index: 9600; background: rgba(17,17,17,0.45); display: flex; align-items: center; justify-content: center; }
+.dp-sheet { background: #fff; width: 100%; max-width: 420px; border-radius: 14px; padding: 12px; box-sizing: border-box; font-family: inherit; }
+.dp-head { display: flex; align-items: center; gap: 6px; margin-bottom: 8px; }
+.dp-nav { flex-shrink: 0; width: 44px; height: 44px; border: 1px solid #8d9298; border-radius: 50%; background: #fff; font-size: 1.4rem; line-height: 1; cursor: pointer; color: #111; }
+.dp-sel { flex: 1; min-width: 0; text-align: center; font-weight: 700; font-size: 1.05rem; color: #111; }
+.dp-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; }
+.dp-w { text-align: center; font-size: 0.75rem; font-weight: 700; color: #47566a; padding: 4px 0; }
+.dp-d { height: 44px; border: none; border-radius: 50%; background: #f4f5f7; font-size: 1rem; font-weight: 600; color: #111; cursor: pointer; }
+.dp-w.sun, .dp-d.sun { color: #c62828; }
+.dp-w.sat, .dp-d.sat { color: #1a56c4; }
+.dp-d.today { box-shadow: inset 0 0 0 2px #111; }
+.dp-d.sel { background: #111; color: #fff; }
+.dp-foot { display: flex; gap: 8px; margin-top: 10px; }
+.dp-foot button { flex: 1; height: 44px; border: 1px solid #111; border-radius: 6px; background: #fff; color: #111; font: inherit; font-weight: 700; cursor: pointer; }
+`;
+function dpOpen(input) {
+  const d = input.ownerDocument, W = d.defaultView;
+  if (d.querySelector('.dp-overlay')) return;
+  if (!d.getElementById('dpCss')) { const s = d.createElement('style'); s.id = 'dpCss'; s.textContent = DP_CSS; d.head.appendChild(s); }
+  const now = new Date(), m0 = String(input.value).match(/^(\d+)-(\d+)-(\d+)$/);
+  let y = m0 ? +m0[1] : now.getFullYear(), m = m0 ? +m0[2] : now.getMonth() + 1;
+  const ov = d.createElement('div'); ov.className = 'dp-overlay';
+  const setVal = v => { input.value = v; input.dispatchEvent(new W.Event('input', { bubbles: true })); input.dispatchEvent(new W.Event('change', { bubbles: true })); ov.remove(); };
+  const paint = () => {
+    const first = new Date(y, m - 1, 1).getDay(), last = new Date(y, m, 0).getDate(), today = dsOf(now);
+    let g = ['日', '月', '火', '水', '木', '金', '土'].map((w, i) => '<div class="dp-w' + (i === 0 ? ' sun' : i === 6 ? ' sat' : '') + '">' + w + '</div>').join('') + '<div></div>'.repeat(first);
+    for (let n = 1; n <= last; n++) {
+      const ds = y + '/' + pad2(m) + '/' + pad2(n), iso = ds.replace(/\//g, '-'), t = dayType(ds);
+      g += '<button type="button" class="dp-d' + (t.type === '法定休日' ? ' sun' : t.type === '所定休日' ? ' sat' : '') + (ds === today ? ' today' : '') + (iso === input.value ? ' sel' : '') + '" data-iso="' + iso + '"' + (t.name ? ' title="' + esc(t.name) + '"' : '') + '>' + n + '</button>';
+    }
+    ov.innerHTML = '<div class="dp-sheet"><div class="dp-head"><button type="button" class="dp-nav" data-mv="-1" aria-label="前の月">‹</button><div class="dp-sel">' + y + '年' + m + '月</div><button type="button" class="dp-nav" data-mv="1" aria-label="次の月">›</button></div><div class="dp-grid">' + g + '</div><div class="dp-foot"><button type="button" data-a="today">今日</button><button type="button" data-a="clear">クリア</button><button type="button" data-a="close">閉じる</button></div></div>';
+  };
+  ov.onclick = e => {
+    const t = e.target.closest ? e.target.closest('button') : null;
+    if (e.target === ov) { ov.remove(); return; }
+    if (!t) return;
+    if (t.dataset.mv) { const n = y * 12 + m - 1 + Number(t.dataset.mv); y = Math.floor(n / 12); m = n % 12 + 1; paint(); }
+    else if (t.dataset.iso) setVal(t.dataset.iso);
+    else if (t.dataset.a === 'today') setVal(dsOf(now).replace(/\//g, '-'));
+    else if (t.dataset.a === 'clear') setVal('');
+    else if (t.dataset.a === 'close') ov.remove();
+  };
+  paint();
+  d.body.appendChild(ov);
+}
+/* 日付の欄を押したら標準のカレンダーの代わりに開く。欄は増えたり作り直されたりするので、見張って読み取り専用にする */
+function dpBind(d) {
+  if (!d || d.__dpBound) return;
+  d.__dpBound = true;
+  const lock = () => d.querySelectorAll('input[type="date"]:not([readonly])').forEach(i => { i.readOnly = true; });
+  lock();
+  new d.defaultView.MutationObserver(lock).observe(d.documentElement, { childList: true, subtree: true });
+  d.addEventListener('click', e => { const i = e.target; if (i && i.matches && i.matches('input[type="date"]') && !i.disabled) { e.preventDefault(); dpOpen(i); } }, true);
+  d.addEventListener('keydown', e => { const o = d.querySelector('.dp-overlay'); if (e.key === 'Escape' && o) o.remove(); });
+}
+dpBind(document);
 
 /* ---------- 不具合修正の報告（ユーザー指示 2026-11-02）----------
    テスト運用の間はマスターが設定で入れると、ログイン後の全画面の右端に赤いボタンが出る。切ったあとは設定画面の「不具合を報告する」から送る。
