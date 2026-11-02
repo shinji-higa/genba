@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>消耗品注文</title>
-  <!-- Ver.20261102-10 -->
+  <!-- Ver.20261102-11 -->
   <style>
     /* 消耗品注文（フカガワの総合カタログの消耗品）。丸ダクト注文の注文書の仕組みを使う。2026-11-01 作成
        見た目は角ダクトの製作伝票にそろえる（白黒を基調に、薄い灰色は使わない） */
@@ -525,7 +525,7 @@
         { n: 'ダクトアイ（円錐型）', s: [], mats: [{ m: '亜鉛合金', s: ['DE-25Ⅱ 保温厚25', 'DE-50Ⅱ 保温厚50'] }], u: '個', d: 'ビスが打ちやすい' },
         { n: 'ダクトアイ用アダプター', s: [], mats: [{ m: '亜鉛合金', s: ['DE-25SⅡ・DE-25Ⅱ用', 'DE-50SⅡ・DE-50Ⅱ用'] }, { m: 'ステンレス', s: ['DE-25SⅡ用', 'DE-50SⅡ用'] }], u: '個' },
         { n: 'ダクトアイベース DEB-1', s: [], mats: [{ m: '溶融亜鉛めっき鋼板', s: [] }, { m: 'ステンレス', s: [] }, { m: 'ガルバリウム', s: [] }], u: '個', d: '丸ダクト用の台座・φ100以上・皿ドリルネジM4×40 6本付' } ] },
-      { g: 'チャンネル・アングル', p: 1150000, list: [
+      { g: 'チャンネル・アングル', p: 0, list: [
         { n: 'マウントアングル MA-60Z', s: ['MA-60Z 溶融亜鉛めっき 使用荷重60kg'], u: '梱包', d: '受注生産' },
         { n: 'スーパーチャンネルY型', s: ['CH-1YN 亜鉛鋼板 L2500 t2'], u: '梱包' },
         { n: 'スーパーアングルY型', s: ['LA-1YN ユニクロ L2500 t3.2', 'LA-2YN ユニクロ L1800 t3.2'], u: '梱包' },
@@ -537,14 +537,14 @@
         { n: 'チャンネル吊り金具 SCK-W', s: ['SCK-1W 許容1176N（120kgf）'], u: '梱包' },
         { n: 'チャンネルガイド SCK-L', s: ['SCK-1L'], u: '梱包' },
         { n: '中ナット SCN', s: ['SCN-1'], u: '梱包' } ] },
-      { g: 'ボルト吊り金具', p: 1160000, list: [
+      { g: 'ボルト吊り金具', p: 0, list: [
         { n: 'ボルト吊り金具（コンパクト）SHBN-S', s: ['SHBN-S W3/8 振り金具なし', 'SHBN-S-Z W3/8 振り金具なし'], u: '梱包' },
         { n: 'ボルト吊り金具 SHBN-1L', s: ['SHBN-1L W3/8 振り金具なし'], u: '梱包' },
         { n: 'ボルト吊り金具（振り金具付）SHBN', s: ['SHBN-1 W3/8 振り金具付', 'SHBN-1F W3/8 振り金具付（前後左右）'], u: '梱包' },
         { n: 'SHB補強金具 HL', s: ['SHB-HL-125 フランジ幅100・125 全ねじL130', 'SHB-HL-200 フランジ幅150・175・200 全ねじL220', 'SHB-HL-300 フランジ幅250・300 全ねじL330', 'SHB-HL-400 フランジ幅350・400 全ねじL420', 'SHB-HL-F フランジ幅100〜400'], u: '梱包', d: '適合吊り金具 SHBN-S・SHBN-1L' },
         { n: 'SHB補強金具 HN', s: ['SHB-HN-125 フランジ幅100・125 フックL170', 'SHB-HN-200 フランジ幅150・175・200 フックL255', 'SHB-HN-300 フランジ幅250・300 フックL365', 'SHB-HN-400 フランジ幅350・400 フックL455', 'SHB-HN-F フランジ幅100〜400'], u: '梱包', d: '適合吊り金具 SHBN-1・SHBN-1F' },
         { n: 'SHB補強金具 ML（溝形鋼・等辺山形鋼用）', s: ['SHB-ML-4090 溝形70×40 山形40×40、90×90', 'SHB-ML-50 溝形100×50 山形50×50', 'SHB-ML-65 溝形125×65 山形65×65', 'SHB-ML-75 溝形150×75 山形75×75'], u: '梱包', d: '適合吊り金具 SHBN-S・SHBN-1L・SHBN-1・SHBN-1F' } ] },
-      { g: '振れ止め金具', p: 1170000, list: [
+      { g: '振れ止め金具', p: 0, list: [
         { n: 'クロスロック Vタイプ', s: ['FL-V W3/8', 'FL-V-4 W1/2'], u: '梱包' },
         { n: 'クロスロック Dタイプ', s: ['FL-D W3/8', 'FL-D-4 W1/2'], u: '梱包' },
         { n: 'クロスロック ボルト固定式キット', s: ['FL-VS（FL-V×8個・FL-D×4個）', 'FL-VS-4（FL-V-4×8個・FL-D-4×4個）'], u: '梱包' },
@@ -1089,7 +1089,7 @@
         if (!o) { out.items[it.id] = true; out.lines.push('追加　' + itemLabel(it) + '　数 ' + qu(it)); return; }
         delete bi[it.id];
         var ch = [];
-        if (rest(it) !== rest(o)) ch.push(itemLabel(o) + ' → ' + sizeText(it) + (itemSub(o) !== itemSub(it) && sizeText(o) === sizeText(it) ? '（' + itemSub(it).replace(sizeText(it), '').replace(/^　/, '') + '）' : ''));
+        if (rest(it) !== rest(o)) ch.push(itemLabel(o) + ' → ' + sizeText(it) + (itemSub(o) !== itemSub(it) && sizeText(o) === sizeText(it) ? '（' + itemSub(it).replace(sizeText(it), '').replace(/^　+|　+$/g, '') + '）' : ''));
         else if (qu(it) !== qu(o)) ch.push(itemLabel(it));
         if (qu(it) !== qu(o)) ch.push('数 ' + qu(o) + '→' + qu(it));
         if (ch.length) { out.items[it.id] = true; out.lines.push(ch.join('　')); }
