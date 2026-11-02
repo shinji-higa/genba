@@ -78,7 +78,7 @@
 <script type="module">
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
-const APP_VER = 'Ver.20261102-01';
+const APP_VER = 'Ver.20261102-02';
 const API = 'https://script.google.com/macros/s/AKfycbyW2hFHqIQuu-TsflPk_0zv7gquhoepspuvRG9-bMStPDSWSc2blcDFBtWs7MisP3f_/exec';
 const app = initializeApp({ apiKey: 'AIzaSyDVR4p4DO4s9h70uPlXUVlhNcMP9-YkQ5Q', authDomain: 'genba-portal-9077b.firebaseapp.com', projectId: 'genba-portal-9077b' });
 const auth = getAuth(app);
@@ -195,7 +195,7 @@ function renderMonth() {
   if ($('ok')) $('ok').onclick = async () => {
     if (!confirm(ymLabel(ym) + 'の給与を確定しますか？\n確定すると金額が固定されます。')) return;
     $('ok').disabled = true;
-    try { await pay('confirm', { ym, list: list.map(e => { const r = MON.res[e.id]; return { id: e.id, name: e.name, payTotal: r.payTotal, dedTotal: r.dedTotal, net: r.net, adj: (MON.saved[e.id] || {}).adj || {}, result: r }; }) }); drawMonth(); } catch (x) { alert(x.message); $('ok').disabled = false; }
+    try { await pay('confirm', { ym, list: list.map(e => { const r = MON.res[e.id]; return { id: e.id, name: e.name, payTotal: r.payTotal, dedTotal: r.dedTotal, net: r.net, adj: (MON.saved[e.id] || {}).adj || {}, result: { ...r, att: MON.att[e.id] || {} } }; }) }); drawMonth(); } catch (x) { alert(x.message); $('ok').disabled = false; }
   };
   if ($('un')) $('un').onclick = async () => { const why = prompt('確定を解除する理由を書いてください（記録に残ります）'); if (!why) return; try { await pay('unconfirm', { ym, why }); drawMonth(); } catch (x) { alert(x.message); } };
 }
@@ -265,7 +265,8 @@ async function pdfOf(htmls, name, wide) {
   }
   box.remove(); pdf.save(name);
 }
-const YR_ROWS = [['支給', null], ['基本給', r => r.pay && r.pay.base], ['時間外手当', r => r.pay && r.pay.ot], ['休日出勤手当', r => r.pay && (r.pay.shoDay + r.pay.shoOt + r.pay.houDay + r.pay.houOt)], ['夜間作業手当', r => r.pay && r.pay.night], ['家族手当', r => r.pay && r.pay.family], ['交通費', r => r.pay && r.pay.commute], ['出張手当', r => r.pay && r.pay.trip], ['支給合計', r => r.payTotal], ['控除', null], ['健康保険料', r => r.ded && r.ded.health], ['厚生年金', r => r.ded && r.ded.pension], ['雇用保険', r => r.ded && r.ded.emp], ['所得税', r => r.ded && r.ded.tax], ['住民税', r => r.ded && r.ded.resident], ['年末調整', r => r.ded && r.ded.yearEnd], ['控除合計', r => r.dedTotal], ['差引支給額', r => r.net]];
+const attOf = r => r.att || {};
+const YR_ROWS = [['勤務', null], ['労働日数', r => { const a = attOf(r); return (a.workDays || 0) + (a.shoDays || 0) + (a.houDays || 0); }], ['労働時間', r => attOf(r).totalH], ['時間外の時間', r => { const a = attOf(r); return (a.otH || 0) + (a.shoOtH || 0) + (a.houOtH || 0); }], ['休日出勤の日数', r => { const a = attOf(r); return (a.shoDays || 0) + (a.houDays || 0); }], ['夜間作業の日数', r => { const a = attOf(r); return (a.nightDays || 0) + (a.nightShoDays || 0) + (a.nightHouDays || 0); }], ['有給の日数', r => attOf(r).paidDays], ['支給', null], ['基本給', r => r.pay && r.pay.base], ['時間外手当', r => r.pay && r.pay.ot], ['休日出勤手当', r => r.pay && (r.pay.shoDay + r.pay.shoOt + r.pay.houDay + r.pay.houOt)], ['夜間作業手当', r => r.pay && r.pay.night], ['家族手当', r => r.pay && r.pay.family], ['交通費', r => r.pay && r.pay.commute], ['出張手当', r => r.pay && r.pay.trip], ['支給合計', r => r.payTotal], ['控除', null], ['健康保険料', r => r.ded && r.ded.health], ['厚生年金', r => r.ded && r.ded.pension], ['雇用保険', r => r.ded && r.ded.emp], ['所得税', r => r.ded && r.ded.tax], ['住民税', r => r.ded && r.ded.resident], ['年末調整', r => r.ded && r.ded.yearEnd], ['控除合計', r => r.dedTotal], ['差引支給額', r => r.net]];
 function ledgerHtml(e, y, data) {
   const months = Array.from({ length: 12 }, (_, i) => y + '-' + pad(i + 1)), row = ym => (data.months.find(x => x.ym === ym && x.id === e.id) || {}).result || {};
   const bon = data.bonus.filter(x => x.id === e.id);
@@ -287,7 +288,7 @@ async function drawYear() {
       list.forEach(e => YR_ROWS.filter(r => r[1]).forEach(([k, f]) => out.push([e.name, k].concat(months.map(m => Number(f((data.months.find(x => x.ym === m && x.id === e.id) || {}).result || {})) || 0)))));
       const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob(['﻿' + out.map(r => r.map(v => '"' + String(v).replace(/"/g, '""') + '"').join(',')).join('\r\n')], { type: 'text/csv' })); a.download = '賃金台帳_' + y + '.csv'; a.click();
     };
-    M.querySelectorAll('[data-m]').forEach(b => { b.onclick = () => { $('ym2').textContent = 'PDFを作っています…'; const m = b.dataset.m; pdfOf(data.months.filter(x => x.ym === m).map(x => slipHtml(list.find(e => e.id === x.id) || { name: x.name }, x.result, m, {})), '給与明細_' + m + '.pdf').then(() => { $('ym2').textContent = ''; }, x => { $('ym2').textContent = x.message; }); }; });
+    M.querySelectorAll('[data-m]').forEach(b => { b.onclick = () => { $('ym2').textContent = 'PDFを作っています…'; const m = b.dataset.m; pdfOf(data.months.filter(x => x.ym === m).map(x => slipHtml(list.find(e => e.id === x.id) || { name: x.name }, x.result, m, x.result.att || {})), '給与明細_' + m + '.pdf').then(() => { $('ym2').textContent = ''; }, x => { $('ym2').textContent = x.message; }); }; });
   } catch (e) { fail(e); }
 }
 
