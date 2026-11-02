@@ -79,7 +79,7 @@
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
 import { getFirestore, collection, doc, getDoc, getDocs, setDoc, writeBatch, query, where } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
-const APP_VER = 'Ver.20261102-09';
+const APP_VER = 'Ver.20261102-10';
 const API = 'https://script.google.com/macros/s/AKfycbyW2hFHqIQuu-TsflPk_0zv7gquhoepspuvRG9-bMStPDSWSc2blcDFBtWs7MisP3f_/exec';
 const app = initializeApp({ apiKey: 'AIzaSyDVR4p4DO4s9h70uPlXUVlhNcMP9-YkQ5Q', authDomain: 'genba-portal-9077b.firebaseapp.com', projectId: 'genba-portal-9077b' });
 const auth = getAuth(app);
@@ -247,9 +247,18 @@ async function drawMonth() {
   try {
     const r = await pay('month', { ym, close: c.close, step: c.step, emps: ST.emps.map(e => ({ id: e.id, uid: e.uid, name: e.name })) });
     if (ST.tab !== 'month' || ST.ym !== ym) return;
-    MON = { ym, saved: r.saved, att: r.att, res: {} };
+    MON = { ym, saved: r.saved, att: r.att, res: {}, sheet: 'wait', view: 'list' };
     ST.emps.filter(e => !e.left).forEach(e => { calcOne(e); });
     renderMonth();
+    // 日報のスプレッドシートが正。開いたら毎回読み、届いたら画面の数字を入れ替える（過去の月もここから）
+    const mon = MON;
+    gas('attend', { ym, close: c.close, step: c.step, emps: ST.emps.map(e => ({ id: e.id, uid: e.uid, name: e.name })) }).then(x => {
+      if (MON !== mon) return;
+      Object.keys(x.att).forEach(id => { const s = mon.saved[id]; if (!(s && s.status === '確定') && !x.att[id].error) mon.att[id] = x.att[id]; });
+      mon.sheet = Object.values(x.att).some(a => a.error) ? 'ng' : 'ok';
+      ST.emps.filter(e => !e.left).forEach(e => { calcOne(e); });
+      if (ST.tab === 'month' && mon.view === 'list') renderMonth();
+    }).catch(() => { if (MON === mon) { mon.sheet = 'ng'; if (ST.tab === 'month' && mon.view === 'list') renderMonth(); } });
   } catch (e) { fail(e); }
 }
 function calcOne(e) {
@@ -258,17 +267,18 @@ function calcOne(e) {
   MON.res[e.id] = KY.calcMonth({ emp: e, att: { ...(MON.att[e.id] || {}), tripNights: adj.tripNights }, adj, cfg: cfgOf(MON.ym), ym: MON.ym, taxTable: taxFor(MON.ym) });
 }
 function renderMonth() {
+  MON.view = 'list';
   const ym = MON.ym, c = cfgOf(ym), p = KY.period(ym, c.close), pd = payDayOf(ym), list = ST.emps.filter(e => !e.left);
   const done = list.length && list.every(e => (MON.saved[e.id] || {}).status === '確定');
   const warn = list.reduce((n, e) => n + ((MON.res[e.id] || {}).warns || []).length, 0);
   const sum = k => list.reduce((n, e) => n + (Number((MON.res[e.id] || {})[k]) || 0), 0);
   M.innerHTML = '<div class="card"><div class="row"><label class="f">給与の月<br><input type="month" id="ym" value="' + ym + '"></label>' +
     '<div class="note">対象 ' + dLabel(p.from) + '〜' + dLabel(p.to) + '<br>支給日 ' + dLabel(pd) + '</div><span class="sp"></span>' +
-    (done ? '<span class="tag ok">確定済み</span><button class="b dark" id="ma">明細をメールで送る</button><button class="b danger" id="un">確定を解除</button>' : '<button class="b dark" id="ok"' + (warn ? ' disabled' : '') + '>この月を確定</button>') + '</div>' +
+    (done ? '<span class="tag ok">確定済み</span><button class="b dark" id="ma">明細をメールで送る</button><button class="b danger" id="un">確定を解除</button>' : '<button class="b dark" id="ok"' + (warn || MON.sheet !== 'ok' ? ' disabled' : '') + '>この月を確定</button>') + '</div>' + (done ? '' : MON.sheet === 'wait' ? '<div class="note">日報のスプレッドシートを読んでいます…（読み終わると確定できます）</div>' : MON.sheet === 'ng' ? '<div class="msg">日報のスプレッドシートを読めませんでした。開き直してください。</div>' : '<div class="note">日報のスプレッドシートの最新です。</div>') +
     (warn ? '<div class="msg">確認が必要な所が ' + warn + ' 件あります。直すと確定できます。</div>' : '') + '</div>' +
     '<div class="card wrapx"><table class="t"><tr><th>氏名</th><th>状態</th><th class="n">出勤</th><th class="n">時間外</th><th class="n">支給合計</th><th class="n">控除合計</th><th class="n">差引支給額</th></tr>' +
     list.map(e => { const r = MON.res[e.id] || {}, a = MON.att[e.id] || {}, st = (MON.saved[e.id] || {}).status, w = (r.warns || []).length;
-      return '<tr class="link" data-id="' + esc(e.id) + '"><td><b>' + esc(e.name) + '</b></td><td>' + (st === '確定' ? '<span class="tag ok">確定</span>' : w ? '<span class="tag ng">要確認 ' + w + '</span>' : '<span class="tag">確認待ち</span>') + (st !== '確定' && !a.rows ? ' <span class="tag ng">日報なし</span>' : '') + '</td><td class="n">' + (a.workDays || 0) + '日</td><td class="n">' + ((a.otH || 0) + (a.shoOtH || 0) + (a.houOtH || 0)) + 'h</td><td class="n">' + yen(r.payTotal) + '</td><td class="n">' + yen(r.dedTotal) + '</td><td class="n"><b>' + yen(r.net) + '</b></td></tr>'; }).join('') +
+      return '<tr class="link" data-id="' + esc(e.id) + '"><td><b>' + esc(e.name) + '</b></td><td>' + (st === '確定' ? '<span class="tag ok">確定</span>' : w ? '<span class="tag ng">要確認 ' + w + '</span>' : '<span class="tag">確認待ち</span>') + (st !== '確定' && MON.sheet === 'ok' && !a.rows ? ' <span class="tag ng">日報なし</span>' : '') + '</td><td class="n">' + (a.workDays || 0) + '日</td><td class="n">' + ((a.otH || 0) + (a.shoOtH || 0) + (a.houOtH || 0)) + 'h</td><td class="n">' + yen(r.payTotal) + '</td><td class="n">' + yen(r.dedTotal) + '</td><td class="n"><b>' + yen(r.net) + '</b></td></tr>'; }).join('') +
     '<tr><td colspan="4"><b>合計</b></td><td class="n"><b>' + yen(sum('payTotal')) + '</b></td><td class="n"><b>' + yen(sum('dedTotal')) + '</b></td><td class="n"><b>' + yen(sum('net')) + '</b></td></tr></table>' +
     (list.length ? '' : '<div class="note" style="margin-top:8px;">従業員のタブから人を追加してください。</div>') + '</div>';
   $('ym').onchange = e => { ST.ym = e.target.value; drawMonth(); };
@@ -312,6 +322,7 @@ async function sendSlips(list, ym) {
   } catch (x) { alert('送れませんでした：' + x.message); }
 }
 function drawPerson(id) {
+  MON.view = 'person';
   const e = ST.emps.find(x => x.id === id), s = MON.saved[id] || {}, adj = { ...(s.adj || {}) }, lock = s.status === '確定', ym = MON.ym;
   M.innerHTML = '<div class="row" style="margin-bottom:10px;"><button class="b" id="bk">← 一覧へ</button><b>' + esc(e.name) + '　' + ymLabel(ym) + '</b></div>' +
     '<div class="card"><h2>この月だけの入力</h2>' + (lock ? '<div class="note">確定済みなので直せません。</div>' : '') +
