@@ -5635,7 +5635,7 @@
     // 部材が100個でも重くならないよう、全部まとめて測ってからまとめて縮める（1回ずつ測ると画面が固まる）
     function fitText(root) {
       var els = Array.prototype.slice.call(root.querySelectorAll(FIT_SEL)), MULTI_SEL = '.dp-tbl td.memo > div, .dp-cell-memo';
-      for (var pass = 0; pass < 4 && els.length; pass++) {
+      for (var pass = 0; pass < 10 && els.length; pass++) {   // 長いMEMOも一番小さい文字まで縮める（4回だと途中で止まり、入る長さでも切れた）
         // 1行の枠は横幅だけ、複数行のMEMOは高さも見る
         var m = els.map(function (el) {
           var multi = el.matches(MULTI_SEL);
