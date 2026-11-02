@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>消耗品注文</title>
-  <!-- Ver.20261102-09 -->
+  <!-- Ver.20261102-10 -->
   <style>
     /* 消耗品注文（フカガワの総合カタログの消耗品）。丸ダクト注文の注文書の仕組みを使う。2026-11-01 作成
        見た目は角ダクトの製作伝票にそろえる（白黒を基調に、薄い灰色は使わない） */
@@ -1082,18 +1082,19 @@
       Object.keys(HEAD_LBL).forEach(function (k) { if (stableJ(S[k] == null ? '' : S[k]) !== stableJ(b[k] == null ? '' : b[k])) { out.spec[k] = true; out.lines.push(HEAD_LBL[k] + '　' + dShow(b[k]) + '→' + dShow(S[k])); } });
       Object.keys(SPEC_LBL).forEach(function (k) { var a = S.spec[k], c = (b.spec || {})[k]; if (String(a == null ? '' : a) !== String(c == null ? '' : c)) { out.spec[k] = true; out.lines.push(SPEC_LBL[k] + '　' + dShow(c) + '→' + dShow(a)); } });
       var bi = {}; (b.items || []).forEach(function (it) { bi[it.id] = it; });
-      var rest = function (x) { var c = JSON.parse(JSON.stringify(x)); delete c.id; delete c.qty; return stableJ(c); };
+      var rest = function (x) { var c = JSON.parse(JSON.stringify(x)); delete c.id; delete c.qty; delete c.unit; return stableJ(c); };
+      var qu = function (x) { return String(x.qty) + (x.unit || ''); };   // 数は単位も一緒に比べる（3束→150本 のように出す）
       S.items.forEach(function (it) {
         var o = bi[it.id];
-        if (!o) { out.items[it.id] = true; out.lines.push('追加　' + itemLabel(it) + '　数 ' + it.qty); return; }
+        if (!o) { out.items[it.id] = true; out.lines.push('追加　' + itemLabel(it) + '　数 ' + qu(it)); return; }
         delete bi[it.id];
         var ch = [];
         if (rest(it) !== rest(o)) ch.push(itemLabel(o) + ' → ' + sizeText(it) + (itemSub(o) !== itemSub(it) && sizeText(o) === sizeText(it) ? '（' + itemSub(it).replace(sizeText(it), '').replace(/^　/, '') + '）' : ''));
-        else if (String(it.qty) !== String(o.qty)) ch.push(itemLabel(it));
-        if (String(it.qty) !== String(o.qty)) ch.push('数 ' + o.qty + '→' + it.qty);
+        else if (qu(it) !== qu(o)) ch.push(itemLabel(it));
+        if (qu(it) !== qu(o)) ch.push('数 ' + qu(o) + '→' + qu(it));
         if (ch.length) { out.items[it.id] = true; out.lines.push(ch.join('　')); }
       });
-      Object.keys(bi).forEach(function (id) { out.lines.push('削除　' + itemLabel(bi[id]) + '　数 ' + bi[id].qty); });
+      Object.keys(bi).forEach(function (id) { out.lines.push('削除　' + itemLabel(bi[id]) + '　数 ' + qu(bi[id])); });
       return out;
     }
     function redIf(on, html) { return on ? '<span class="dp-red">' + html + '</span>' : html; }
