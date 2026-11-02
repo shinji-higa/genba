@@ -79,7 +79,7 @@
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
 import { getFirestore, collection, doc, getDoc, getDocs, setDoc, writeBatch, query, where } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
-const APP_VER = 'Ver.20261102-11';
+const APP_VER = 'Ver.20261102-12';
 const API = 'https://script.google.com/macros/s/AKfycbyW2hFHqIQuu-TsflPk_0zv7gquhoepspuvRG9-bMStPDSWSc2blcDFBtWs7MisP3f_/exec';
 const app = initializeApp({ apiKey: 'AIzaSyDVR4p4DO4s9h70uPlXUVlhNcMP9-YkQ5Q', authDomain: 'genba-portal-9077b.firebaseapp.com', projectId: 'genba-portal-9077b' });
 const auth = getAuth(app);
@@ -146,6 +146,7 @@ const FAST_ACT = {
       const r = await gas('boot'); cfg = r.cfg || {}; emps = r.emps || [];
       const b = writeBatch(db); b.set(doc(db, 'payrollCfg', 'main'), plain(cfg)); emps.forEach(x => b.set(doc(db, 'payrollEmps', x.id), plain(x))); await b.commit();
     }
+    await portalEmps(emps).catch(e => { window.kyLastError = e && e.code; });
     return { me: { name: u.name || auth.currentUser.uid, uid: auth.currentUser.uid }, cfg: cfg || {}, emps };
   },
   async saveCfg(d) { await setDoc(doc(db, 'payrollCfg', 'main'), plain(d), { merge: true }); mirror('saveCfg', d); return {}; },
@@ -190,6 +191,18 @@ const FAST_ACT = {
     return { list: l.docs.map(x => x.data()), prev: p.docs.map(x => x.data()).filter(x => x.status === '確定') };
   }
 };
+/* ポータルで「日報」にチェックがある人を従業員として自動で足す（テスト用の @example.com は除く）。ユーザー指示 2026-11-02 */
+const sortEmps = l => l.sort((a, b) => String(a.code || '').localeCompare(String(b.code || ''), 'ja', { numeric: true }));
+async function portalEmps(emps) {
+  const us = (await getDocs(col('users'))).docs.map(d => ({ ...d.data(), uid: d.id }));
+  const add = us.filter(u => u.canDaily && !/@example\.com$/.test(u.uid) && !emps.some(e => e.uid === u.uid));
+  for (const u of add) {
+    const x = { id: doc(col('payrollEmps')).id, uid: u.uid, name: u.name || u.uid, kind: '社員', insure: true, empIns: true, deps: 0, resident: {} };
+    await setDoc(doc(db, 'payrollEmps', x.id), plain(x)); mirror('saveEmp', x); emps.push(x);
+  }
+  if (add.length) sortEmps(emps);
+  return add.length;
+}
 async function pay(action, data) { return FAST_ACT[action] ? FAST_ACT[action](data || {}) : gas(action, data); }
 
 /* ---------- 初期値。設定画面で変えられる（説明は CFG_DEF の横の文）---------- */
@@ -245,6 +258,7 @@ async function drawMonth() {
   ST.ym = ST.ym || defaultYm(); const ym = ST.ym, c = cfgOf(ym);
   busy('日報を集計しています…');
   try {
+    await portalEmps(ST.emps).catch(() => {});
     const r = await pay('month', { ym, close: c.close, step: c.step, emps: ST.emps.map(e => ({ id: e.id, uid: e.uid, name: e.name })) });
     if (ST.tab !== 'month' || ST.ym !== ym) return;
     MON = { ym, saved: r.saved, att: r.att, res: {}, sheet: 'wait', view: 'list' };
@@ -425,7 +439,8 @@ async function drawYear() {
 /* 従業員 */
 const EMP_F = [['code', '社員コード', 'text', '今の明細の社員コードです。'], ['name', '氏名', 'text', '明細に出る名前です。'], ['uid', 'ポータルのアカウント', 'text', '日報を読むために使います。ポータルのログインIDを入れます。空欄の人は氏名で探します。'], ['gender', '性別', 'gender', '賃金台帳に載せる項目です。'], ['joined', '入社日', 'date', '有給の管理に使う予定です。'], ['kind', '区分', 'kind', '社員・役員などです。計算は下の「保険」の欄で変わります。'], ['email', '明細を送るメール', 'text', '任意です。空欄の人には送りません。'], ['consent', '電子交付の承諾日', 'date', '本人が承諾した日です。メールで送る前に入れます。'], ['base', '基本給', 'number', '月額です。'], ['family', '家族手当', 'number', '毎月の定額です。'], ['commute', '交通費', 'number', '毎月の定額です。所得税の対象から外します。'], ['std', '標準報酬月額（健康保険）', 'number', '年金事務所の決定通知書の額です。'], ['stdPen', '標準報酬月額（厚生年金）', 'number', '健康保険と違うときだけ入れます。空欄なら同じ額を使います。'], ['birth', '生年月日', 'date', '介護保険（40〜64歳）の判定に使います。'], ['care', '介護保険', 'care', '「自動」は生年月日で判定します。生年月日が空欄のときは対象外になるので、対象か対象外を選びます。'], ['deps', '扶養親族等の数', 'number', '扶養控除等申告書の人数です。所得税の表の列を決めます。'], ['insure', '社会保険', 'bool', '外すと健康保険と厚生年金を引きません。'], ['empIns', '雇用保険', 'bool', '役員などは外します。'], ['noTax', '所得税を計算しない', 'boolR', '税理士さんの指示がある人だけ入れます。'], ['left', '退職', 'boolR', '入れると一覧から外します。過去の記録は残ります。']];
 function drawEmp() {
-  M.innerHTML = '<div class="card"><div class="row"><h2 style="margin:0;">従業員</h2><span class="sp"></span><button class="b dark" id="add">＋ 追加</button></div></div><div class="card wrapx"><table class="t"><tr><th>氏名</th><th>区分</th><th class="n">基本給</th><th class="n">扶養</th><th>メール</th></tr>' + ST.emps.map(e => '<tr class="link" data-id="' + esc(e.id) + '"><td><b>' + esc(e.name) + '</b>' + (e.left ? ' <span class="tag">退職</span>' : '') + '</td><td>' + esc(e.kind) + '</td><td class="n">' + yen(e.base) + '</td><td class="n">' + (e.deps || 0) + '人</td><td>' + esc(e.email || '') + '</td></tr>').join('') + '</table></div>';
+  portalEmps(ST.emps).then(n => { if (n && ST.tab === 'emp' && $('add')) drawEmp(); }).catch(() => {});
+  M.innerHTML = '<div class="card"><div class="row"><h2 style="margin:0;">従業員</h2><span class="note">ポータルで「日報」にチェックがある人は自動で増えます。</span><span class="sp"></span><button class="b dark" id="add">＋ 追加</button></div></div><div class="card wrapx"><table class="t"><tr><th>氏名</th><th>区分</th><th class="n">基本給</th><th class="n">扶養</th><th>メール</th></tr>' + ST.emps.map(e => '<tr class="link" data-id="' + esc(e.id) + '"><td><b>' + esc(e.name) + '</b>' + (e.left ? ' <span class="tag">退職</span>' : '') + '</td><td>' + esc(e.kind) + '</td><td class="n">' + yen(e.base) + '</td><td class="n">' + (e.deps || 0) + '人</td><td>' + esc(e.email || '') + '</td></tr>').join('') + '</table></div>';
   $('add').onclick = () => editEmp({ kind: '社員', insure: true, empIns: true, resident: {} });
   M.querySelectorAll('tr.link').forEach(t => { t.onclick = () => editEmp(ST.emps.find(e => e.id === t.dataset.id)); });
 }
@@ -476,7 +491,7 @@ onAuthStateChanged(auth, async u => {
   busy();
   try {
     const r = await pay('boot');
-    ST.me = r.me; ST.cfg = { ...DEF, ...r.cfg }; ST.emps = r.emps.sort((a, b) => String(a.code || '').localeCompare(String(b.code || ''), 'ja', { numeric: true }));
+    ST.me = r.me; ST.cfg = { ...DEF, ...r.cfg }; ST.emps = sortEmps(r.emps);
     $('who').textContent = r.me.name; $('hd').style.display = ''; draw();
   } catch (e) { await signOut(auth).catch(() => {}); login(e.message); }
 });
