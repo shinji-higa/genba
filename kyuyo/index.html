@@ -73,12 +73,13 @@
 </header>
 <main id="m"></main>
 
-<script src="tax.js?v=6"></script>
-<script src="calc.js?v=6"></script>
+<script src="tax.js?v=7"></script>
+<script src="calc.js?v=7"></script>
 <script type="module">
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
-const APP_VER = 'Ver.20261102-06';
+import { getFirestore, collection, doc, getDoc, getDocs, setDoc, writeBatch, query, where } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
+const APP_VER = 'Ver.20261102-07';
 const API = 'https://script.google.com/macros/s/AKfycbyW2hFHqIQuu-TsflPk_0zv7gquhoepspuvRG9-bMStPDSWSc2blcDFBtWs7MisP3f_/exec';
 const app = initializeApp({ apiKey: 'AIzaSyDVR4p4DO4s9h70uPlXUVlhNcMP9-YkQ5Q', authDomain: 'genba-portal-9077b.firebaseapp.com', projectId: 'genba-portal-9077b' });
 const auth = getAuth(app);
@@ -105,12 +106,90 @@ async function checkVer() {
 document.addEventListener('visibilitychange', checkVer); setInterval(checkVer, 600000); setTimeout(checkVer, 3000);
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
 
-async function pay(action, data) {
+async function gas(action, data) {
   const idToken = await auth.currentUser.getIdToken();
   const d = await fetch(API, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ fn: 'pay', idToken, action, data: data || {} }) }).then(r => r.json());
   if (!d || !d.ok) throw new Error((d && d.m) || 'サーバーでエラーが発生しました。');
   return d.v;
 }
+
+/* 画面はポータルと同じ Firestore で動かして速くする（ユーザー指示 2026-11-02）。読めるのはマスターと給与管理の権限がある人だけ。
+   金額を端末に控えないよう、ポータルと違って端末の保存はしない。スプレッドシート（給与管理DB）へは裏で控えを書く。日報は今月と前月がポータルにある */
+const db = getFirestore(app);
+const col = n => collection(db, n), mid = (ym, id) => ym + '_' + id, plain = o => JSON.parse(JSON.stringify(o));
+const mirror = (action, data) => gas(action, data).catch(e => alert('ドライブの給与管理DBへ書けませんでした：' + e.message + '\n画面の保存はできています。'));
+function attend(days, ym, close, step) {
+  const p = KY.period(ym, close), st = (step || 30) / 60, s = d => d.getFullYear() + '/' + pad(d.getMonth() + 1) + '/' + pad(d.getDate()), from = s(p.from), to = s(p.to);
+  const a = { totalH: 0, workDays: 0, absentDays: 0, paidDays: 0, otH: 0, earlyH: 0, shoDays: 0, shoOtH: 0, houDays: 0, houOtH: 0, nightDays: 0, nightShoDays: 0, nightHouDays: 0, rows: 0 };
+  days.forEach(d => {
+    if (d.deleted || String(d.date) < from || String(d.date) > to) return;
+    a.rows++;
+    if (d.kubun === '欠勤') { a.absentDays++; return; }
+    if (d.kubun === '有給') { a.paidDays++; return; }
+    if (d.kubun !== '出勤') return;
+    const ot = Math.floor((Number(d.ot) || 0) / st + 1e-9) * st, night = !!d.night;
+    a.totalH += Number(d.hours) || 0;
+    if (d.type === '所定休日') { a.shoDays++; a.shoOtH += ot; if (night) a.nightShoDays++; }
+    else if (d.type === '法定休日') { a.houDays++; a.houOtH += ot; if (night) a.nightHouDays++; }
+    else { a.workDays++; a.otH += ot; a.earlyH += Number(d.early) || 0; if (night) a.nightDays++; }
+  });
+  return a;
+}
+const FAST_ACT = {
+  async boot() {
+    const u = (await getDoc(doc(db, 'users', auth.currentUser.uid))).data() || {};
+    if (!u.isMaster && !u.canPayroll) throw new Error('給与管理の権限がありません。');
+    const [c, e] = await Promise.all([getDoc(doc(db, 'payrollCfg', 'main')), getDocs(col('payrollEmps'))]);
+    let cfg = c.exists() ? c.data() : null, emps = e.docs.map(d => ({ ...d.data(), id: d.id }));
+    if (!cfg && !emps.length) {   // 初回だけ給与管理DBから移す
+      const r = await gas('boot'); cfg = r.cfg || {}; emps = r.emps || [];
+      const b = writeBatch(db); b.set(doc(db, 'payrollCfg', 'main'), plain(cfg)); emps.forEach(x => b.set(doc(db, 'payrollEmps', x.id), plain(x))); await b.commit();
+    }
+    return { me: { name: u.name || auth.currentUser.uid, uid: auth.currentUser.uid }, cfg: cfg || {}, emps };
+  },
+  async saveCfg(d) { await setDoc(doc(db, 'payrollCfg', 'main'), plain(d), { merge: true }); mirror('saveCfg', d); return {}; },
+  async saveEmp(d) { const id = d.id || doc(col('payrollEmps')).id, x = { ...d, id }; await setDoc(doc(db, 'payrollEmps', id), plain(x)); mirror('saveEmp', x); return { id }; },
+  async month(d) {
+    const saved = {}, att = {};
+    (await getDocs(query(col('payrollMonths'), where('ym', '==', d.ym)))).docs.forEach(x => { const v = x.data(); saved[v.id] = v; });
+    await Promise.all((d.emps || []).map(async e => {
+      const s = saved[e.id];
+      if (s && s.status === '確定' && s.result && s.result.att) { att[e.id] = s.result.att; return; }
+      att[e.id] = e.uid ? attend((await getDocs(collection(db, 'daily', e.uid, 'days'))).docs.map(x => x.data()), d.ym, d.close, d.step) : attend([], d.ym, d.close, d.step);
+    }));
+    return { saved, att };
+  },
+  async saveAdj(d) {
+    const r = doc(db, 'payrollMonths', mid(d.ym, d.id)), c = await getDoc(r);
+    if (c.exists() && c.data().status === '確定') throw new Error('確定した月は直せません。先に確定を解除してください。');
+    await setDoc(r, plain({ ym: d.ym, year: d.ym.slice(0, 4), id: d.id, name: d.name, status: '入力中', adj: d.adj || {} }));
+    mirror('saveAdj', d); return {};
+  },
+  async confirm(d) {
+    const at = new Date().toLocaleString('ja-JP'), b = writeBatch(db), by = ST.me.name;
+    d.list.forEach(x => b.set(doc(db, 'payrollMonths', mid(d.ym, x.id)), plain({ ym: d.ym, year: d.ym.slice(0, 4), id: x.id, name: x.name, status: '確定', adj: x.adj || {}, result: x.result, at, by })));
+    await b.commit(); mirror('confirm', d); return { at };
+  },
+  async unconfirm(d) {
+    const b = writeBatch(db);
+    (await getDocs(query(col('payrollMonths'), where('ym', '==', d.ym)))).docs.forEach(x => { if (x.data().status === '確定') b.update(x.ref, { status: '入力中', at: '', by: '' }); });
+    await b.commit(); mirror('unconfirm', d); return {};
+  },
+  async year(d) {
+    const y = String(d.year), [m, bo] = await Promise.all([getDocs(query(col('payrollMonths'), where('year', '==', y))), getDocs(query(col('payrollBonus'), where('year', '==', y)))]);
+    return { months: m.docs.map(x => x.data()).filter(x => x.status === '確定'), bonus: bo.docs.map(x => x.data()) };
+  },
+  async saveBonus(d) {
+    const b = writeBatch(db);
+    d.list.forEach(x => b.set(doc(db, 'payrollBonus', mid(d.ym, x.id)), plain({ ym: d.ym, year: d.ym.slice(0, 4), id: x.id, name: x.name, status: d.done ? '確定' : '入力中', amount: x.amount, result: x.result })));
+    await b.commit(); mirror('saveBonus', d); return {};
+  },
+  async bonus(d) {
+    const [l, p] = await Promise.all([getDocs(query(col('payrollBonus'), where('ym', '==', d.ym))), getDocs(query(col('payrollMonths'), where('ym', '==', d.prev)))]);
+    return { list: l.docs.map(x => x.data()), prev: p.docs.map(x => x.data()).filter(x => x.status === '確定') };
+  }
+};
+async function pay(action, data) { return FAST_ACT[action] ? FAST_ACT[action](data || {}) : gas(action, data); }
 
 /* ---------- 初期値。設定画面で変えられる（説明は CFG_DEF の横の文）---------- */
 const DEF = {
@@ -188,7 +267,7 @@ function renderMonth() {
     (warn ? '<div class="msg">確認が必要な所が ' + warn + ' 件あります。直すと確定できます。</div>' : '') + '</div>' +
     '<div class="card wrapx"><table class="t"><tr><th>氏名</th><th>状態</th><th class="n">出勤</th><th class="n">時間外</th><th class="n">支給合計</th><th class="n">控除合計</th><th class="n">差引支給額</th></tr>' +
     list.map(e => { const r = MON.res[e.id] || {}, a = MON.att[e.id] || {}, st = (MON.saved[e.id] || {}).status, w = (r.warns || []).length;
-      return '<tr class="link" data-id="' + esc(e.id) + '"><td><b>' + esc(e.name) + '</b></td><td>' + (st === '確定' ? '<span class="tag ok">確定</span>' : w ? '<span class="tag ng">要確認 ' + w + '</span>' : '<span class="tag">確認待ち</span>') + '</td><td class="n">' + (a.workDays || 0) + '日</td><td class="n">' + ((a.otH || 0) + (a.shoOtH || 0) + (a.houOtH || 0)) + 'h</td><td class="n">' + yen(r.payTotal) + '</td><td class="n">' + yen(r.dedTotal) + '</td><td class="n"><b>' + yen(r.net) + '</b></td></tr>'; }).join('') +
+      return '<tr class="link" data-id="' + esc(e.id) + '"><td><b>' + esc(e.name) + '</b></td><td>' + (st === '確定' ? '<span class="tag ok">確定</span>' : w ? '<span class="tag ng">要確認 ' + w + '</span>' : '<span class="tag">確認待ち</span>') + (st !== '確定' && !a.rows ? ' <span class="tag ng">日報なし</span>' : '') + '</td><td class="n">' + (a.workDays || 0) + '日</td><td class="n">' + ((a.otH || 0) + (a.shoOtH || 0) + (a.houOtH || 0)) + 'h</td><td class="n">' + yen(r.payTotal) + '</td><td class="n">' + yen(r.dedTotal) + '</td><td class="n"><b>' + yen(r.net) + '</b></td></tr>'; }).join('') +
     '<tr><td colspan="4"><b>合計</b></td><td class="n"><b>' + yen(sum('payTotal')) + '</b></td><td class="n"><b>' + yen(sum('dedTotal')) + '</b></td><td class="n"><b>' + yen(sum('net')) + '</b></td></tr></table>' +
     (list.length ? '' : '<div class="note" style="margin-top:8px;">従業員のタブから人を追加してください。</div>') + '</div>';
   $('ym').onchange = e => { ST.ym = e.target.value; drawMonth(); };
