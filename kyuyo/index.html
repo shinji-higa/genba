@@ -79,7 +79,7 @@
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
 import { getFirestore, collection, doc, getDoc, getDocs, setDoc, writeBatch, query, where } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
-const APP_VER = 'Ver.20261102-07';
+const APP_VER = 'Ver.20261102-08';
 const API = 'https://script.google.com/macros/s/AKfycbyW2hFHqIQuu-TsflPk_0zv7gquhoepspuvRG9-bMStPDSWSc2blcDFBtWs7MisP3f_/exec';
 const app = initializeApp({ apiKey: 'AIzaSyDVR4p4DO4s9h70uPlXUVlhNcMP9-YkQ5Q', authDomain: 'genba-portal-9077b.firebaseapp.com', projectId: 'genba-portal-9077b' });
 const auth = getAuth(app);
@@ -117,7 +117,8 @@ async function gas(action, data) {
    金額を端末に控えないよう、ポータルと違って端末の保存はしない。スプレッドシート（給与管理DB）へは裏で控えを書く。日報は今月と前月がポータルにある */
 const db = getFirestore(app);
 const col = n => collection(db, n), mid = (ym, id) => ym + '_' + id, plain = o => JSON.parse(JSON.stringify(o));
-const mirror = (action, data) => gas(action, data).catch(e => alert('ドライブの給与管理DBへ書けませんでした：' + e.message + '\n画面の保存はできています。'));
+let mirrorQ = Promise.resolve();   // 控えは押した順に1つずつ書く（続けて押しても順番が入れ替わらないように）
+const mirror = (action, data) => { mirrorQ = mirrorQ.then(() => gas(action, data)).catch(e => alert('ドライブの給与管理DBへ書けませんでした：' + e.message + '\n画面の保存はできています。')); return mirrorQ; };
 function attend(days, ym, close, step) {
   const p = KY.period(ym, close), st = (step || 30) / 60, s = d => d.getFullYear() + '/' + pad(d.getMonth() + 1) + '/' + pad(d.getDate()), from = s(p.from), to = s(p.to);
   const a = { totalH: 0, workDays: 0, absentDays: 0, paidDays: 0, otH: 0, earlyH: 0, shoDays: 0, shoOtH: 0, houDays: 0, houOtH: 0, nightDays: 0, nightShoDays: 0, nightHouDays: 0, rows: 0 };
