@@ -4644,7 +4644,7 @@
       } else if (T.split) h += '<label class="chk"><input type="checkbox" data-c="split"' + (ED.split ? ' checked' : '') + '>2割（2つ割り）</label>';
       if (!T.optFlags) (T.flags || []).forEach(function (f) { h += '<label class="chk"><input type="checkbox" data-f="' + f[0] + '"' + (ED.flags[f[0]] ? ' checked' : '') + '>' + esc(f[1]) + '</label>'; });   // optFlags の部材（キャンバス）はオプションの欄に出す
       h += '<div class="spec-row"><span class="lbl">伝票の図</span><div class="chips" id="edSpan">' + [['', '自動（<span id="edSpanA"></span>）'], ['1', '1枠'], ['v', '縦2枠'], ['h', '横2枠'], ['v3', '縦3枠'], ['h3', '横3枠'], ['4', '4枠（縦2×横2）'], ['6', '6枠（縦3×横2）'], ['9', '9枠（縦3×横3）']].filter(function (o) { return ED.type !== 'other' || /^(|1|4|9)$/.test(o[0]); }).map(function (o) { return '<span class="chip' + ((ED.span || '') === o[0] ? ' on' : '') + '" data-v="' + o[0] + '">' + o[1] + '</span>'; }).join('') + '</div></div>';   // 図が小さくて見えないときは2枠に
-      h += '<div class="fg" style="margin-top:8px;"><label>MEMO（伝票に載せる注意事項）</label><textarea data-e="memo" rows="2">' + esc(ED.memo) + '</textarea></div>';
+      h += '<div class="fg" style="margin-top:8px;"><label>MEMO（伝票に載せる注意事項）</label><textarea data-e="memo" rows="3">' + esc(ED.memo) + '</textarea></div>';
       var form = document.getElementById('edForm');
       form.innerHTML = h;
       if (ED.type === 'other') skSetup();   // 手書きの紙
