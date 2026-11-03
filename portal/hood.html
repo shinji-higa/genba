@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>フード注文</title>
-  <!-- Ver.20261103-21 -->
+  <!-- Ver.20261103-22 -->
   <style>
     /* 厨房フードの注文書。注文用図面（箱型・山型・二重）の寸法表を画面で入力し、数字入りの図を1台1ページで出す。フードはメーカー共通なので本体にメーカーは出さない。
        仕組みは金物注文（添付）kana.html と同じ（保存・提出・版・PDF）。2026-11-02 作成
@@ -648,13 +648,16 @@
       // 接続の印（角ダクトの図と同じ丸枠の記号）
       var jMk = function (x, y, c) { var rx = Math.max(6.5, c.length * FS * 0.32 + 3); return '<g data-sp="j"><rect x="' + (x - rx).toFixed(1) + '" y="' + (y - 6).toFixed(1) + '" width="' + (rx * 2).toFixed(1) + '" height="12" rx="6" ry="6" fill="#fff" stroke-width="0.7"/>' + tx(x, y + 3, c, 'middle', true) + '</g>'; };   // 接続の記号は枠ごと動かす
       // 開口を正面・側面から見た形：短管は立ち上がりと先の接続（TDC＝口の線を外へ、FG 系＝さらに内に平行の線、ドン補＝両わきを突き出す。角ダクトの図と同じ）、開口は上の面に点線
-      var mouth = function (x0, w, y0, k, p, mark) {
+      var mouth = function (x0, w, y0, k, p, mark, yo) {
         if (!p.len) return ln(x0, y0 + 1.5, x0 + w, y0 + 1.5, '2 2', 0.8);
-        var yt = y0 - p.len * k, o = ln(x0, y0, x0, yt) + ln(x0 + w, y0, x0 + w, yt), c = p.o.ej;
-        if (p.o.kind === '丸') return o + ln(x0, yt, x0 + w, yt);
-        o += ln(x0 - 3, yt, x0 + w + 3, yt, '', 1.3);
-        if (FG_JOINTS.indexOf(c) >= 0) o += ln(x0, yt + 2.2, x0 + w, yt + 2.2, '', 0.7);
-        if (c === 'ドン補') o += ln(x0, yt, x0, yt - 3.5, '', 1.1) + ln(x0 + w, yt, x0 + w, yt - 3.5, '', 1.1);
+        if (yo == null) yo = y0;
+        var yt = y0 - p.len * k, c = p.o.ej, hid = yt > yo + 0.1 ? '3 2' : '';   // hid＝先まで外装の中
+        var vert = function (x) { return y0 <= yo + 0.1 ? ln(x, y0, x, yt) : ln(x, y0, x, Math.max(yt, yo), '3 2') + (yt < yo ? ln(x, yo, x, yt) : ''); };
+        var o = vert(x0) + vert(x0 + w);
+        if (p.o.kind === '丸') return o + ln(x0, yt, x0 + w, yt, hid);
+        o += ln(x0 - 3, yt, x0 + w + 3, yt, hid, 1.3);
+        if (FG_JOINTS.indexOf(c) >= 0) o += ln(x0, yt + 2.2, x0 + w, yt + 2.2, hid, 0.7);
+        if (c === 'ドン補') o += ln(x0, yt, x0, yt - 3.5, hid, 1.1) + ln(x0 + w, yt, x0 + w, yt - 3.5, hid, 1.1);
         if (!mark) return o;
         var st = mark === 2 ? opSt(p.o, 'ej', 'es') : '', mx = x0 + w / 2, rgt = mx < fxMid;   // サイズは印の横（正面図だけ）
         return o + jMk(mx, yt - 10, c) + (st ? tx(rgt ? mx + 10 + c.length * 3.2 : mx - 10 - c.length * 3.2, yt - 7, st, rgt ? 'start' : 'end', true) : '');
@@ -668,7 +671,7 @@
           if (it.shape === 'HW') o += ln(fx0, ySk, fx0 + pw, ySk, '', 0.5) + pl([[fx0 + i, ySk], [fx0 + E1 * k, ySk - h * k], [fx0 + (E1 + E2) * k, ySk - h * k], [fx0 + pw - i, ySk]], false, eGuess ? '3 2' : '');
         }
         fxMid = fx0 + pw / 2;
-        ops.forEach(function (p) { o += mouth(fx0 + p.b.left * k, p.b.w * k, opY(fy0, k), k, p, thumb ? 0 : 2); });
+        ops.forEach(function (p) { o += mouth(fx0 + p.b.left * k, p.b.w * k, opY(fy0, k), k, p, thumb ? 0 : 2, fy0); });
         sp.forEach(function (x) { o += ln(fx0 + x * k, fy0, fx0 + x * k, fy0 + fh, '4 2', 0.7) + (thumb ? '' : jMk(fx0 + x * k, fy0 + fh / 2, bj)); });
         return o;
       };
@@ -770,11 +773,11 @@
         return o;
       };
       s += side(sx0, F1, F2);
-      ops.forEach(function (p) { s += mouth(sx0 + p.b.front * k, p.b.d * k, opY(fy0, k), k, p, 1); });
+      ops.forEach(function (p) { s += mouth(sx0 + p.b.front * k, p.b.d * k, opY(fy0, k), k, p, 1, fy0); });
       s += dH(sx0, sx0 + sw, fy0 + fh + 12, fmtN(W), true);
       if (needLeft) {
         s += side(lx0, F3, F2);
-        ops.forEach(function (p) { s += mouth(lx0 + (W - p.b.back) * k, p.b.d * k, opY(fy0, k), k, p, 1); });
+        ops.forEach(function (p) { s += mouth(lx0 + (W - p.b.back) * k, p.b.d * k, opY(fy0, k), k, p, 1, fy0); });
         s += dH(lx0, lx0 + sw, fy0 + fh + 12, fmtN(W), true);
       }
       /* --- 正面・背面・側面の開口（向こう側は点線。左側面図を出すときは左側面の開口はそこに実線で。位置は図の下の文字）--- */
