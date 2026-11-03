@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>フード注文</title>
-  <!-- Ver.20261103-04 -->
+  <!-- Ver.20261103-05 -->
   <style>
     /* 厨房フードの注文書。注文用図面（箱型・山型・二重）の寸法表を画面で入力し、数字入りの図を1台1ページで出す。フードはメーカー共通なので本体にメーカーは出さない。
        仕組みは金物注文（添付）kana.html と同じ（保存・提出・版・PDF）。2026-11-02 作成
@@ -491,7 +491,7 @@
         return head(64, 48) + front((64 - tw) / 2, (48 - th) / 2 + ductH * kt, kt) + '</svg>';
       }
       // 縮尺と置き場
-      var ML = stack && !yama ? 34 : stack ? 58 : 68, MR = 44, MT = key ? 24 : 26, MB = sp.length ? 44 : 30, GAP = yama ? (stack ? 68 : 60) : 46, GS = 18, VW = stack ? 264 : 420, X2 = 34;   // X2＝2本目の縦の寸法線の位置（左へ）
+      var ML = stack && !yama ? 34 : stack ? 58 : 68, MR = stack ? 54 : 44, MT = key ? 24 : 26, MB = sp.length ? 44 : 30, GAP = yama ? (stack ? 68 : 60) : 46, GS = 18, VW = stack ? 264 : 420, X2 = 34;   // X2＝2本目の縦の寸法線の位置（左へ）
       var k = stack ? Math.min((VW - ML - MR) / L, 230 / (W + 2 * H + ductH)) : Math.min((VW - ML - MR - GS) / (L + W), 320 / (W + H + ductH));
       var pw = L * k, ph = W * k, fh = H * k, sw = W * k;
       var px0 = ML, py0 = MT, fx0 = ML, fy0 = py0 + ph + GAP + ductH * k, sx0 = stack ? fx0 : fx0 + pw + GS, sy0 = stack ? fy0 + fh + (sp.length ? 52 : 26) + ductH * k : fy0, VH = sy0 + fh + MB;
