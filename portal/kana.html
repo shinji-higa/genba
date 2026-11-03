@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>金物注文（添付）</title>
-  <!-- Ver.20261102-02 -->
+  <!-- Ver.20261103-01 -->
   <style>
     /* 金物注文（添付）。PDFか写真を付けて提出する注文書。消耗品注文の注文書の仕組みを使う。2026-11-02 作成
        見た目は角ダクトの製作伝票にそろえる（白黒を基調に、薄い灰色は使わない） */
@@ -227,6 +227,7 @@
             <div class="fg"><label for="fOrderer">注文者</label><input type="text" id="fOrderer" data-k="orderer"></div>
           </div>
           <div class="fg"><label for="fSite">現場名</label><input type="text" id="fSite" data-k="site"></div>
+          <div class="fg"><label for="fRoom">室名</label><input type="text" id="fRoom" data-k="room"></div>
           <div class="g2">
             <div class="fg"><label for="fOrderDate">発注日</label><input type="date" id="fOrderDate" data-k="orderDate"></div>
             <div class="fg"><label for="fDelivDate">搬入日</label><input type="date" id="fDelivDate" data-k="delivDate"></div>
@@ -335,7 +336,7 @@
     function jpDate(s) { var m = String(s || '').match(/^(\d{4})-(\d{2})-(\d{2})$/); return m ? (+m[1]) + '年' + (+m[2]) + '月' + (+m[3]) + '日' : ''; }
     var STORE = 'consOrders.v1';
     var S = null;
-    function blank() { return { id: uid(), no: '', orderer: '', site: '', orderDate: today(), delivDate: '', dest: '現場', memo: '', items: [], updated: 0 }; }
+    function blank() { return { id: uid(), no: '', orderer: '', site: '', room: '', orderDate: today(), delivDate: '', dest: '現場', memo: '', items: [], updated: 0 }; }
     function normSlip(s) { s.items = s.items || []; s.items.forEach(function (it) { if (!it.id) it.id = uid(); }); return s; }
     function loadStore() { try { return JSON.parse(localStorage.getItem(STORE) || '[]'); } catch (e) { return []; } }
     function writeStore(a) { try { localStorage.setItem(STORE, JSON.stringify(a)); } catch (e) { toast('この端末に保存できませんでした'); } }
@@ -457,13 +458,14 @@
       return '<div class="dp-title">' + revTag() + '<h1>金物 注文書</h1><div class="dp-no">（NO, <b>' + esc(S.no || '') + '</b>）<br>ページNo, ⇒ ' + page + '／' + pages + '</div></div>' +
         '<div class="dp-head"><div class="dp-lines">' +
         '<div class="dp-line"><span class="k">現場名</span><span class="v">' + esc(S.site) + '</span></div>' +
+        '<div class="dp-line"><span class="k">室名</span><span class="v">' + redIf(specRed('room'), esc(S.room)) + '</span></div>' +
         '<div class="dp-line"><span class="k">発注日</span><span class="v">' + redIf(specRed('orderDate'), esc(jpDate(S.orderDate))) + '</span></div>' +
         '<div class="dp-line"><span class="k">搬入日</span><span class="v">' + redIf(specRed('delivDate'), esc(jpDate(S.delivDate))) + '　' + redIf(specRed('dest'), esc(S.dest || '')) + '</span></div>' +
         '</div>' + coHtml(S) + '</div>' +
         '<table class="dp-spec"><colgroup><col style="width:22mm"><col></colgroup><tr><td class="k">Memo</td><td class="memo">' + redIf(specRed('memo'), esc(S.memo || '')) + '</td></tr></table>';
     }
     function contHead(page, pages) {
-      return '<div class="dp-cont-head"><h1>注文書（続き）</h1>' + revTag() + '<span class="site">' + esc(S.site) + '</span><span class="no">（NO, ' + esc(S.no || '') + '）　ページNo, ' + page + '／' + pages + '</span></div>';
+      return '<div class="dp-cont-head"><h1>注文書（続き）</h1>' + revTag() + '<span class="site">' + esc(S.site) + (S.room ? '　' + esc(S.room) : '') + '</span><span class="no">（NO, ' + esc(S.no || '') + '）　ページNo, ' + page + '／' + pages + '</span></div>';
     }
     function chgTable(rows) { return '<table class="dp-chgt"><colgroup><col></colgroup>' + rows.map(function (l) { return '<tr><td class="wrap">' + esc(l) + '</td></tr>'; }).join('') + '</table>'; }
     /* 添付は注文書の用紙に貼って出す。1枚目はいつもの上側の下に貼る（ユーザー指示 2026-11-02）。提出するとこの用紙のままPDFになる */
@@ -518,7 +520,7 @@
       document.getElementById('slipList').innerHTML = list.length ? list.map(function (x) {
         var d = new Date(x.updated || 0);
         return '<div class="slip-row"><div class="b" onclick="loadSlip(\'' + x.id + '\')"><div class="t">' + esc(x.site || '（現場名なし）') + (x.no ? '　NO.' + esc(x.no) : '') + (x.id === S.id ? '　（開いている注文書）' : '') + '</div>' +
-          '<div class="m">添付' + (x.items || []).length + '件　更新 ' + (d.getMonth() + 1) + '/' + d.getDate() + ' ' + d.getHours() + ':' + ('0' + d.getMinutes()).slice(-2) + '</div></div>' +
+          '<div class="m">' + esc(x.room || '') + '　添付' + (x.items || []).length + '件　更新 ' + (d.getMonth() + 1) + '/' + d.getDate() + ' ' + d.getHours() + ':' + ('0' + d.getMinutes()).slice(-2) + '</div></div>' +
           '<button type="button" class="btn btn-sub" onclick="copySlip(\'' + x.id + '\')">複製</button></div>';
       }).join('') : '<div class="empty">保存した注文書はまだありません。</div>';
       openSheet('slipsBg');
@@ -639,7 +641,7 @@
           var d = new Date(x.updated || 0), cur = x.id === SRV.fileId;
           var st = x.status === 'submitted' ? '　<b>提出済み 第' + (x.rev || 1) + '版</b>' : x.status === 'editing' ? '　<b style="color:#b3261e;">修正中 第' + (x.rev || 2) + '版</b>' : '';
           return '<div class="slip-row' + (cur ? ' cur' : '') + '"><div class="b" onclick="loadSlip(\'' + x.id + '\')"><div class="t">' + (x.no ? 'NO.' + esc(x.no) : '（NOは提出時に付きます）') + st + (cur ? '　<span style="font-size:0.75rem;">（開いている注文書）</span>' : '') + '</div>' +
-            '<div class="m">' + '　添付' + (x.n || 0) + '件　更新 ' + (d.getMonth() + 1) + '/' + d.getDate() + ' ' + d.getHours() + ':' + ('0' + d.getMinutes()).slice(-2) + (x.byName ? '　' + esc(x.byName) : '') + '</div></div>' +
+            '<div class="m">' + esc(x.room || '') + '　添付' + (x.n || 0) + '件　更新 ' + (d.getMonth() + 1) + '/' + d.getDate() + ' ' + d.getHours() + ':' + ('0' + d.getMinutes()).slice(-2) + (x.byName ? '　' + esc(x.byName) : '') + '</div></div>' +
             '<button type="button" class="btn btn-sub" onclick="copySlip(\'' + x.id + '\')">複製</button>' +
             (x.canDelete ? '<button type="button" class="btn btn-sub del" onclick="deleteSlip(\'' + x.id + '\')">削除</button>' : '') + '</div>';
         }).join('') : '<div class="empty">この現場の金物注文書（添付）はまだありません。</div>';
@@ -667,7 +669,7 @@
       if (x && typeof x === 'object') return '{' + Object.keys(x).sort().filter(function (k) { var v = x[k]; return !(v === '' || v == null || v === false || (Array.isArray(v) && !v.length) || (typeof v === 'object' && !Array.isArray(v) && !Object.keys(v).length)); }).map(function (k) { return JSON.stringify(k) + ':' + stableJ(x[k]); }).join(',') + '}';
       return JSON.stringify(x);
     }
-    var HEAD_LBL = { no: '注文書NO', orderer: '注文者', orderDate: '発注日', delivDate: '搬入日', dest: '搬入先', memo: 'Memo', coAddr: '会社の住所' };
+    var HEAD_LBL = { no: '注文書NO', orderer: '注文者', room: '室名', orderDate: '発注日', delivDate: '搬入日', dest: '搬入先', memo: 'Memo', coAddr: '会社の住所' };
     var SPEC_LBL = {};
     function dShow(v) { var m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(v); if (m) return (+m[2]) + '/' + (+m[3]); return (v === '' || v == null) ? '空' : String(v); }
     function itemLabel(it) { return it.name; }
@@ -724,7 +726,7 @@
     function nextRev() { return S.status === 'editing' ? (S.rev || 2) : 1; }
     function pdfDefaultName() {
       var d = new Date();
-      return '金物注文書' + (S.no ? '_NO' + S.no : '') + '_第' + nextRev() + '版_' + d.getFullYear() + ('0' + (d.getMonth() + 1)).slice(-2) + ('0' + d.getDate()).slice(-2);
+      return '金物注文書' + (S.no ? '_NO' + S.no : '') + (S.room ? '_' + S.room : '') + '_第' + nextRev() + '版_' + d.getFullYear() + ('0' + (d.getMonth() + 1)).slice(-2) + ('0' + d.getDate()).slice(-2);
     }
     function openSubmit() {
       if (revLocked()) { lockedToast(); return; }
