@@ -62,6 +62,10 @@
   @media (max-width: 640px) { .slip .cols { grid-template-columns: 1fr; } }
   #login { max-width: 360px; margin: 60px auto; }
   #login input { width: 100%; margin: 4px 0 10px; }
+  /* 理由などを書く欄（ブラウザの入力窓の代わり。ユーザー指示 2026-11-03） */
+  #ask { position: fixed; inset: 0; z-index: 70; background: rgba(20,32,46,.45); display: flex; align-items: center; justify-content: center; padding: 16px; }
+  #ask .card { width: 100%; max-width: 460px; margin: 0; }
+  #ask textarea { width: 100%; min-height: 80px; font: inherit; padding: 8px 9px; border: 1.5px solid #7d8a99; border-radius: 5px; margin: 8px 0 12px; }
   #upd { position: fixed; left: 50%; transform: translateX(-50%); top: 8px; z-index: 60; border: 0; border-radius: 18px; padding: 9px 16px; background: var(--accent); color: #fff; font: 700 13px inherit; box-shadow: 0 2px 8px rgba(0,0,0,.3); white-space: nowrap; cursor: pointer; }
 </style>
 </head>
@@ -79,13 +83,26 @@
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
 import { getFirestore, collection, doc, getDoc, getDocs, setDoc, writeBatch, query, where } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
-const APP_VER = 'Ver.20261103-01';
+const APP_VER = 'Ver.20261103-02';
 const API = 'https://script.google.com/macros/s/AKfycbyW2hFHqIQuu-TsflPk_0zv7gquhoepspuvRG9-bMStPDSWSc2blcDFBtWs7MisP3f_/exec';
 const app = initializeApp({ apiKey: 'AIzaSyDVR4p4DO4s9h70uPlXUVlhNcMP9-YkQ5Q', authDomain: 'genba-portal-9077b.firebaseapp.com', projectId: 'genba-portal-9077b' });
 const auth = getAuth(app);
 const $ = id => document.getElementById(id), M = $('m'), KY = window.KY, TAX = window.KY_TAX;
 const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const yen = n => (Number(n) || 0).toLocaleString('ja-JP');
+/* 文字を書いてもらう欄。OK なら書いた文字、やめたら null を返す */
+function ask(title, okLabel) {
+  return new Promise(done => {
+    const w = document.createElement('div'); w.id = 'ask';
+    w.innerHTML = '<div class="card"><b>' + esc(title) + '</b><textarea id="askT"></textarea><div class="row"><span class="sp"></span><button class="b" id="askN">やめる</button><button class="b danger" id="askY" disabled>' + esc(okLabel || 'OK') + '</button></div></div>';
+    document.body.appendChild(w);
+    const t = $('askT'), end = v => { w.remove(); done(v); };
+    t.oninput = () => { $('askY').disabled = !t.value.trim(); };
+    $('askN').onclick = () => end(null);
+    $('askY').onclick = () => end(t.value.trim());
+    t.focus();
+  });
+}
 const pad = n => ('0' + n).slice(-2);
 
 /* 新しい版の知らせ：ポータルと同じ。表に出たときと10分ごとに確かめる。設定の中からも入れ替えられる */
@@ -173,6 +190,7 @@ const FAST_ACT = {
   // 確定・確定解除・提出データはサーバーが一人ずつの給与DBで行う
   async confirm(d) { await mirrorQ; return gas('confirm', d); },
   async unconfirm(d) { await mirrorQ; return gas('unconfirm', d); },
+  async unconfirmBonus(d) { await mirrorQ; return gas('unconfirmBonus', d); },
   async year(d) { return gas('year', d); },
   async saveBonus(d) {
     if (d.done) { await mirrorQ; return gas('confirmBonus', d); }
@@ -327,7 +345,7 @@ function renderMonth() {
     if (!confirm(ymLabel(ym) + 'の明細を送ります。\n\n' + ok.map(e => e.name + '　' + e.email).join('\n') + (no.length ? '\n\n送らない人（メールか承諾日が空欄）：\n' + no.map(e => e.name).join('\n') : '') + '\n\nよろしいですか？')) return;
     sendSlips(ok, ym);
   };
-  if ($('un')) $('un').onclick = async () => { const why = prompt('確定を解除する理由を書いてください（記録に残ります）'); if (!why) return; try { await pay('unconfirm', { ym, why, emps: list.map(empRef) }); drawMonth(); } catch (x) { alert(x.message); } };
+  if ($('un')) $('un').onclick = async () => { const why = await ask(ymLabel(ym) + 'の給与の確定を解除する理由を書いてください（記録に残ります）', '確定を解除'); if (!why) return; busy('一人ずつの給与DBを「入力中」に戻しています…'); try { await pay('unconfirm', { ym, why, emps: list.map(empRef) }); } catch (x) { alert(x.message); } drawMonth(); };
 }
 const ADJ = [['taxManual', '所得税（手入力）', '空欄なら税額表で自動計算します'], ['tripNights', '出張（泊）', '泊数を入れると手当になります'], ['retro', '遡及分', '過去の差額を足す額'], ['leave', '休業手当・自宅待機', '金額で入れます'], ['other', 'その他の支給', '金額で入れます'], ['yearEnd', '年末調整', '還付はマイナスで入れます'], ['otherDed', 'その他の控除', '金額で入れます']];
 function slipHtml(e, r, ym, att) {
@@ -385,7 +403,7 @@ async function drawBonus() {
       $('bt').querySelectorAll('[data-b]').forEach(i => { i.onchange = () => { amt[i.dataset.b] = Number(i.value) || 0; paint(); }; });
       $('bt').querySelectorAll('[data-t]').forEach(i => { i.onchange = () => { if (i.value === '') delete taxM[i.dataset.t]; else taxM[i.dataset.t] = Number(i.value); paint(); }; });
     };
-    M.innerHTML = '<div class="card"><div class="row"><label class="f">賞与の月<br><input type="month" id="bym" value="' + ym + '"></label><span class="sp"></span>' + (done ? '<span class="tag ok">確定済み</span>' : '<button class="b" id="bs">保存</button><button class="b dark" id="bd">確定</button>') + '</div><div class="note">所得税の率は前月の給与（社会保険料を引いた額）で決まります。前月の給与を先に確定してください。所得税の欄は、空欄なら薄く出ている自動計算の額を使います。入れるとその額を使います。</div></div><div class="card wrapx"><table class="t" id="bt"></table></div>';
+    M.innerHTML = '<div class="card"><div class="row"><label class="f">賞与の月<br><input type="month" id="bym" value="' + ym + '"></label><span class="sp"></span>' + (done ? '<span class="tag ok">確定済み</span>' : '<button class="b" id="bs">保存</button><button class="b dark" id="bd">確定</button>') + (Object.keys(conf).length ? '<button class="b danger" id="bu">確定を解除</button>' : '') + '</div><div class="note">所得税の率は前月の給与（社会保険料を引いた額）で決まります。前月の給与を先に確定してください。所得税の欄は、空欄なら薄く出ている自動計算の額を使います。入れるとその額を使います。</div></div><div class="card wrapx"><table class="t" id="bt"></table></div>';
     paint();
     $('bym').onchange = e => { ST.bym = e.target.value; drawBonus(); };
     const save = async dn => {
@@ -396,6 +414,13 @@ async function drawBonus() {
     };
     if ($('bs')) $('bs').onclick = () => save(false).catch(x => alert(x.message));
     if ($('bd')) $('bd').onclick = () => { if (confirm('賞与を確定しますか？')) save(true).catch(x => alert(x.message)); };
+    // 確定した人だけを「入力中」に戻す（賞与額は戻る。所得税を手で入れていた人は入れ直す）
+    if ($('bu')) $('bu').onclick = async () => {
+      const why = await ask(ymLabel(ym) + 'の賞与の確定を解除する理由を書いてください（記録に残ります）', '確定を解除'); if (!why) return;
+      busy('一人ずつの給与DBを「入力中」に戻しています…');
+      try { await pay('unconfirmBonus', { ym, why, emps: list.filter(e => conf[e.id]).map(empRef) }); } catch (x) { alert(x.message); }
+      drawBonus();
+    };
   } catch (e) { fail(e); }
 }
 
