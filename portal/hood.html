@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>フード注文</title>
-  <!-- Ver.20261103-22 -->
+  <!-- Ver.20261103-23 -->
   <style>
     /* 厨房フードの注文書。注文用図面（箱型・山型・二重）の寸法表を画面で入力し、数字入りの図を1台1ページで出す。フードはメーカー共通なので本体にメーカーは出さない。
        仕組みは金物注文（添付）kana.html と同じ（保存・提出・版・PDF）。2026-11-02 作成
@@ -349,6 +349,7 @@
     // 二重の外装：5面体（上の板あり。初期）か4面体（上の板＝平面図に見える面なし）。ユーザー指示 2026-11-03
     var MEN = ['5面体', '4面体'];
     function menOf(it) { return it.men === '4面体' ? '4面体' : '5面体'; }
+    function yama0(it) { return it.shape === 'HY' || (it.shape === 'HW' && menOf(it) === '5面体'); }
     function isBox(it) { return it.shape === 'HB'; }
     /* 開口（角ダクトのチャンバーと同じ。ユーザー指示 2026-11-03）：1台にいくつでも。use＝開口か短管、kind＝角か丸。
        面は平面（初期）・正面・背面・左側面・右側面。山型は斜めの面に開けないので平面だけ。
@@ -363,7 +364,7 @@
     var FACES = ['平面', '正面', '背面', '左側面', '右側面'];
     function opFace(o) { return o.face || FACES[0]; }
     function isPlan(o) { return opFace(o) === FACES[0]; }
-    function facesFor(it) { return it.shape === 'HY' ? [FACES[0]] : FACES; }
+    function facesFor(it) { return isYama(it) ? [FACES[0]] : FACES; }   // 山型・二重は平面だけ
     function faceSize(o, L, W, H) { var f = opFace(o); return f === '平面' ? [L, W] : f === '正面' || f === '背面' ? [L, H] : [W, H]; }   // その面の横・縦
     function newOp() { return { use: '開口', kind: '角', face: FACES[0], a: '', b: '', x: '', y: '', len: '', cj: '', ej: '', cs: '', es: '', rs: '' }; }
     function isTube(o) { return o.use === '短管'; }
@@ -390,12 +391,12 @@
     function opsLine(ops, it) { return (ops || []).filter(opSized).map(function (o) { return opFaceText(o) + '（' + opPos(o, it) + '）'; }).join('、'); }
     var SKIRT = 150;   // 山型の下の垂れ下がり（図面の150）。山型は it.sk で変えられる（初期150・100以上。ユーザー指示 2026-11-03）。二重は150のまま
     function skirt(it) { return it.shape === 'HY' ? (num(it.sk) || SKIRT) : SKIRT; }
-    function isTen(it, o) { return !!it && it.shape === 'HY' && isPlan(o); }   // 山型の平面の開口は天板（E2×F2）の端から測る（ユーザー指示 2026-11-03）
+    function isTen(it, o) { return !!it && isYama(it) && isPlan(o); }   // 山型・二重の平面の開口は天板（E2×F2）の端から測る（ユーザー指示 2026-11-03）
     // 山型の天板：E2×F2。位置は E1（左の斜め）・F1（手前の斜め）、空欄＝真ん中。guess＝E2・F2 が空欄のとき図に描く目安を使う
     var TEN_ADD = 50;
     function tenAuto(it) { var o = opsOf(it).filter(opSized).filter(isPlan)[0]; if (!o) return null; var w = num(o.a), dd = o.kind === '丸' ? w : num(o.b); return [w + TEN_ADD, dd + TEN_ADD]; }   // 1つ目の平面の開口＋50
     function tenOver(it) {   // おまかせの天板がフードからはみ出す（未入力と同じ扱い。決定できない）
-      if (it.shape !== 'HY') return ''; var L = num(it.L), W = num(it.W), au = tenAuto(it); if (!L || !W || !au) return '';
+      if (!isYama(it)) return ''; var L = num(it.L), W = num(it.W), au = tenAuto(it); if (!L || !W || !au) return '';
       return (blankStr(it.E2) && au[0] > L) || (blankStr(it.F2) && au[1] > W) ? '天板のおまかせ（開口＋50＝' + au[0] + '×' + au[1] + '）がフード ' + fmtN(L) + '×' + fmtN(W) + ' からはみ出します。E2・F2 を入れるか、開口を見直してください' : '';
     }
     function tenOf(it, L, W, guess) {
@@ -554,7 +555,7 @@
         d.E2 = E2; d.F2 = F2;
         d.E1 = E2 && d.C1 ? d.C1 - E2 / 2 : 0; d.E3 = E2 && d.C2 ? d.C2 - E2 / 2 : 0;
         d.F1 = F2 && d.D1 ? d.D1 - F2 / 2 : 0; d.F3 = F2 && d.D2 ? d.D2 - F2 / 2 : 0;
-        if (it.shape === 'HY' && L && W) { var tn = tenOf(it, L, W, false); if (tn.E2) { d.E2 = tn.E2; d.E1 = tn.E1; d.E3 = tn.E3; } if (tn.F2) { d.F2 = tn.F2; d.F1 = tn.F1; d.F3 = tn.F3; } }   // 山型の天板は開口と関係なく置く
+        if (L && W) { var tn = tenOf(it, L, W, false); if (tn.E2) { d.E2 = tn.E2; d.E1 = tn.E1; d.E3 = tn.E3; } if (tn.F2) { d.F2 = tn.F2; d.F1 = tn.F1; d.F3 = tn.F3; } }   // 山型の天板は開口と関係なく置く
       }
       d.G = holesOf(it).filter(holeSet).length;
       return d;
@@ -578,7 +579,7 @@
         var n = (isTube(o) ? '短管' : '開口') + (i + 1), s = faceSize(o, L, W, H), fw = s[0], fh = s[1], nm = opFace(o), plan = isPlan(o);
         if (!opSized(o)) { if (num(o.a) || num(o.b)) e.push(n + 'の大きさを入れてください'); return; }   // 何も入れていない欄は数えない
         if (isTube(o) && o.kind !== '丸' && !num(o.len)) e.push(n + 'の長さを入れてください');
-        if (it.shape === 'HY' && !plan) e.push(n + '：山型は平面だけです');
+        if (isYama(it) && !plan) e.push(n + '：' + SHAPES[it.shape] + 'は平面だけです');
         if (!fw || !fh) return;
         var ten = isTen(it, o) ? tenOf(it, L, W, false) : null; if (ten && !(ten.E2 && ten.F2)) ten = null; if (ten) { fw = ten.E2; fh = ten.F2; }
         var b = opBox(o, fw, fh); boxes.push({ i: i, b: ten ? opBoxIt(it, o, L, W) : b, o: o, n: n, f: nm, fw: ten ? L : fw });
@@ -590,7 +591,7 @@
       // 開口・短管どうしの被り（同じ面で）
       boxes.forEach(function (p, i) { boxes.slice(i + 1).forEach(function (q) { if (p.f === q.f && p.b.left < q.b.right && q.b.left < p.b.right && p.b.front < q.b.back && q.b.front < p.b.back) e.push(p.n + 'と' + q.n + 'が被っています'); }); });
       splitList(it).forEach(function (x) { if (boxes.some(function (p) { if (p.f !== '平面' && p.f !== '正面' && p.f !== '背面') return false; var l = p.f === '背面' ? p.fw - p.b.right : p.b.left, r = p.f === '背面' ? p.fw - p.b.left : p.b.right; return x > l && x < r; })) e.push('分割の位置 ' + fmtN(x) + ' が開口に掛かっています'); });
-      if (isYama(it)) { if (it.shape === 'HW' && !num(it.h)) e.push('二重は h（斜めの部分の高さ）を入れてください'); if (H && num(it.h) && num(it.h) + SKIRT >= H) e.push('h＋150 が H 以上です'); if (H && it.shape === 'HY' && H <= skirt(it)) e.push('H がたれ（' + skirt(it) + '）以下です'); if (it.shape === 'HY' && !blankStr(it.sk) && num(it.sk) < 100) e.push('たれは100以上にしてください'); if (tenOver(it)) e.push(tenOver(it)); else if (it.shape === 'HY' && L && (num(it.E1) + d.E2 > L || num(it.F1) + d.F2 > W)) e.push('天板が外へ出ます（E1＋E2・F1＋F2 を見直してください）'); if (d.E2 && d.C1 && (d.E1 < 0 || d.E3 < 0)) e.push('天板 E2 が大きすぎます'); if (d.F2 && d.D1 && (d.F1 < 0 || d.F3 < 0)) e.push('天板 F2 が大きすぎます'); if (d.E2 && A && d.E2 < A) e.push('天板 E2 が開口 A より小さいです'); if (d.F2 && B && d.F2 < B) e.push('天板 F2 が開口 B より小さいです'); }
+      if (isYama(it)) { var men4 = it.shape === 'HW' && menOf(it) === '4面体'; if (men4 && !num(it.h)) e.push('4面体は h（斜めの部分の高さ）を入れてください'); if (H && men4 && num(it.h) && num(it.h) + SKIRT > H) e.push('h＋150 が H より大きいです'); if (H && H <= skirt(it)) e.push('H がたれ（' + skirt(it) + '）以下です'); if (it.shape === 'HY' && !blankStr(it.sk) && num(it.sk) < 100) e.push('たれは100以上にしてください'); if (tenOver(it)) e.push(tenOver(it)); else if (L && (num(it.E1) + d.E2 > L || num(it.F1) + d.F2 > W)) e.push('天板が外へ出ます（E1＋E2・F1＋F2 を見直してください）'); if (d.E2 && d.C1 && (d.E1 < 0 || d.E3 < 0)) e.push('天板 E2 が大きすぎます'); if (d.F2 && d.D1 && (d.F1 < 0 || d.F3 < 0)) e.push('天板 F2 が大きすぎます'); if (d.E2 && A && d.E2 < A) e.push('天板 E2 が開口 A より小さいです'); if (d.F2 && B && d.F2 < B) e.push('天板 F2 が開口 B より小さいです'); }
       var sp = splitList(it);
       if (sp.length && L && sp.some(function (x) { return x >= L; })) e.push('分割の位置が L を超えています');
       holesOf(it).forEach(function (h, i) {
@@ -607,7 +608,7 @@
         holesOf(it).slice(i + 1).forEach(function (g, j) { if (holeSet(g)) { var gx = num(g.x) - num(h.x), gy = num(g.y) - num(h.y), rr = (num(g.d) + num(h.d)) / 2; if (gx * gx + gy * gy < rr * rr) e.push(n + 'と吊り穴' + (i + j + 2) + 'が被っています'); } });
       });
       [['gf', 'グリースフィルター'], ['fd', '防火シャッター']].forEach(function (p) { if (it.gfm === 'set' && !mdlActive(it, p[0]).length) e.push(p[1] + 'を入れてください'); if (it.gfm === 'fd' && p[0] === 'fd' && !mdlActive(it, 'fd').length) e.push('防火シャッターを入れてください'); mdlActive(it, p[0]).forEach(function (r, i) { if (!r.m) e.push(p[1] + (i + 1) + 'の型式を入れてください'); if (!(num(r.q) >= 1)) e.push(p[1] + (i + 1) + 'の台数を入れてください'); }); });
-      if (it.shape === 'HY' && L && W && !tenOver(it)) { var tf = tenOf(it, L, W, false); if (tf.E2 && tf.F2) [['gf', 'グリースフィルター'], ['fd', '防火シャッター']].forEach(function (p) { mdlActive(it, p[0]).forEach(function (r) { var z = mdlSize(r); if (z && !((z[0] < tf.E2 && z[1] < tf.F2) || (z[0] < tf.F2 && z[1] < tf.E2))) e.push(p[1] + ' ' + r.m + '（' + z[0] + '×' + z[1] + '）が天板 E2×F2（' + fmtN(tf.E2) + '×' + fmtN(tf.F2) + '）に収まりません（向きを変えても）'); }); }); }   // 外形寸法＜天板ならよし（ユーザー指示 2026-11-03）
+      if (isYama(it) && L && W && !tenOver(it)) { var tf = tenOf(it, L, W, false); if (tf.E2 && tf.F2) [['gf', 'グリースフィルター'], ['fd', '防火シャッター']].forEach(function (p) { mdlActive(it, p[0]).forEach(function (r) { var z = mdlSize(r); if (z && !((z[0] < tf.E2 && z[1] < tf.F2) || (z[0] < tf.F2 && z[1] < tf.E2))) e.push(p[1] + ' ' + r.m + '（' + z[0] + '×' + z[1] + '）が天板 E2×F2（' + fmtN(tf.E2) + '×' + fmtN(tf.F2) + '）に収まりません（向きを変えても）'); }); }); }   // 外形寸法＜天板ならよし（ユーザー指示 2026-11-03）
       if (!(num(it.qty) >= 1)) e.push('台数を入れてください');
       return e;
     }
@@ -624,10 +625,10 @@
       var ops = (guess ? [g0] : sized.filter(isPlan)).map(function (o) { return { o: o, b: opBoxIt(it, o, L, W), len: isTube(o) ? (num(o.len) || (o.kind === '丸' ? NEC_DEF : 0)) : 0 }; });
       var d = dims(it), yama = isYama(it), dbl = isDouble(it), b0 = ops[0] ? ops[0].b : { cx: L / 2, cy: W / 2, w: 0, d: 0 }, A = b0.w, B = b0.d;
       var C1 = b0.cx, D1 = b0.cy, C2 = L - C1, D2 = W - D1;
-      var h = it.shape === 'HW' ? (num(it.h) || Math.round((H - SK) * 0.7)) : it.shape === 'HY' ? Math.max(1, H - SK) : 0;
+      var h = it.shape === 'HW' && menOf(it) === '4面体' ? (num(it.h) || Math.round((H - SK) * 0.7)) : yama0(it) ? Math.max(1, H - SK) : 0;   // 山型と二重の5面体は天端＝フードの天端
       var E2 = yama ? (d.E2 || Math.max(A + 100, Math.round(L * 0.45))) : 0, F2 = yama ? (d.F2 || Math.max(B + 100, Math.round(W * 0.5))) : 0;
       var E1 = C1 - E2 / 2, E3 = C2 - E2 / 2, F1 = D1 - F2 / 2, F3 = D2 - F2 / 2, eGuess = yama && !d.E2, fGuess = yama && !d.F2;
-      if (it.shape === 'HY') { var tn = tenOf(it, L, W, true); E1 = tn.E1; E2 = tn.E2; E3 = tn.E3; F1 = tn.F1; F2 = tn.F2; F3 = tn.F3; }   // 山型の天板は初期が真ん中
+      if (yama) { var tn = tenOf(it, L, W, true); E1 = tn.E1; E2 = tn.E2; E3 = tn.E3; F1 = tn.F1; F2 = tn.F2; F3 = tn.F3; }   // 山型の天板は初期が真ん中
       var holes = holesOf(it).filter(holeSet), sp = splitList(it), bj = it.bj || BUN_J[0];
       var ductH = ops.reduce(function (m, p) { return Math.max(m, p.len); }, 0), ins = dbl ? 25 : 0;
       var FS = 8.5, s = '';
@@ -733,7 +734,7 @@
       var chain = function (pts) { return pts.filter(function (v, i) { return pts.indexOf(v) === i; }).sort(function (a, b) { return a - b; }); };
       var hPts = [0, L], vPts = [0, W];
       ops.forEach(function (p) { if (p.o.kind === '丸') { hPts.push(p.b.cx); vPts.push(W - p.b.cy); } else { hPts.push(p.b.left, p.b.right); vPts.push(W - p.b.back, W - p.b.front); } });
-      if (it.shape === 'HY' && ops.length && !guess) { hPts.push(E1, E1 + E2); vPts.push(F3, F3 + F2); }   // 山型の開口の寄りは天板の端から
+      if (yama && ops.length && !guess) { hPts.push(E1, E1 + E2); vPts.push(F3, F3 + F2); }   // 山型の開口の寄りは天板の端から
       if (holes.length) {
         var tP = chain([0, L].concat(holes.filter(function (q) { return !q.face || q.face === '背面'; }).map(function (q) { return q.face ? num(q.x) : L - num(q.x); }))), rP = chain([0, W].concat(holes.filter(function (q) { return !q.face || q.face === '右側面'; }).map(function (q) { return num(q.y) || num(q.x); })));   // 上＝背面の金物（左から）、右＝右側面の金物（奥から）。正面・左側面は図の下の文字。図が込み合うので寸法と文字は重ならない所に置く
         if (tP.length > 2) s += chainH(tP, py0 - 8 - topX, false).s;
@@ -820,7 +821,7 @@
       if (!S.items.length) { el.innerHTML = '<div class="empty">「＋ フードを追加」から入れてください。</div>'; return; }
       el.innerHTML = S.items.map(function (it, i) {
         var d = dims(it), bad = itemErrors(it).length;
-        return '<div class="item' + (bad ? ' bad' : '') + '" onclick="openEdit(' + i + ')"><div class="item-ic">' + hoodSvg(it, 'thumb') + '</div><div class="item-b"><div class="item-t">' + circled(i + 1) + ' ' + esc(SHAPES[it.shape]) + (isDouble(it) ? '（' + menOf(it) + '）' : '') + '　' + esc(fmtN(num(it.L))) + '×' + esc(fmtN(num(it.W))) + '×' + esc(fmtN(num(it.H))) + (it.shape === 'HW' && num(it.h) ? '（h' + esc(fmtN(num(it.h))) + '）' : '') + (splitList(it).length ? '　' + (splitList(it).length + 1) + '分割' : '') + '</div>' +
+        return '<div class="item' + (bad ? ' bad' : '') + '" onclick="openEdit(' + i + ')"><div class="item-ic">' + hoodSvg(it, 'thumb') + '</div><div class="item-b"><div class="item-t">' + circled(i + 1) + ' ' + esc(SHAPES[it.shape]) + (isDouble(it) ? '（' + menOf(it) + '）' : '') + '　' + esc(fmtN(num(it.L))) + '×' + esc(fmtN(num(it.W))) + '×' + esc(fmtN(num(it.H))) + (it.shape === 'HW' && menOf(it) === '4面体' && num(it.h) ? '（h' + esc(fmtN(num(it.h))) + '）' : '') + (splitList(it).length ? '　' + (splitList(it).length + 1) + '分割' : '') + '</div>' +
           '<div class="item-s">' + esc(opsLine(it.ops, it) || '開口なし') + '<br>' + esc(it.mat) + ' ' + esc(it.fin) + '<br>' +
           hangWord(it) + ' ' + (d.G ? esc(holeSum(it)) + (hkText(it) ? '　' + esc(hkText(it)) : '') : '未入力') + '<br>' +
           'フィルター ' + esc(mdlLine(mdlActive(it, 'gf')) || 'なし') + '<br>防火シャッター ' + esc(mdlLine(mdlActive(it, 'fd')) || 'なし') + (bad ? '<br><span style="color:#b3261e;font-weight:700;">⚠ 確認が必要です</span>' : '') + '</div></div>' +
@@ -847,12 +848,12 @@
     function edRot() {
       var it = S.items[ED]; if (!it) return; var L = num(it.L), W = num(it.W);
       if (!L || !W) { toast('先に L・W を入れてください'); return; }
-      var t0 = it.shape === 'HY' ? tenOf(it, L, W, false) : null;
+      var t0 = isYama(it) ? tenOf(it, L, W, false) : null;
       var moved = opsOf(it).map(function (o) {   // 平面の開口：フードの上の中心を回す（位置が空欄＝中央のものはそのまま）
         if (!isPlan(o) || !opSized(o) || (blankStr(o.x) && blankStr(o.y))) return null;
         var b = opBoxIt(it, o, L, W); return { cx: b.cy, cy: L - b.cx };
       });
-      if (it.shape === 'HY' && t0) {   // 天板：E1'＝F1、E2'＝F2、F1'＝E3、F2'＝E2（空欄はそのまま）
+      if (t0) {   // 天板：E1'＝F1、E2'＝F2、F1'＝E3、F2'＝E2（空欄はそのまま）
         var e1 = it.E1, e2 = it.E2, f1 = it.F1, f2 = it.F2;
         it.E2 = f2; it.F2 = e2; it.E1 = blankStr(f1) ? '' : f1; it.F1 = blankStr(e1) ? '' : String(L - num(e1) - t0.E2);
       }
@@ -873,7 +874,7 @@
     function closeEdit() { closeSheet('edBg'); ED = -1; changed(); }
     function deleteItem() { var it = S.items[ED]; if (!it) return; askYes(circled(ED + 1) + ' を削除しますか？').then(function (ok) { if (ok) { S.items.splice(ED, 1); closeSheet('edBg'); ED = -1; changed(); } }); }
     function dupItem() { var it = S.items[ED]; if (!it) return; var c = JSON.parse(JSON.stringify(it)); c.id = uid(); S.items.splice(ED + 1, 0, c); ED = ED + 1; changed(); renderEdit(); toast('同じフードをもう1件入れました'); }
-    function edSet(k, v) { var it = S.items[ED]; if (!it) return; it[k] = v; if (k === 'shape') { if (!isYama(it)) { it.h = ''; it.E2 = ''; it.F2 = ''; } if (it.shape !== 'HY') { it.sk = ''; it.E1 = ''; it.F1 = ''; it.hka = ''; it.hkl = ''; } fixHoles(it); if (it.shape !== 'HW') { it.h = ''; it.men = ''; } if (!isBox(it)) it.sp = ''; if (it.shape === 'HY') it.ops.forEach(function (o) { if (!isPlan(o)) { o.face = FACES[0]; o.x = ''; o.y = ''; } }); stdRefresh(it); } if (k === 'mat' && finsOf(it).indexOf(it.fin) < 0) it.fin = finsOf(it)[0]; if (k === 'gfm') { if (v === 'set' && !mdlList(it, 'gf').length) addMdlRow(it, 'gf'); if (v && !mdlList(it, 'fd').length) addMdlRow(it, 'fd'); } renderEdit(); changed(); }
+    function edSet(k, v) { var it = S.items[ED]; if (!it) return; it[k] = v; if (k === 'shape') { if (!isYama(it)) { it.h = ''; it.E2 = ''; it.F2 = ''; } if (!isYama(it)) { it.E1 = ''; it.F1 = ''; } if (it.shape !== 'HY') { it.sk = ''; it.hka = ''; it.hkl = ''; } fixHoles(it); if (it.shape !== 'HW') { it.h = ''; it.men = ''; } if (!isBox(it)) it.sp = ''; if (isYama(it)) it.ops.forEach(function (o) { if (!isPlan(o) || it.shape === 'HW') { o.face = FACES[0]; o.x = ''; o.y = ''; } }); stdRefresh(it); } if (k === 'men' && v === '5面体') it.h = ''; if (k === 'mat' && finsOf(it).indexOf(it.fin) < 0) it.fin = finsOf(it)[0]; if (k === 'gfm') { if (v === 'set' && !mdlList(it, 'gf').length) addMdlRow(it, 'gf'); if (v && !mdlList(it, 'fd').length) addMdlRow(it, 'fd'); } renderEdit(); changed(); }
     function edHangStd() { var it = S.items[ED]; if (!it) return; var L = num(it.L), W = num(it.W); if (!L || !W) { toast('先に L・W を入れてください'); return; } it.stdHole = true; it.holes = stdHoles(it, (holesOf(it)[0] || {}).d); renderEdit(); changed(); }
     // 標準の吊り穴のあいだは、分割・L・W を変えると入れ直す（手で直したらやめる。ユーザー指示 2026-11-03）
     function stdRefresh(it) { if (!it.stdHole || !num(it.L) || !num(it.W)) return; it.holes = stdHoles(it, (holesOf(it)[0] || {}).d); var el = document.getElementById('edHoles'); if (el) el.innerHTML = holesHtml(it); }
@@ -882,7 +883,7 @@
     function edCalc() {   // 数字を打つたびに計算の結果だけ書き直す（画面全体は描き直さない）
       var it = S.items[ED]; if (!it) return; var d = dims(it), set = function (id, v) { var el = document.getElementById(id); if (el) el.textContent = v; };
       set('cG', d.G ? holeSum(it) : '—');
-      if (it.shape === 'HY') { set('cE2', fmtN(d.E2) || '—'); set('cF2', fmtN(d.F2) || '—'); } if (isYama(it)) { set('cE1', fmtN(d.E1) || '—'); set('cE3', fmtN(d.E3) || '—'); set('cF1', fmtN(d.F1) || '—'); set('cF3', fmtN(d.F3) || '—'); }
+      if (isYama(it)) { set('cE2', fmtN(d.E2) || '—'); set('cF2', fmtN(d.F2) || '—'); } if (isYama(it)) { set('cE1', fmtN(d.E1) || '—'); set('cE3', fmtN(d.E3) || '—'); set('cF1', fmtN(d.F1) || '—'); set('cF3', fmtN(d.F3) || '—'); }
       set('cSp', splitNote(it));
       var fg = document.getElementById('edFigSvg'); if (fg) fg.innerHTML = hoodSvg(it, 'val');   // 図を描き直す（入れた数字の縮尺）
       opsOf(it).forEach(function (o, i) { ['x', 'y'].forEach(function (key) { var el = document.querySelector('[data-op="' + i + ':' + key + '"]'); if (el) el.disabled = !opSized(o); }); });   // 位置の欄は大きさを入れてから（チャンバーと同じ）
@@ -921,11 +922,11 @@
         '<div class="ed-form"><div class="errbox" id="edErr" style="display:none;margin:0 0 10px;"></div>' +
         '<div class="edbox"><div class="fg"><label>台数</label><div class="qty"><button type="button" onclick="edQty(\'qty\',-1)">−</button><input type="number" inputmode="numeric" min="1" value="' + esc(it.qty) + '" oninput="edIn(\'qty\',this.value)"><button type="button" onclick="edQty(\'qty\',1)">＋</button></div></div>' +
         '<div class="spec-row"><span class="lbl">形</span>' + chipsHtml('shape', SHAPES, it.shape) + '</div>' +
-        (isDouble(it) ? '<div class="note" style="margin:-4px 0 8px;">外装の箱付き。分割はできません</div><div class="spec-row"><span class="lbl">外装</span>' + chipsArr('men', MEN, menOf(it)) + '</div><div class="note" style="margin:-4px 0 8px;">4面体＝外装の上の板（平面図に見える面）なし。平面図の山型が実線になります</div>' : '') +
+        (isDouble(it) ? '<div class="note" style="margin:-4px 0 8px;">外装の箱付き。分割はできません</div><div class="spec-row"><span class="lbl">外装</span>' + chipsArr('men', MEN, menOf(it)) + '</div><div class="note" style="margin:-4px 0 8px;">5面体＝山型の天端がフードの天端と同じ高さ（開口は外装の天板と山型の天板でそろえる）。4面体＝外装の上の板（平面図に見える面）なし、h を入れる</div>' : '') +
         '<div class="spec-row"><span class="lbl">材質</span>' + chipsArr('mat', MATS, it.mat) + '</div>' + '<div class="spec-row"><span class="lbl">仕上</span>' + chipsArr('fin', finsOf(it), it.fin) + '</div>' + '</div>' +
-        '<div class="edbox"><div class="edbox-h">寸法（mm）</div><div class="dims">' + dim('L', 'L 長さ') + dim('W', 'W 奥行') + dim('H', 'H 高さ') + (it.shape === 'HW' ? dim('h', 'h 斜め部') : '') + (it.shape === 'HY' ? dim('sk', 'たれ（100以上）', '150') : '') + '</div>' +
-        (it.shape === 'HY' ? '<div class="edbox-h" style="margin-top:10px;">天板（平らな部分。E2・F2 空欄＝開口の横・縦＋50。E1・F1 空欄＝真ん中。開口の位置は天板の端から）</div><div class="dims">' + dim('E2', 'E2 長さ方向', '開口+50') + dim('F2', 'F2 奥行方向', '開口+50') + dim('E1', 'E1 左の斜め', '真ん中') + dim('F1', 'F1 手前の斜め', '真ん中') + '</div><div class="note" style="margin-top:4px;">E2＝<b id="cE2">' + (fmtN(d.E2) || '—') + '</b>　F2＝<b id="cF2">' + (fmtN(d.F2) || '—') + '</b>　E3＝<b id="cE3">' + (fmtN(d.E3) || '—') + '</b>　F3＝<b id="cF3">' + (fmtN(d.F3) || '—') + '</b></div>' : '') +
-        (it.shape === 'HW' ? '<div class="edbox-h" style="margin-top:10px;">天板（平らな部分。空欄＝工場におまかせ。1つ目の開口が芯）</div><div class="dims">' + dim('E2', 'E2 長さ方向', 'おまかせ') + dim('F2', 'F2 奥行方向', 'おまかせ') + '</div><div class="note" style="margin-top:4px;">E1＝<b id="cE1">' + (fmtN(d.E1) || '—') + '</b>　E3＝<b id="cE3">' + (fmtN(d.E3) || '—') + '</b>　F1＝<b id="cF1">' + (fmtN(d.F1) || '—') + '</b>　F3＝<b id="cF3">' + (fmtN(d.F3) || '—') + '</b></div>' : '') + '</div>' +
+        '<div class="edbox"><div class="edbox-h">寸法（mm）</div><div class="dims">' + dim('L', 'L 長さ') + dim('W', 'W 奥行') + dim('H', 'H 高さ') + (it.shape === 'HW' && menOf(it) === '4面体' ? dim('h', 'h 斜め部') : '') + (it.shape === 'HY' ? dim('sk', 'たれ（100以上）', '150') : '') + '</div>' +
+        (isYama(it) ? '<div class="edbox-h" style="margin-top:10px;">天板（平らな部分。E2・F2 空欄＝開口の横・縦＋50。E1・F1 空欄＝真ん中。開口の位置は天板の端から）</div><div class="dims">' + dim('E2', 'E2 長さ方向', '開口+50') + dim('F2', 'F2 奥行方向', '開口+50') + dim('E1', 'E1 左の斜め', '真ん中') + dim('F1', 'F1 手前の斜め', '真ん中') + '</div><div class="note" style="margin-top:4px;">E2＝<b id="cE2">' + (fmtN(d.E2) || '—') + '</b>　F2＝<b id="cF2">' + (fmtN(d.F2) || '—') + '</b>　E3＝<b id="cE3">' + (fmtN(d.E3) || '—') + '</b>　F3＝<b id="cF3">' + (fmtN(d.F3) || '—') + '</b></div>' : '') +
+        '</div>' +
         '<div class="edbox"><div class="edbox-h">開口</div>' + opsHtml(it) + '<button type="button" class="btn btn-sub" onclick="addOp()">＋ 開口を追加</button>' + (opsOf(it).length ? '' : '<div class="note" style="margin-top:4px;">開口なし</div>') + '</div>' +
         '<div class="edbox"><div class="edbox-h">' + hangWord(it) + '　<span class="note" style="display:inline;">穴 <b id="cG">' + (d.G ? holeSum(it) : '—') + '</b></span></div><div id="edHoles">' + (it.shape === 'HY' && holesOf(it).length ? '<div class="note" style="margin-bottom:6px;">フードの端の外（たれの一番上）に短いアングルを付け、アングルに吊り穴をあけます。位置は付ける面を外から見て右端から。</div><div class="open-row" style="grid-template-columns:1fr 1fr;"><div><span class="lbl">アングルの大きさ</span><select onchange="edSet(\'hka\',this.value)">' + HK_ANG.map(function (v) { return '<option' + (hkAng(it) === v ? ' selected' : '') + '>' + v + '</option>'; }).join('') + '</select></div><div><span class="lbl">アングルの長さ（空欄＝100）</span><input type="text" inputmode="numeric" value="' + esc(it.hkl) + '" placeholder="100" oninput="edIn(\'hkl\',this.value)"></div></div>' : '') + holesHtml(it) + (holesOf(it).length ? '' : '<div class="note" style="margin-bottom:6px;">なし</div>') + '</div><div style="display:flex;gap:6px;"><button type="button" class="btn btn-sub" onclick="addHole()">＋ ' + hangWord(it) + 'を追加</button><button type="button" class="btn btn-sub" onclick="edHangStd()">標準で入れる</button><button type="button" class="btn btn-sub" onclick="clearHoles()">すべて消す</button></div><div class="note" style="margin-top:4px;">' + (it.shape === 'HY' ? '「標準で入れる」＝正面と背面の端から100に2個ずつ（φ12×4）。' : '「標準で入れる」＝端から100の角に4個（φ12×4）。') + '分割があれば分けた1つごとに4個（2分割8個、3分割12個）。今の吊り穴は入れ替わります。分割や L・W を変えると入れ直します（吊り穴を手で直すと止まります）。</div></div>' +
         (box ? '<div class="edbox"><div class="edbox-h">分割（箱型だけ。空欄＝分割なし）</div><div class="fg"><label>分ける位置を左端からの寸法で並べる</label><div style="display:flex;gap:6px;"><input type="text" inputmode="numeric" value="' + esc(it.sp) + '" placeholder="例：1800（2分割）、1200, 2400（3分割）" oninput="edIn(\'sp\',this.value)"><button type="button" class="btn btn-sub" onclick="edSplitAuto(2)">2等分</button><button type="button" class="btn btn-sub" onclick="edSplitAuto(3)">3等分</button></div><div class="note" id="cSp">' + splitNote(it) + '</div></div><div class="spec-row" style="margin:8px 0 0;grid-template-columns:auto 1fr;"><span class="lbl">分割の接合</span>' + chipsArr('bj', BUN_J, it.bj || BUN_J[0]) + '</div>' + (FG_JOINTS.indexOf(it.bj || BUN_J[0]) >= 0 ? '<div class="spec-row" style="margin:8px 0 0;grid-template-columns:auto 1fr;"><span class="lbl">フランジサイズ</span><select onchange="edSet(\'bs\',this.value)" style="width:auto;">' + ST_SIZES.map(function (v) { return '<option' + ((it.bs || ST_DEF) === v ? ' selected' : '') + '>' + v + '</option>'; }).join('') + '</select></div>' : '') + '</div>' : '') +
