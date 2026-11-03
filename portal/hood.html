@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>フード注文</title>
-  <!-- Ver.20261103-23 -->
+  <!-- Ver.20261103-24 -->
   <style>
     /* 厨房フードの注文書。注文用図面（箱型・山型・二重）の寸法表を画面で入力し、数字入りの図を1台1ページで出す。フードはメーカー共通なので本体にメーカーは出さない。
        仕組みは金物注文（添付）kana.html と同じ（保存・提出・版・PDF）。2026-11-02 作成
@@ -669,7 +669,7 @@
         if (it.shape === 'HY') o += rc(fx0, ySk, pw, SK * k) + pl([[fx0, ySk], [fx0 + E1 * k, fy0], [fx0 + (E1 + E2) * k, fy0], [fx0 + pw, ySk]], false, eGuess ? '3 2' : '');
         else {
           o += rc(fx0, fy0, pw, fh) + ln(fx0, fy0 + 3, fx0 + pw, fy0 + 3, '', 0.5);
-          if (it.shape === 'HW') o += ln(fx0, ySk, fx0 + pw, ySk, '', 0.5) + pl([[fx0 + i, ySk], [fx0 + E1 * k, ySk - h * k], [fx0 + (E1 + E2) * k, ySk - h * k], [fx0 + pw - i, ySk]], false, eGuess ? '3 2' : '');
+          if (it.shape === 'HW') o += ln(fx0, ySk, fx0 + pw, ySk, '', 0.5) + pl([[fx0 + i, ySk], [fx0 + E1 * k, ySk - h * k], [fx0 + (E1 + E2) * k, ySk - h * k], [fx0 + pw - i, ySk]], false, '4 2');   // 二重の山型は外装の板の向こう＝点線
         }
         fxMid = fx0 + pw / 2;
         ops.forEach(function (p) { o += mouth(fx0 + p.b.left * k, p.b.w * k, opY(fy0, k), k, p, thumb ? 0 : 2, fy0); });
@@ -770,7 +770,7 @@
       var side = function (x0, a1, a2) {   // a1＝左側の斜め、a2＝天板（右側面図は F1・F2、左側面図は F3・F2）
         if (it.shape === 'HY') return rc(x0, ySk2, sw, SK * k) + pl([[x0, ySk2], [x0 + a1 * k, fy0], [x0 + (a1 + a2) * k, fy0], [x0 + sw, ySk2]], false, fGuess ? '3 2' : '');
         var o = rc(x0, fy0, sw, fh) + ln(x0, fy0 + 3, x0 + sw, fy0 + 3, '', 0.5);
-        if (it.shape === 'HW') o += ln(x0, ySk2, x0 + sw, ySk2, '', 0.5) + pl([[x0 + i3, ySk2], [x0 + a1 * k, ySk2 - h * k], [x0 + (a1 + a2) * k, ySk2 - h * k], [x0 + sw - i3, ySk2]], false, fGuess ? '3 2' : '');
+        if (it.shape === 'HW') o += ln(x0, ySk2, x0 + sw, ySk2, '', 0.5) + pl([[x0 + i3, ySk2], [x0 + a1 * k, ySk2 - h * k], [x0 + (a1 + a2) * k, ySk2 - h * k], [x0 + sw - i3, ySk2]], false, '4 2');
         return o;
       };
       s += side(sx0, F1, F2);
