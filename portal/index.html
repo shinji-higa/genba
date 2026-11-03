@@ -141,7 +141,7 @@ storage.maxUploadRetryTime = 60000;   // 電波が切れたら1分で一度あ�
 const auth = getAuth(app);
 auth.languageCode = 'ja';   // パスワード再設定のメールと画面を日本語にする
 const db = initializeFirestore(app, { localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }) });
-const APP_VER = 'Ver.20261103-18';
+const APP_VER = 'Ver.20261103-19';
 
 /* ---------- 電波なしでも使う（今の現場管理と同じ考え方） ----------
    ・保存は押した瞬間に完了の形。電波が戻ったら自動で送る（データは Firestore が端末に貯める）
@@ -1554,9 +1554,7 @@ function showSiteForm(s) {
   };
   if ($('delSite')) $('delSite').onclick = async () => {
     if (!confirm('「' + s.siteName + '」を削除します。よろしいですか？')) return;
-    // 1つ50MBを超えるファイルはドライブへ写せない（ポータルに残り、「終了した現場」の画面からダウンロードできる）
-    const big = isOffline() ? [] : (await getDocs(collection(db, 'sites', s.id, 'files')).catch(() => ({ docs: [] }))).docs.map(d => d.data()).filter(f => !f.deleted && Number(f.size) > ARCHIVE_MAX);
-    if (big.length && !confirm('⚠️ 次のファイルは大きすぎて（1つ50MB超）ドライブへ写せません。\nポータルに残るので、「設定 → 終了した現場」からダウンロードしてください。\n\n' + big.map(f => '・' + f.name + '（' + Math.round(f.size / 1048576) + 'MB）').join('\n') + '\n\nこのまま削除しますか？')) return;
+    // 削除した現場は、サーバー（gas の archiveSites）が10分ごとにドライブへ全部写し、ポータルからは何も残さず消す（大きいファイルも分けて写す。2026-11-03）
     const b = writeBatch(db), { id, ...rest } = s;
     b.set(doc(db, 'endedSites', s.id), { ...rest, endedAt: Date.now(), endedBy: me.uid });
     b.delete(doc(db, 'sites', s.id));
@@ -2177,11 +2175,9 @@ async function hGraphLoad(uid) {
   $('hGBox').innerHTML = '<div style="text-align:center; color:var(--muted);">読み込んでいます…</div>';
   try {
     const q = query(collection(db, 'health'), where('uid', '==', uid));
-    const m = query(collection(db, 'healthMonthly'), where('uid', '==', uid));
-    const [a, b] = await Promise.all([oRead(() => getDocs(q), () => getDocsFromCache(q)), oRead(() => getDocs(m), () => getDocsFromCache(m)).catch(() => ({ docs: [] }))]);
+    const a = await oRead(() => getDocs(q), () => getDocsFromCache(q));
     const list = a.docs.map(d => d.data()).filter(r => r.sys).sort((x, y) => String(x.date).localeCompare(String(y.date)));
-    const months = b.docs.map(d => d.data()).filter(r => r.sys).sort((x, y) => String(x.month).localeCompare(String(y.month))).map(r => ({ ...r, date: r.month + '/01' }));
-    if ($('hGBox')) $('hGBox').innerHTML = '<div class="set-sub-title">直近の記録</div>' + hGraphSvg(list) + (months.length ? '<div class="set-sub-title" style="margin-top: 16px;">月ごとの平均（半年より前）</div>' + hGraphSvg(months, true) : '');
+    if ($('hGBox')) $('hGBox').innerHTML = '<div class="set-sub-title">直近の記録</div>' + hGraphSvg(list);
   } catch (e) { $('hGBox').innerHTML = banner('読み込めませんでした：' + ((e && e.message) || ''), true); }
 }
 function hGraphSvg(list, monthly) {
@@ -2516,24 +2512,26 @@ async function bugList(view) {
   try { all = (await getDocs(query(collection(db, 'bugReports'), orderBy('at', 'desc')))).docs.map(d => ({ id: d.id, ...d.data() })); }
   catch (e) { P.innerHTML = banner('読み込めませんでした：' + ((e && e.message) || ''), true); return; }
   if (!$('panelSettings').classList.contains('active')) return;
-  const open = all.filter(x => x.status !== 'done'), list = view === 'open' ? open : view === 'done' ? all.filter(x => x.status === 'done') : all;
-  const tab = (k, t) => '<button type="button" class="btn ' + (k === view ? 'btn-dark' : 'btn-sub') + '" data-bv="' + k + '">' + t + '</button>';
-  P.innerHTML = '<div class="bug-tabs">' + tab('open', '未対応 ' + open.length) + tab('done', '対応済み ' + (all.length - open.length)) + tab('all', 'すべて ' + all.length) + '</div>' +
+  const list = all;   // 対応済みにしたものはドライブへ記録して消えるので、ここには未対応だけが残る
+  P.innerHTML = '<div class="set-note" style="margin-bottom: 8px;">「対応済みにする」を押すと、ドライブの「DB/不具合報告」に記録してから、ここ（Firestore）と画面の写真を消します。</div>' +
     (list.length ? list.map(x => {
       const dn = x.status === 'done';
       return '<div class="bug-row' + (dn ? ' done' : '') + '"><span class="bug-st' + (dn ? ' done' : '') + '">' + (dn ? '対応済み' : '未対応') + '</span>' +
         '<div class="t" data-i18n-skip>' + esc(x.text) + '</div><div data-bimg="' + esc(x.path || '') + '"></div>' +
         '<div class="m">報告者：<span data-i18n-skip>' + esc(x.byName || x.by) + (x.group ? '（' + esc(x.group) + '）' : '') + '</span><br>日時：' + bugTime(x.at) + '<br>画面：<span data-i18n-skip>' + esc(x.screen) + '</span><br>版：' + esc(x.ver) + '　端末：' + esc(x.device) +
         (dn ? '<br>対応：<span data-i18n-skip>' + esc(x.doneBy) + '</span>　' + bugTime(x.doneAt) : '') + '</div>' +
-        '<button type="button" class="btn btn-sub" style="margin-top:8px;" data-bd="' + esc(x.id) + '" data-to="' + (dn ? 'open' : 'done') + '">' + (dn ? '未対応に戻す' : '対応済みにする') + '</button></div>';
+        '<button type="button" class="btn btn-sub" style="margin-top:8px;" data-bd="' + esc(x.id) + '">対応済みにする（ドライブへ記録して消す）</button></div>';
     }).join('') : '<div class="info-card" style="text-align:center;">報告はありません。</div>');
-  P.querySelectorAll('[data-bv]').forEach(b => { b.onclick = () => bugList(b.dataset.bv); });
   P.querySelectorAll('[data-bd]').forEach(b => {
     b.onclick = async () => {
       b.disabled = true;
-      const on = b.dataset.to === 'done';
-      await fire(updateDoc(doc(db, 'bugReports', b.dataset.bd), { status: on ? 'done' : 'open', doneAt: on ? Date.now() : 0, doneBy: on ? (me.name || me.uid) : '' }), '不具合の報告');
-      bugList(view);
+      b.textContent = 'ドライブへ記録しています…';
+      try {
+        const idToken = await auth.currentUser.getIdToken();
+        const d = await fetch(PORTAL_API, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ fn: 'bug', idToken, data: { id: b.dataset.bd } }) }).then(r => r.json());
+        if (!d || !d.ok) throw new Error((d && d.m) || 'サーバーでエラーが発生しました。');
+        bugList(view);
+      } catch (e) { b.disabled = false; b.textContent = '対応済みにする（ドライブへ記録して消す）'; alert('記録できませんでした：' + e.message); }
     };
   });
   P.querySelectorAll('[data-bimg]').forEach(async h => {
@@ -2656,7 +2654,7 @@ async function setOpen() {
     '<button type="button" id="acSave" class="btn btn-dark">アカウント設定を保存</button><button type="button" id="acPass" class="btn btn-sub" style="margin-top: 8px; width: 100%;">パスワードを変える（メールでご案内します）</button><div id="acMsg" class="set-note"></div></div>' +
     '<div class="info-card"><div class="card-header-row"><span style="font-weight: 700;">🛠 不具合の報告</span></div><button type="button" id="bugGo" class="btn btn-dark">不具合を報告する</button><div class="set-note">おかしな所を見つけたら、説明と画面の写真を送ってください。</div>' +
     (me.isMaster ? '<div class="set-sub-title">マスター</div><label class="switch-row"><span>各画面に不具合修正ボタンを出す（テスト運用の間）</span><input type="checkbox" id="bugSw"' + (bugShow ? ' checked' : '') + '></label><button type="button" id="bugAll" class="btn btn-outline" style="margin-top: 8px;">不具合報告の一覧</button>' : '') + '</div>' +
-    (me.isMaster ? '<div class="info-card"><button type="button" id="goUsers" class="btn btn-outline">人の管理</button><button type="button" id="goEnded" class="btn btn-outline" style="margin-top: 8px;">終了した現場</button></div>' : '');
+    (me.isMaster ? '<div class="info-card"><button type="button" id="goUsers" class="btn btn-outline">人の管理</button></div>' : '');
   pushWire('setPush');
   updateLangButtons();
   $('verBtn').onclick = async () => {
@@ -2684,25 +2682,7 @@ async function setOpen() {
   if ($('bugSw')) $('bugSw').onchange = e => fire(setDoc(bugRef(), { on: e.target.checked, at: Date.now(), by: me.uid }), '不具合修正ボタンの設定');
   if ($('bugAll')) $('bugAll').onclick = () => bugList();
   if ($('goUsers')) $('goUsers').onclick = () => showUsers();
-  if ($('goEnded')) $('goEnded').onclick = endedOpen;
 }
-const ARCHIVE_MAX = 50 * 1024 * 1024;
-/* 終了した現場（マスター用）：現場を削除すると、サーバーが10分ごとに見てドライブへ写し、ポータルからは消す（gas の archiveSites）。
-   大きすぎて写せなかったファイルだけポータルに残るので、ここからダウンロードする */
-async function endedOpen() {
-  show('panelSettings', '終了した現場', setOpen, '← 設定へ');
-  const P = $('panelSettings');
-  P.innerHTML = '<div class="info-card" style="text-align:center; color:var(--muted);">読み込んでいます…</div>';
-  try {
-    const list = (await getDocs(collection(db, 'endedSites'))).docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => (b.endedAt || 0) - (a.endedAt || 0));
-    if (!$('panelSettings').classList.contains('active')) return;
-    P.innerHTML = list.length ? list.map(s => '<div class="info-card" style="margin-bottom: 8px;"><div style="font-weight: 700;">' + esc(s.siteName) + '</div><div class="set-note">終了：' + esc(rWhen(s.endedAt)) + '</div><div style="font-size: 0.85rem; margin-top: 6px;">' +
-      (s.archivedAt ? '✅ ドライブへ写しました（' + esc(rWhen(s.archivedAt)) + '）' : 'ドライブへ写しています（10分ごとに進みます）') + (s.archiveUrl ? ' <a href="' + esc(s.archiveUrl) + '" target="_blank" rel="noopener noreferrer" style="color:var(--link-blue); text-decoration:underline;">フォルダを開く</a>' : '') +
-      ((s.archiveSkippedFiles || []).length ? '<div style="color:var(--error-text); margin-top: 6px; font-weight: 700;">⚠️ 大きすぎてドライブへ写せなかったファイル（ポータルに残っています）</div>' + s.archiveSkippedFiles.map(f => '<div style="margin-top: 4px;"><a href="' + esc(f.url) + '" target="_blank" rel="noopener noreferrer" download style="color:var(--link-blue); text-decoration:underline;">⬇ ' + esc(f.name) + '（' + Math.round(f.size / 1048576) + 'MB）</a></div>').join('') : '') +
-      (s.archiveError ? '<div style="color:var(--error-text); margin-top: 6px;">写す途中で止まっています：' + esc(s.archiveError) + '</div>' : '') + '</div></div>').join('') : '<div class="info-card" style="text-align:center; color:var(--muted);">終了した現場はありません。</div>';
-  } catch (e) { P.innerHTML = banner('読み込めませんでした：' + ((e && e.message) || ''), true); }
-}
-
 /* ---------- お知らせ（見た目は今の現場管理と同じ）----------
    現場の人とマスターに届く。自分の操作は自分には出さない。30日より古いものは出さない。未読は現場カードにも出す（案 E）。
    音の出る通知（アプリを閉じていても届くもの）はまだ入れていない */
