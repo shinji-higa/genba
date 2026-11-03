@@ -286,12 +286,13 @@
 /* ---------- ここからポータルで増えた文 ---------- */
 Object.assign(I18N_ES, {
   '現場管理ポータル': 'Portal de obras', 'ログイン': 'Iniciar sesión', 'メールアドレス': 'Correo electrónico',
+  'アカウントIDとパスワードを入力してください。': 'Ingrese su ID de cuenta y contraseña.', 'アカウントID': 'ID de cuenta',
   'メールアドレスとパスワードを入力してください。': 'Ingrese su correo y contraseña.',
   '初めての方・パスワードを忘れた方': 'Primera vez / Olvidé mi contraseña', '確認しています…': 'Verificando...',
-  'ログインできませんでした。': 'No se pudo iniciar sesión.', '先にメールアドレスを入れてください。': 'Primero ingrese su correo.',
-  'メールを送れませんでした。': 'No se pudo enviar el correo.', 'メールアドレスかパスワードが違います。': 'El correo o la contraseña no son correctos.',
+  'ログインできませんでした。': 'No se pudo iniciar sesión.', '先にメールアドレスを入れてください。': 'Primero ingrese su correo.', '先にアカウントIDを入れてください。': 'Primero ingrese su ID de cuenta.',
+  'メールを送れませんでした。': 'No se pudo enviar el correo.', 'メールアドレスかパスワードが違います。': 'El correo o la contraseña no son correctos.', 'アカウントIDかパスワードが違います。': 'La ID de cuenta o la contraseña no son correctas.',
   '回数が多すぎます。少し待ってからもう一度お試しください。': 'Demasiados intentos. Espere un poco e intente de nuevo.',
-  'メールアドレスの形が正しくありません。': 'El formato del correo no es correcto.', 'サーバーでエラーが発生しました。': 'Ocurrió un error en el servidor.',
+  'メールアドレスの形が正しくありません。': 'El formato del correo no es correcto.', 'アカウントIDの形が正しくありません。': 'El formato de la ID de cuenta no es correcto.', 'サーバーでエラーが発生しました。': 'Ocurrió un error en el servidor.',
   '権限がありません': 'Sin permiso', '権限がありません。': 'No tiene permiso.', '送れませんでした': 'No se pudo enviar', '電波なし': 'Sin señal', '未送信': 'No enviado',
   '送れなかったもの': 'No enviados', '（押すと詳しく）': '(toque para ver)', '電波がありません。': 'No hay señal.',
   '前に見た内容を表示しています。最新ではないことがあります。': 'Se muestra lo visto antes. Puede no estar actualizado.',

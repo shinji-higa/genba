@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>フード注文</title>
-  <!-- Ver.20261103-03 -->
+  <!-- Ver.20261103-04 -->
   <style>
     /* 厨房フードの注文書。注文用図面（箱型・山型・二重）の寸法表を画面で入力し、数字入りの図を1台1ページで出す。フードはメーカー共通なので本体にメーカーは出さない。
        仕組みは金物注文（添付）kana.html と同じ（保存・提出・版・PDF）。2026-11-02 作成
@@ -70,14 +70,15 @@
     .sheet-bg { position: fixed; inset: 0; background: rgba(0,0,0,0.45); z-index: 50; display: none; }
     .sheet-bg.open { display: block; }
     .sheet { position: absolute; inset: 0; background: #fff; display: flex; flex-direction: column; }
-    @media (min-width: 900px) { .sheet { inset: 4vh auto auto 50%; transform: translateX(-50%); width: min(760px, 94vw); max-height: 92vh; border-radius: 8px; } }
+    @media (min-width: 900px) { .sheet { inset: 4vh auto auto 50%; transform: translateX(-50%); width: min(980px, 94vw); max-height: 92vh; border-radius: 8px; } }
     .sheet-h { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 10px 12px; border-bottom: 1.5px solid #9e9e9e; font-weight: 700; }
     .sheet-h .ttl { flex: 1; min-width: 0; }
-    .sheet-b { flex: 1; overflow: auto; padding: 12px; background: #eceef1; }
+    .sheet-b { flex: 1; overflow: auto; padding: 12px; }
     .sheet-f { display: flex; gap: 8px; padding: 10px 12px; border-top: 1.5px solid #9e9e9e; }
     .sheet-f .btn { flex: 1; padding: 12px; }
     /* 図は上に固定して大きく（角ダクトの製作伝票のチャンバーと同じ。ユーザー指示 2026-11-02：スマホで図が小さすぎた）。押すと画面いっぱい */
-    .ed-fig { position: sticky; top: -12px; z-index: 2; background: #fff; border: 1.5px solid #9e9e9e; border-radius: 6px; padding: 6px; margin: -2px 0 10px; }
+    .ed { display: flex; flex-direction: column; gap: 14px; }
+    .ed-fig { position: sticky; top: -12px; z-index: 2; background: #fff; border: 1.5px solid #9e9e9e; border-radius: 6px; padding: 6px; margin: -2px 0 0; }
     .ed-fig svg { width: 100%; height: auto; max-height: 45vh; display: block; cursor: zoom-in; }
     .ed-calc { display: flex; gap: 12px; flex-wrap: wrap; font-size: 0.8rem; color: #333; padding: 6px 4px 0; border-top: 1px dashed #b3b3b3; margin-top: 4px; }
     .ed-calc:empty { display: none; }
@@ -85,10 +86,12 @@
     #figZoom.open { display: block; }
     #figZoom svg { width: 100%; height: 100%; display: block; }
     #figZoom .zc { position: absolute; top: 10px; right: 14px; font-size: 0.85rem; color: #444; }
-    .dims { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 8px; }
+    .dims { display: grid; grid-template-columns: repeat(auto-fill, minmax(92px, 1fr)); gap: 8px; }
+    .spec-row { display: grid; grid-template-columns: 64px 1fr; gap: 8px; align-items: center; margin-bottom: 8px; }
+    .spec-row .lbl { margin: 0; }
     .dims label { font-size: 0.78rem; }
     .dims input { text-align: right; font-variant-numeric: tabular-nums; padding: 8px 8px; }
-    @media (min-width: 900px) { #edBody { display: flex; gap: 12px; align-items: flex-start; } .ed-fig { width: 50%; top: 0; margin: 0; flex: none; } .ed-fig svg { max-height: calc(92vh - 150px); } .ed-form { flex: 1; min-width: 0; } }
+    @media (min-width: 900px) { .ed { flex-direction: row-reverse; align-items: flex-start; } .ed-fig { width: 52%; top: 0; margin: 0; flex: none; } .ed-fig svg { max-height: calc(100vh - 230px); } .ed-form { flex: 1; min-width: 0; } }
     .edbox { border: 1.5px solid #a3a7ad; border-radius: 8px; background: #eceef1; padding: 10px 12px; margin-bottom: 10px; }
     .edbox .fg:last-child { margin-bottom: 0; }
     .edbox-h { font-weight: 700; font-size: 0.88rem; margin-bottom: 8px; }
@@ -241,7 +244,7 @@
   <div class="sheet-bg" id="edBg">
     <div class="sheet">
       <div class="sheet-h"><span class="ttl" id="edTitle">フード</span><button type="button" class="btn btn-sub btn-danger" id="edDel" onclick="deleteItem()">削除</button><button type="button" class="btn btn-sub" onclick="closeEdit()">閉じる</button></div>
-      <div class="sheet-b" id="edBody"></div>
+      <div class="sheet-b"><div class="ed" id="edBody"></div></div>
       <div class="sheet-f"><button type="button" class="btn btn-sub" onclick="dupItem()">同じものをもう1件</button><button type="button" class="btn btn-dark" onclick="closeEdit()">決定</button></div>
     </div>
   </div>
@@ -447,9 +450,9 @@
 
     /* ===== 図（SVG）。角ダクトの製作伝票のチャンバーと同じく、入れた数字の縮尺で描き、数字を図に書く（ユーザー指示 2026-11-02：スマホで図が小さすぎた）。
        上＝平面図（上が奥・下が手前）、下＝正面図と側面図（同じ縮尺）。
-       mode：'val'＝入れた数字（入力画面）、'key'＝記号 L・W…（注文書の形の説明）、'thumb'＝寸法なしの小さい絵（一覧） */
+       mode：'ed'＝入力画面（チャンバーと同じく図を縦に積んで大きく）、'val'＝入れた数字（注文書）、'key'＝記号 L・W…（注文書の形の説明）、'thumb'＝寸法なしの小さい絵（一覧） */
     function hoodSvg(it, mode) {
-      var key = mode === 'key', thumb = mode === 'thumb';
+      var key = mode === 'key', thumb = mode === 'thumb', stack = mode === 'ed';
       var L = num(it.L) || 2000, W = num(it.W) || 900, H = num(it.H) || 600, A = num(it.A) || Math.round(L * 0.25), B = num(it.B) || Math.round(W * 0.35);
       var d = dims(it), yama = isYama(it), dbl = isDouble(it), tk = it.duct === 'tankan', fl = it.duct === 'flange';
       var C1 = d.C1 || L / 2, D1 = d.D1 || W / 2, C2 = L - C1, D2 = W - D1;
@@ -488,10 +491,10 @@
         return head(64, 48) + front((64 - tw) / 2, (48 - th) / 2 + ductH * kt, kt) + '</svg>';
       }
       // 縮尺と置き場
-      var ML = 68, MR = 44, MT = key ? 24 : 26, MB = sp.length ? 44 : 30, GAP = yama ? 60 : 46, GS = 18, VW = 420, X2 = 34;   // X2＝2本目の縦の寸法線の位置（左へ）
-      var k = Math.min((VW - ML - MR - GS) / (L + W), 320 / (W + H + ductH));
+      var ML = stack && !yama ? 34 : stack ? 58 : 68, MR = 44, MT = key ? 24 : 26, MB = sp.length ? 44 : 30, GAP = yama ? (stack ? 68 : 60) : 46, GS = 18, VW = stack ? 264 : 420, X2 = 34;   // X2＝2本目の縦の寸法線の位置（左へ）
+      var k = stack ? Math.min((VW - ML - MR) / L, 230 / (W + 2 * H + ductH)) : Math.min((VW - ML - MR - GS) / (L + W), 320 / (W + H + ductH));
       var pw = L * k, ph = W * k, fh = H * k, sw = W * k;
-      var px0 = ML, py0 = MT, fx0 = ML, fy0 = py0 + ph + GAP + ductH * k, sx0 = fx0 + pw + GS, VH = fy0 + fh + MB;
+      var px0 = ML, py0 = MT, fx0 = ML, fy0 = py0 + ph + GAP + ductH * k, sx0 = stack ? fx0 : fx0 + pw + GS, sy0 = stack ? fy0 + fh + (sp.length ? 52 : 26) + ductH * k : fy0, VH = sy0 + fh + MB;
       s += head(VW, VH);
       /* --- 平面図 --- */
       var cx = px0 + C1 * k, cy = py0 + D2 * k;   // 開口の中心（上が奥なので D2 が上から）
@@ -525,15 +528,15 @@
       if (tk) s += dV(fx0 + C1 * k + A * k / 2 + 7, fy0 - 100 * k, fy0, '100', true);
       if (sp.length) { var p2 = 0; sp.concat([L]).forEach(function (x) { s += dH(fx0 + p2 * k, fx0 + x * k, fy0 + fh + 12, fmtN(x - p2), true); p2 = x; }); s += tx(fx0, fy0 + fh + 30, '分割 ' + (sp.length + 1) + 'つ（左端から ' + sp.map(fmtN).join('・') + '）', 'start', true); }
       /* --- 側面図（左＝手前）--- */
-      var cxs = sx0 + D1 * k, ySk2 = fy0 + fh - SKIRT * k, i3 = ins * k;
-      if (it.shape === 'HY') s += rc(sx0, ySk2, sw, SKIRT * k) + pl([[sx0, ySk2], [sx0 + F1 * k, fy0], [sx0 + (F1 + F2) * k, fy0], [sx0 + sw, ySk2]], false, fGuess ? '3 2' : '');
+      var cxs = sx0 + D1 * k, ySk2 = sy0 + fh - SKIRT * k, i3 = ins * k;
+      if (it.shape === 'HY') s += rc(sx0, ySk2, sw, SKIRT * k) + pl([[sx0, ySk2], [sx0 + F1 * k, sy0], [sx0 + (F1 + F2) * k, sy0], [sx0 + sw, ySk2]], false, fGuess ? '3 2' : '');
       else {
-        s += rc(sx0, fy0, sw, fh) + ln(sx0, fy0 + 3, sx0 + sw, fy0 + 3, '', 0.5);
+        s += rc(sx0, sy0, sw, fh) + ln(sx0, sy0 + 3, sx0 + sw, sy0 + 3, '', 0.5);
         if (it.shape === 'HW') s += ln(sx0, ySk2, sx0 + sw, ySk2, '', 0.5) + pl([[sx0 + i3, ySk2], [sx0 + F1 * k, ySk2 - h * k], [sx0 + (F1 + F2) * k, ySk2 - h * k], [sx0 + sw - i3, ySk2]], false, fGuess ? '3 2' : '');
       }
-      if (tk) s += rc(cxs - B * k / 2, fy0 - 100 * k, B * k, 100 * k); else if (fl) s += rc(cxs - B * k / 2 - 4, fy0 - 3, B * k + 8, 3); else s += ln(cxs - B * k / 2, fy0 + 1.5, cxs + B * k / 2, fy0 + 1.5, '2 2', 0.8);
-      s += dH(sx0, sx0 + sw, fy0 + fh + 12, V(W, 'W'), true);
-      s += tx(px0, py0 - (key || hpGuess ? 18 : 20), '平面図（上が奥）', 'start', true) + tx(fx0, fy0 - (tk ? 100 * k : 0) - 5, '正面図', 'start', true) + tx(sx0, fy0 - (tk ? 100 * k : 0) - 5, '側面図（左が手前）', 'start', true);
+      if (tk) s += rc(cxs - B * k / 2, sy0 - 100 * k, B * k, 100 * k); else if (fl) s += rc(cxs - B * k / 2 - 4, sy0 - 3, B * k + 8, 3); else s += ln(cxs - B * k / 2, sy0 + 1.5, cxs + B * k / 2, sy0 + 1.5, '2 2', 0.8);
+      s += dH(sx0, sx0 + sw, sy0 + fh + 12, V(W, 'W'), true);
+      s += tx(px0, py0 - (key || hpGuess ? 18 : 20), '平面図（上が奥）', 'start', true) + tx(fx0, fy0 - (tk ? 100 * k : 0) - 5, '正面図', 'start', true) + tx(sx0, sy0 - (tk ? 100 * k : 0) - 5, '側面図（左が手前）', 'start', true);
       return s + '</svg>';
     }
     /* ===== 画面の表示 ===== */
@@ -596,7 +599,7 @@
       set('cC2', fmtN(d.C2) || '—'); set('cD2', fmtN(d.D2) || '—'); set('cG', d.G ? d.G + '穴（' + hangList(it).length + '列×2）' : '—');
       if (isYama(it)) { set('cE1', fmtN(d.E1) || '—'); set('cE3', fmtN(d.E3) || '—'); set('cF1', fmtN(d.F1) || '—'); set('cF3', fmtN(d.F3) || '—'); }
       set('cSp', splitNote(it));
-      var fg = document.getElementById('edFigSvg'); if (fg) fg.innerHTML = hoodSvg(it, 'val');   // 図を描き直す（入れた数字の縮尺）
+      var fg = document.getElementById('edFigSvg'); if (fg) fg.innerHTML = hoodSvg(it, 'ed');   // 図を描き直す（入れた数字の縮尺）
       var e = itemErrors(it), eb = document.getElementById('edErr'); if (eb) { eb.style.display = e.length ? '' : 'none'; eb.textContent = e.join('　'); }
       schedulePreview();
     }
@@ -630,17 +633,19 @@
       // 角ダクトのチャンバーと同じ並び：図は上に固定（押すと全画面）、その下に欄。数字を打つたびに図が描き直る
       var dim = function (k, lb, ph) { return '<div><label>' + lb + '</label><input type="text" inputmode="numeric" value="' + esc(it[k]) + '" placeholder="' + esc(ph || '') + '" oninput="edIn(\'' + k + '\',this.value)"></div>'; };
       document.getElementById('edBody').innerHTML =
-        '<div class="ed-fig"><div id="edFigSvg" onclick="figZoom()" title="押すと拡大">' + hoodSvg(it, 'val') + '</div><div class="ed-calc" id="edCalc"></div></div>' +
+        '<div class="ed-fig"><div id="edFigSvg" onclick="figZoom()" title="押すと拡大">' + hoodSvg(it, 'ed') + '</div><div class="ed-calc" id="edCalc"></div></div>' +
         '<div class="ed-form"><div class="errbox" id="edErr" style="display:none;margin:0 0 10px;"></div>' +
-        '<div class="edbox"><div class="fg"><span class="lbl">形</span>' + chipsHtml('shape', SHAPES, it.shape) + '<div class="note" style="margin-top:4px;">' + esc(SHAPE_LONG[it.shape]) + (yama ? '　天板の平らな部分は E2×F2（空欄＝工場におまかせ）。斜めの下に150の垂れ下がり' : '') + (isDouble(it) ? '　外装の箱付き（内側の線は25内）。分割はできません' : '') + '</div></div>' +
-        '<div class="fg"><span class="lbl">ダクト接続</span>' + chipsHtml('duct', DUCTS, it.duct) + '</div>' +
-        '<div class="g2"><div class="fg"><span class="lbl">材質</span>' + chipsArr('mat', MATS, it.mat) + '</div><div class="fg"><span class="lbl">仕上</span>' + chipsArr('fin', finsOf(it), it.fin) + '</div></div></div>' +
+        '<div class="edbox"><div class="fg"><label>台数</label><div class="qty"><button type="button" onclick="edQty(\'qty\',-1)">−</button><input type="number" inputmode="numeric" min="1" value="' + esc(it.qty) + '" oninput="edIn(\'qty\',this.value)"><button type="button" onclick="edQty(\'qty\',1)">＋</button></div></div>' +
+        '<div class="spec-row"><span class="lbl">形</span>' + chipsHtml('shape', SHAPES, it.shape) + '</div>' +
+        (isDouble(it) ? '<div class="note" style="margin:-4px 0 8px;">外装の箱付き。分割はできません</div>' : '') +
+        '<div class="spec-row"><span class="lbl">接続</span>' + chipsHtml('duct', DUCTS, it.duct) + '</div>' +
+        '<div class="spec-row"><span class="lbl">材質</span>' + chipsArr('mat', MATS, it.mat) + '</div>' + '<div class="spec-row"><span class="lbl">仕上</span>' + chipsArr('fin', finsOf(it), it.fin) + '</div>' + '</div>' +
         '<div class="edbox"><div class="edbox-h">寸法（mm）</div><div class="dims">' + dim('L', 'L 長さ') + dim('W', 'W 奥行') + dim('H', 'H 高さ') + (it.shape === 'HW' ? dim('h', 'h 斜め部') : '') + dim('A', 'A 開口') + dim('B', 'B 開口') + '</div>' +
-        '<div class="fg" style="margin-top:10px;"><span class="lbl">開口の位置</span>' + chipsHtml('pos', { center: '中央', set: '位置を指定' }, it.pos) + '</div>' +
+        '<div class="spec-row" style="margin-top:10px;"><span class="lbl">開口位置</span>' + chipsHtml('pos', { center: '中央', set: '位置を指定' }, it.pos) + '</div>' +
         (it.pos === 'center' ? '<div class="note">C1＝C2＝L÷2、D1＝D2＝W÷2。</div>' :
           '<div class="dims">' + dim('C1', 'C1 左端→開口の芯') + dim('D1', 'D1 手前→開口の芯') + '</div><div class="note" style="margin-top:4px;">C2（芯→右端）＝<b id="cC2">' + (fmtN(d.C2) || '—') + '</b>　D2（芯→奥）＝<b id="cD2">' + (fmtN(d.D2) || '—') + '</b></div>') +
         (yama ? '<div class="edbox-h" style="margin-top:10px;">天板（平らな部分。空欄＝工場におまかせ）</div><div class="dims">' + dim('E2', 'E2 長さ方向', 'おまかせ') + dim('F2', 'F2 奥行方向', 'おまかせ') + '</div><div class="note" style="margin-top:4px;">E1＝<b id="cE1">' + (fmtN(d.E1) || '—') + '</b>　E3＝<b id="cE3">' + (fmtN(d.E3) || '—') + '</b>　F1＝<b id="cF1">' + (fmtN(d.F1) || '—') + '</b>　F3＝<b id="cF3">' + (fmtN(d.F3) || '—') + '</b></div>' : '') +
-        '<div class="fg" style="margin-top:10px;"><label>台数</label><div class="qty"><button type="button" onclick="edQty(\'qty\',-1)">−</button><input type="number" inputmode="numeric" min="1" value="' + esc(it.qty) + '" oninput="edIn(\'qty\',this.value)"><button type="button" onclick="edQty(\'qty\',1)">＋</button></div></div></div>' +
+        '</div>' +
         '<div class="edbox"><div class="edbox-h">' + esc(hangName(it)) + (yama ? '' : '（φ12 吊りボルト穴）') + '　<span class="note" style="display:inline;">数 G＝<b id="cG">' + (d.G ? d.G + '（' + hangList(it).length + '列×2）' : '—') + '</b></span></div>' +
         '<div class="fg"><label>左端からの寸法を並べる（その位置に手前・奥の2つ）</label><div style="display:flex;gap:6px;"><input type="text" inputmode="numeric" value="' + esc(it.hp) + '" placeholder="例：100, 1300, 2500" oninput="edIn(\'hp\',this.value)"><button type="button" class="btn btn-sub" onclick="edHangStd()">標準で入れる</button></div><div class="note">「標準で入れる」＝端から100、間は1500以内で等間隔。直して使えます。</div></div>' +
         '<div class="fg"><label>手前・奥の端からの寸法（空欄＝' + hangStd(it) + '）</label>' + numIn('hy', it.hy, String(hangStd(it))) + '</div></div>' +

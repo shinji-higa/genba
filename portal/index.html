@@ -141,7 +141,7 @@ storage.maxUploadRetryTime = 60000;   // 電波が切れたら1分で一度あ�
 const auth = getAuth(app);
 auth.languageCode = 'ja';   // パスワード再設定のメールと画面を日本語にする
 const db = initializeFirestore(app, { localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }) });
-const APP_VER = 'Ver.20261103-03';
+const APP_VER = 'Ver.20261103-04';
 
 /* ---------- 電波なしでも使う（今の現場管理と同じ考え方） ----------
    ・保存は押した瞬間に完了の形。電波が戻ったら自動で送る（データは Firestore が端末に貯める）
@@ -375,7 +375,7 @@ async function admin(action, data) {
 }
 
 /* ---------- ログイン ---------- */
-const AUTH_MSG = { 'auth/invalid-credential': 'メールアドレスかパスワードが違います。', 'auth/wrong-password': 'メールアドレスかパスワードが違います。', 'auth/user-not-found': 'メールアドレスかパスワードが違います。', 'auth/too-many-requests': '回数が多すぎます。少し待ってからもう一度お試しください。', 'auth/invalid-email': 'メールアドレスの形が正しくありません。' };
+const AUTH_MSG = { 'auth/invalid-credential': 'アカウントIDかパスワードが違います。', 'auth/wrong-password': 'アカウントIDかパスワードが違います。', 'auth/user-not-found': 'アカウントIDかパスワードが違います。', 'auth/too-many-requests': '回数が多すぎます。少し待ってからもう一度お試しください。', 'auth/invalid-email': 'アカウントIDの形が正しくありません。' };
 
 onAuthStateChanged(auth, async user => {
   stopWatch();
@@ -415,9 +415,9 @@ function showLogin() {
     '<div style="text-align: right; margin: 16px 0 6px;">' + LANG_SW + '</div>' +
     '<div class="info-card" style="text-align: center;">' +
     '<h2 style="font-size: 1.15rem; margin-bottom: 6px;">ログイン</h2>' +
-    '<p style="font-size: 0.8rem; color: var(--muted); margin-bottom: 20px;">メールアドレスとパスワードを入力してください。</p>' +
+    '<p style="font-size: 0.8rem; color: var(--muted); margin-bottom: 20px;">アカウントIDとパスワードを入力してください。</p>' +
     '<div style="text-align: left;">' +
-    '<div class="form-group"><label for="id">メールアドレス</label><input type="text" id="id" autocomplete="username" inputmode="email"></div>' +
+    '<div class="form-group"><label for="id">アカウントID</label><input type="text" id="id" autocomplete="username" inputmode="email"></div>' +
     '<div class="form-group"><label for="pw">パスワード</label><input type="password" id="pw" autocomplete="current-password"></div>' +
     '<button type="button" id="go" class="btn btn-dark" style="margin-top: 10px;">ログイン</button>' +
     '<button type="button" id="forgot" class="btn btn-sub" style="margin-top: 14px; width: 100%;">初めての方・パスワードを忘れた方</button>' +
@@ -431,7 +431,7 @@ function showLogin() {
   $('pw').onkeydown = e => { if (e.key === 'Enter') $('go').click(); };
   $('forgot').onclick = async () => {
     const em = $('id').value.trim().toLowerCase();
-    if (!em) { $('err').textContent = '先にメールアドレスを入れてください。'; return; }
+    if (!em) { $('err').textContent = '先にアカウントIDを入れてください。'; return; }
     try { await resetMail(em); $('err').textContent = em + ' あてに、パスワードを決めるメールを送りました。'; }
     catch (e) { $('err').textContent = 'メールを送れませんでした。'; }
   };
@@ -1573,7 +1573,7 @@ const O_KIND = {
   maru: { host: 'maruHost', src: 'maru.html?v=4', title: '丸ダクト注文', word: '注文書', log: '丸ダクト', fn: 'Maru' },
   cons: { host: 'consHost', src: 'cons.html?v=19', title: '消耗品注文', word: '注文書', log: '消耗品', fn: 'Cons' },
   kana: { host: 'kanaHost', src: 'kana.html?v=6', title: '金物注文（添付）', word: '注文書', log: '金物（添付）', fn: 'Kana' },
-  hood: { host: 'hoodHost', src: 'hood.html?v=6', title: 'フード注文', word: '注文書', log: 'フード', fn: 'Hood' }   // 厨房フード（箱型・山型・二重。数字入りの図の注文書。2026-11-03）
+  hood: { host: 'hoodHost', src: 'hood.html?v=7', title: 'フード注文', word: '注文書', log: 'フード', fn: 'Hood' }   // 厨房フード（箱型・山型・二重。数字入りの図の注文書。2026-11-03）
 };
 function oOpen(s) {
   const btn = (k, ic, t, sub) => '<button type="button" class="order-btn' + (k ? ' on' : '') + '"' + (k ? ' data-o="' + k + '"' : ' disabled') + '><span class="order-ic">' + ic + '</span><span class="order-t">' + t + '</span><span class="order-s">' + sub + '</span></button>';
@@ -2832,13 +2832,13 @@ function showAddUser() {
   show('panelSettings', '人を追加', () => showUsers(), '← 戻る');
   $('panelSettings').innerHTML = '<div class="info-card">' +
     '<div class="form-group"><label>名前</label><input type="text" id="n"></div>' +
-    '<div class="form-group"><label>メールアドレス（ログインIDになります）</label><input type="text" id="e" inputmode="email"></div>' +
+    '<div class="form-group"><label>アカウントID（ログインIDになります）</label><input type="text" id="e" inputmode="email"></div>' +
     '<div class="form-group"><label>最初のパスワード（6文字以上）</label><input type="text" id="p" autocomplete="off"></div>' +
     '<label class="check-row"><input id="m" type="checkbox">マスターにする</label>' +
     '<button type="button" id="save" class="btn btn-dark" style="margin-top: 14px;">追加する</button><div id="err" style="margin-top: 8px; font-size:0.85rem;"></div></div>';
   $('save').onclick = async () => {
     const email = $('e').value.trim().toLowerCase(), name = $('n').value.trim();
-    if (!name || !email) { $('err').textContent = '名前とメールアドレスを入れてください。'; return; }
+    if (!name || !email) { $('err').textContent = '名前とアカウントIDを入れてください。'; return; }
     $('save').disabled = true; $('err').textContent = '追加しています…';
     try {
       await admin('create', { email, password: $('p').value });
