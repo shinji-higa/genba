@@ -1545,5 +1545,21 @@
       S = normSlip(loadStore()[0] || blank());
       renderAll();
     })();  </script>
+<script>
+  /* 全角の数字を半角に（数字の欄だけ。ユーザー指示 2026-11-03）。日本語入力の確定のあとにも直す */
+  (function () {
+    var Z = /[０-９．，－]/;
+    function isNum(el) { return el && el.tagName === 'INPUT' && (el.type === 'number' || /^(numeric|decimal)$/.test(el.getAttribute('inputmode') || '')); }
+    function fix(el) {
+      if (!isNum(el) || !Z.test(el.value)) return false;
+      var p = el.selectionStart;
+      el.value = el.value.replace(/[０-９．，－]/g, function (c) { return c === '．' ? '.' : c === '，' ? ',' : c === '－' ? '-' : String.fromCharCode(c.charCodeAt(0) - 0xFEE0); });
+      try { if (p != null) el.setSelectionRange(p, p); } catch (e) {}
+      return true;
+    }
+    document.addEventListener('input', function (e) { if (!e.isComposing) fix(e.target); }, true);
+    document.addEventListener('compositionend', function (e) { if (fix(e.target)) e.target.dispatchEvent(new Event('input', { bubbles: true })); }, true);
+  })();
+</script>
 </body>
 </html>
