@@ -1,7 +1,9 @@
 /* 給与の計算。画面でもテストでも同じものを使う（金額はすべて円）。
    決まり（ユーザー指示 2026-11-02）
    ・時間単価＝基本給÷月平均所定時間（年間所定時間÷12）。日額＝時間単価×8
-   ・時間外は30分刻み。平日の時間外1.25、所定・法定休日の出勤は日額×1.6、休日の時間外は時間単価×2.0
+   ・時間外は1か月の合計で丸める（平日・所定休日・法定休日ごと。30分未満は切り捨て、30分以上は1時間に切り上げ。ユーザー指示 2026-11-03）
+   ・平日の時間外1.25、所定・法定休日の出勤は日額×1.6、休日の時間外は時間単価×2.0
+   ・家族手当＝（扶養親族等の数＋16歳未満の家族）×1万円、上限3万円（ユーザー指示 2026-11-03。金額は設定で変えられる）
    ・夜間作業：日報の夜間チェックの日は昼の1日分×1.6。平日は基本給に入っているので上乗せ分（0.6）を足す。休日は休日の掛率＋上乗せ分
    ・出張手当は1泊3,500円。明細に載せて振込に足す。税金と社会保険の計算には入れない
    ・社会保険は前月分を今月の給与から引く（率は「その保険月」のものを使う） */
@@ -83,7 +85,7 @@
     o.houDay = yen(daily * (cfg.holHou != null ? cfg.holHou : cfg.hol) * n('houDays'));
     o.houOt = yen(hourly * (cfg.otHou != null ? cfg.otHou : cfg.holOt) * n('houOtH'));
     o.night = yen(daily * (cfg.night - 1) * (n('nightDays') + n('nightShoDays') + n('nightHouDays')));
-    o.family = Number(emp.family) || 0;
+    o.family = familyPay(emp, cfg);
     o.commute = Number(emp.commute) || 0;
     o.trip = yen(cfg.tripNight * n('tripNights'));
     o.absent = -yen(daily * n('absentDays'));
@@ -142,9 +144,17 @@
     const [y, m] = ym.split('-').map(Number), c = closeDay || 20;
     return { from: new Date(y, m - 2, c + 1), to: new Date(y, m - 1, c) };
   }
-  /** 時間外の端数：30分刻み（切り捨て）。刻みは設定で変える */
-  const stepH = (h, step) => { const s = (step || 30) / 60; return Math.floor((Number(h) || 0) / s + 1e-9) * s; };
+  /** 時間外の端数：1か月の合計で、30分未満は切り捨て、30分以上は1時間に切り上げ */
+  const roundH = h => { const v = Number(h) || 0, f = Math.floor(v + 1e-9); return v - f >= 0.5 - 1e-9 ? f + 1 : f; };
+  /** 日報の集計（1日ごとは丸めない）の時間外を丸める。丸める前の時間は raw に残す */
+  function roundAtt(a) {
+    if (!a || a.error) return a;
+    const raw = a.raw || { otH: a.otH, shoOtH: a.shoOtH, houOtH: a.houOtH };
+    return { ...a, raw, otH: roundH(raw.otH), shoOtH: roundH(raw.shoOtH), houOtH: roundH(raw.houOtH) };
+  }
+  /** 家族手当：（扶養親族等の数＋16歳未満の家族）×1人の額、上限あり */
+  const familyPay = (emp, cfg) => Math.min(Number(cfg.familyMax != null ? cfg.familyMax : 30000), ((Number(emp.deps) || 0) + (Number(emp.kids16) || 0)) * Number(cfg.familyPer != null ? cfg.familyPer : 10000));
 
-  const api = { jpHolidays, workYear, calcMonth, calcBonus, monthlyTax, bonusRate, careTarget, payDay, period, rateAt, half, ymAdd, stepH };
+  const api = { jpHolidays, workYear, calcMonth, calcBonus, monthlyTax, bonusRate, careTarget, payDay, period, rateAt, half, ymAdd, roundH, roundAtt, familyPay };
   if (typeof module !== 'undefined') module.exports = api; else root.KY = api;
 })(typeof window !== 'undefined' ? window : globalThis);

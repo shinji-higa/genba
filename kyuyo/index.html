@@ -78,12 +78,12 @@
 <main id="m"></main>
 
 <script src="tax.js?v=7"></script>
-<script src="calc.js?v=13"></script>
+<script src="calc.js?v=14"></script>
 <script type="module">
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
 import { getFirestore, collection, doc, getDoc, getDocs, setDoc, writeBatch, query, where } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
-const APP_VER = 'Ver.20261103-02';
+const APP_VER = 'Ver.20261104-01';
 const API = 'https://script.google.com/macros/s/AKfycbyW2hFHqIQuu-TsflPk_0zv7gquhoepspuvRG9-bMStPDSWSc2blcDFBtWs7MisP3f_/exec';
 const app = initializeApp({ apiKey: 'AIzaSyDVR4p4DO4s9h70uPlXUVlhNcMP9-YkQ5Q', authDomain: 'genba-portal-9077b.firebaseapp.com', projectId: 'genba-portal-9077b' });
 const auth = getAuth(app);
@@ -139,8 +139,8 @@ const col = n => collection(db, n), mid = (ym, id) => ym + '_' + id, plain = o =
 const empRef = e => ({ id: e.id, uid: e.uid || '', name: e.name });
 let mirrorQ = Promise.resolve();   // 控えは押した順に1つずつ書く（続けて押しても順番が入れ替わらないように）
 const mirror = (action, data) => { mirrorQ = mirrorQ.then(() => gas(action, data)).catch(e => alert('ドライブの給与管理DBへ書けませんでした：' + e.message + '\n画面の保存はできています。')); return mirrorQ; };
-function attend(days, ym, close, step) {
-  const p = KY.period(ym, close), st = (step || 30) / 60, s = d => d.getFullYear() + '/' + pad(d.getMonth() + 1) + '/' + pad(d.getDate()), from = s(p.from), to = s(p.to);
+function attend(days, ym, close) {   // 時間外は1日ごとには丸めず、月の合計を KY.roundAtt で丸める
+  const p = KY.period(ym, close), s = d => d.getFullYear() + '/' + pad(d.getMonth() + 1) + '/' + pad(d.getDate()), from = s(p.from), to = s(p.to);
   const a = { totalH: 0, workDays: 0, absentDays: 0, paidDays: 0, otH: 0, earlyH: 0, shoDays: 0, shoOtH: 0, houDays: 0, houOtH: 0, nightDays: 0, nightShoDays: 0, nightHouDays: 0, rows: 0 };
   days.forEach(d => {
     if (d.deleted || String(d.date) < from || String(d.date) > to) return;
@@ -148,13 +148,13 @@ function attend(days, ym, close, step) {
     if (d.kubun === '欠勤') { a.absentDays++; return; }
     if (d.kubun === '有給') { a.paidDays++; return; }
     if (d.kubun !== '出勤') return;
-    const ot = Math.floor((Number(d.ot) || 0) / st + 1e-9) * st, night = !!d.night;
+    const ot = Number(d.ot) || 0, night = !!d.night;
     a.totalH += Number(d.hours) || 0;
     if (d.type === '所定休日') { a.shoDays++; a.shoOtH += ot; if (night) a.nightShoDays++; }
     else if (d.type === '法定休日') { a.houDays++; a.houOtH += ot; if (night) a.nightHouDays++; }
     else { a.workDays++; a.otH += ot; a.earlyH += Number(d.early) || 0; if (night) a.nightDays++; }
   });
-  return a;
+  return KY.roundAtt(a);
 }
 const FAST_ACT = {
   async boot() {
@@ -177,7 +177,7 @@ const FAST_ACT = {
     await Promise.all((d.emps || []).map(async e => {
       const s = saved[e.id];
       if (s && s.status === '確定' && s.result && s.result.att) { att[e.id] = s.result.att; return; }
-      att[e.id] = e.uid ? attend((await getDocs(collection(db, 'daily', e.uid, 'days'))).docs.map(x => x.data()), d.ym, d.close, d.step) : attend([], d.ym, d.close, d.step);
+      att[e.id] = e.uid ? attend((await getDocs(collection(db, 'daily', e.uid, 'days'))).docs.map(x => x.data()), d.ym, d.close) : attend([], d.ym, d.close);
     }));
     return { saved, att };
   },
@@ -196,7 +196,8 @@ const FAST_ACT = {
     if (d.done) { await mirrorQ; return gas('confirmBonus', d); }
     const b = writeBatch(db);
     d.list.forEach(x => b.set(doc(db, 'payrollBonus', mid(d.ym, x.id)), plain({ ym: d.ym, year: d.ym.slice(0, 4), id: x.id, name: x.name, status: '入力中', amount: x.amount, result: x.result })));
-    await b.commit(); return {};
+    await b.commit();
+    mirror('logAdj', { ym: d.ym, name: '賞与', keys: d.list.map(x => x.name + ' ' + yen(x.amount) + '円' + (x.result && x.result.taxManual ? '（所得税 手入力）' : '')) }); return {};   // 賞与の保存も操作記録に残す
   },
   async bonus(d) {
     const [l, s] = await Promise.all([getDocs(query(col('payrollBonus'), where('ym', '==', d.ym))), gas('bonusRead', d)]);
@@ -220,7 +221,7 @@ async function pay(action, data) { return FAST_ACT[action] ? FAST_ACT[action](da
 
 /* ---------- 初期値。設定画面で変えられる（説明は CFG_DEF の横の文）---------- */
 const DEF = {
-  stdH: 8, close: 20, step: 30, ot: 1.25, holSho: 1.6, holHou: 1.6, otSho: 2, otHou: 2, night: 1.6, tripNight: 3500,
+  stdH: 8, close: 20, ot: 1.25, holSho: 1.6, holHou: 1.6, otSho: 2, otHou: 2, night: 1.6, tripNight: 3500, familyPer: 10000, familyMax: 30000,
   rates: [
     { from: '2026-03', health: 10.12, care: 1.62, child: 0, pension: 18.3, emp: 0.65 },
     { from: '2026-04', health: 10.12, care: 1.62, child: 0.23, pension: 18.3, emp: 0.6 }
@@ -229,8 +230,7 @@ const DEF = {
 const CFG_DEF = [
   ['基本の時間', [
     ['stdH', '1日の所定労働時間', '時間', '8:00〜17:00（休憩1時間）の8時間です。時間単価と日額の元になります。'],
-    ['close', '締め日', '日', '20なら「前月21日〜当月20日」を今月の給与として計算します。'],
-    ['step', '時間外の刻み', '分', '時間外を何分単位で数えるかです。端数は切り捨てます。30なら45分は30分になります。']
+    ['close', '締め日', '日', '20なら「前月21日〜当月20日」を今月の給与として計算します。']
   ]],
   ['掛率', [
     ['ot', '時間外（平日）', '倍', '平日に8時間を超えた1時間の割増です。時間単価に掛けます。法律の下限は1.25です。'],
@@ -241,7 +241,9 @@ const CFG_DEF = [
     ['night', '夜間作業', '倍', '日報で「夜間作業」にチェックした日の掛率です。昼の1日分に掛けます。平日は基本給に入っている1倍を除いた分を足します。休日はその日の掛率（所定か法定）にこの上乗せ分を足します。']
   ]],
   ['手当', [
-    ['tripNight', '出張手当（1泊）', '円', '泊数に掛けます。明細に載せて振込に足します。税金と社会保険の計算には入れません。']
+    ['tripNight', '出張手当（1泊）', '円', '泊数に掛けます。明細に載せて振込に足します。税金と社会保険の計算には入れません。'],
+    ['familyPer', '家族手当（1人）', '円', '従業員の「扶養親族等の数」と「16歳未満の家族」を足した人数に掛けます。'],
+    ['familyMax', '家族手当の上限', '円', '人数が多くても、この額までにします。']
   ]]
 ];
 const EMP_KIND = ['社員', '役員', 'その他'];
@@ -273,7 +275,7 @@ async function drawMonth() {
   busy('日報を集計しています…');
   try {
     await portalEmps(ST.emps).catch(() => {});
-    const r = await pay('month', { ym, close: c.close, step: c.step, emps: ST.emps.map(empRef) });
+    const r = await pay('month', { ym, close: c.close, emps: ST.emps.map(empRef) });
     if (ST.tab !== 'month' || ST.ym !== ym) return;
     MON = { ym, saved: r.saved, att: r.att, res: {}, sheet: 'wait', view: 'list' };
     ST.emps.filter(e => !e.left).forEach(e => { calcOne(e); });
@@ -286,12 +288,12 @@ async function drawMonth() {
 function sheetRead(mon) {
   const c = cfgOf(mon.ym);
   mon.reading = true; mon.readAt = Date.now();
-  return gas('attend', { ym: mon.ym, close: c.close, step: c.step, emps: ST.emps.map(empRef) }).then(x => {
+  return gas('attend', { ym: mon.ym, close: c.close, emps: ST.emps.map(empRef) }).then(x => {   // サーバーは1日ごとに丸めずに足すだけ。丸めはここ（KY.roundAtt）
     mon.reading = false;
     if (MON !== mon) return;
     // 確定した人は一人ずつの給与DBの金額を使う（時間単価は保存していないので、基本給とその年の月平均所定時間から出す）
     Object.keys(x.saved || {}).forEach(id => { const s = x.saved[id]; if (s.status !== '確定') return; s.result.hourly = c.monthHours > 0 ? s.result.pay.base / c.monthHours : 0; mon.saved[id] = s; mon.att[id] = s.result.att || {}; });
-    Object.keys(x.att).forEach(id => { const s = mon.saved[id]; if (!(s && s.status === '確定') && !x.att[id].error) mon.att[id] = x.att[id]; });
+    Object.keys(x.att).forEach(id => { const s = mon.saved[id]; if (!(s && s.status === '確定') && !x.att[id].error) mon.att[id] = KY.roundAtt(x.att[id]); });
     mon.sheet = Object.values(x.att).some(a => a.error) ? 'ng' : 'ok';
     ST.emps.filter(e => !e.left).forEach(e => { calcOne(e); });
     if (ST.tab === 'month' && mon.view === 'list') renderMonth();
@@ -397,13 +399,14 @@ async function drawBonus() {
     const list = ST.emps.filter(e => !e.left), amt = {}, prev = {}, taxM = {}, conf = {}, c = cfgOf(ym);
     r.list.forEach(x => { amt[x.id] = x.amount; if (x.status === '確定') { conf[x.id] = x.result; taxM[x.id] = x.result.ded.tax; } else if (x.result && x.result.taxManual) taxM[x.id] = x.result.ded.tax; }); r.prev.forEach(x => { prev[x.id] = x.result; });
     const done = r.list.length && r.list.every(x => x.status === '確定');
-    const calc = e => { if (conf[e.id]) return conf[e.id]; const p = prev[e.id] || {}, pn = p.taxable || 0; return KY.calcBonus({ emp: e, amount: Number(amt[e.id]) || 0, prevNet: pn, cfg: c, ym, taxTable: taxFor(ym), taxManual: taxM[e.id] }); };   // 確定した人は給与DBの金額
+    const pym = KY.ymAdd(ym, -1), hand = e => !prev[e.id] && e.prevYm === pym && e.prevNet !== '' && e.prevNet != null;   // アプリの前月が無いときだけ、従業員の「切り替え前の前月の給与」を使う
+    const calc = e => { if (conf[e.id]) return conf[e.id]; const pn = prev[e.id] ? prev[e.id].taxable || 0 : hand(e) ? Number(e.prevNet) || 0 : 0; return KY.calcBonus({ emp: e, amount: Number(amt[e.id]) || 0, prevNet: pn, cfg: c, ym, taxTable: taxFor(ym), taxManual: taxM[e.id] }); };   // 確定した人は給与DBの金額
     const paint = () => {
-      $('bt').innerHTML = '<tr><th>氏名</th><th class="n">賞与額</th><th class="n">健康保険</th><th class="n">厚生年金</th><th class="n">雇用保険</th><th class="n">所得税</th><th class="n">差引支給額</th></tr>' + list.map(e => { const x = calc(e), D = x.ded, lk = done || conf[e.id] ? ' disabled' : ''; return '<tr><td><b>' + esc(e.name) + '</b>' + (conf[e.id] ? ' <span class="tag ok">確定</span>' : prev[e.id] ? '' : ' <span class="tag ng">前月未確定</span>') + '</td><td class="n"><input type="number" data-b="' + esc(e.id) + '" value="' + (amt[e.id] || '') + '" style="width:120px;text-align:right;"' + lk + '></td><td class="n">' + yen(D.health) + '</td><td class="n">' + yen(D.pension) + '</td><td class="n">' + yen(D.emp) + '</td><td class="n"><input type="number" data-t="' + esc(e.id) + '" value="' + (taxM[e.id] == null ? '' : taxM[e.id]) + '" placeholder="' + yen(x.taxAuto) + '" style="width:100px;text-align:right;"' + lk + '></td><td class="n"><b>' + yen(x.net) + '</b></td></tr>'; }).join('');
+      $('bt').innerHTML = '<tr><th>氏名</th><th class="n">賞与額</th><th class="n">健康保険</th><th class="n">厚生年金</th><th class="n">雇用保険</th><th class="n">所得税</th><th class="n">差引支給額</th></tr>' + list.map(e => { const x = calc(e), D = x.ded, lk = done || conf[e.id] ? ' disabled' : ''; return '<tr><td><b>' + esc(e.name) + '</b>' + (conf[e.id] ? ' <span class="tag ok">確定</span>' : prev[e.id] ? '' : hand(e) ? ' <span class="tag">前月は従業員の欄</span>' : ' <span class="tag ng">前月未確定</span>') + '</td><td class="n"><input type="number" data-b="' + esc(e.id) + '" value="' + (amt[e.id] || '') + '" style="width:120px;text-align:right;"' + lk + '></td><td class="n">' + yen(D.health) + '</td><td class="n">' + yen(D.pension) + '</td><td class="n">' + yen(D.emp) + '</td><td class="n"><input type="number" data-t="' + esc(e.id) + '" value="' + (taxM[e.id] == null ? '' : taxM[e.id]) + '" placeholder="' + yen(x.taxAuto) + '" style="width:100px;text-align:right;"' + lk + '></td><td class="n"><b>' + yen(x.net) + '</b></td></tr>'; }).join('');
       $('bt').querySelectorAll('[data-b]').forEach(i => { i.onchange = () => { amt[i.dataset.b] = Number(i.value) || 0; paint(); }; });
       $('bt').querySelectorAll('[data-t]').forEach(i => { i.onchange = () => { if (i.value === '') delete taxM[i.dataset.t]; else taxM[i.dataset.t] = Number(i.value); paint(); }; });
     };
-    M.innerHTML = '<div class="card"><div class="row"><label class="f">賞与の月<br><input type="month" id="bym" value="' + ym + '"></label><span class="sp"></span>' + (done ? '<span class="tag ok">確定済み</span>' : '<button class="b" id="bs">保存</button><button class="b dark" id="bd">確定</button>') + (Object.keys(conf).length ? '<button class="b danger" id="bu">確定を解除</button>' : '') + '</div><div class="note">所得税の率は前月の給与（社会保険料を引いた額）で決まります。前月の給与を先に確定してください。所得税の欄は、空欄なら薄く出ている自動計算の額を使います。入れるとその額を使います。</div></div><div class="card wrapx"><table class="t" id="bt"></table></div>';
+    M.innerHTML = '<div class="card"><div class="row"><label class="f">賞与の月<br><input type="month" id="bym" value="' + ym + '"></label><span class="sp"></span>' + (done ? '<span class="tag ok">確定済み</span>' : '<button class="b" id="bs">保存</button><button class="b dark" id="bd">確定</button>') + (Object.keys(conf).length ? '<button class="b danger" id="bu">確定を解除</button>' : '') + '</div><div class="note">所得税の率は前月の給与（社会保険料を引いた額）で決まります。前月の給与を先に確定してください。アプリに切り替えて最初の賞与は、従業員の「切り替え前の前月の給与」を使います。所得税の欄は、空欄なら薄く出ている自動計算の額を使います。入れるとその額を使います。</div></div><div class="card wrapx"><table class="t" id="bt"></table></div>';
     paint();
     $('bym').onchange = e => { ST.bym = e.target.value; drawBonus(); };
     const save = async dn => {
@@ -475,7 +478,7 @@ async function drawYear() {
 }
 
 /* 従業員 */
-const EMP_F = [['code', '社員コード', 'text', '今の明細の社員コードです。'], ['name', '氏名', 'text', '明細に出る名前です。'], ['uid', 'ポータルのアカウント', 'text', '日報を読むために使います。ポータルのログインIDを入れます。空欄の人は氏名で探します。'], ['gender', '性別', 'gender', '賃金台帳に載せる項目です。'], ['joined', '入社日', 'date', '有給の管理に使う予定です。'], ['kind', '区分', 'kind', '社員・役員などです。計算は下の「保険」の欄で変わります。'], ['email', '明細を送るメール', 'text', '任意です。空欄の人には送りません。'], ['consent', '電子交付の承諾日', 'date', '本人が承諾した日です。メールで送る前に入れます。'], ['base', '基本給', 'number', '月額です。'], ['family', '家族手当', 'number', '毎月の定額です。'], ['commute', '交通費', 'number', '毎月の定額です。所得税の対象から外します。'], ['std', '標準報酬月額（健康保険）', 'number', '年金事務所の決定通知書の額です。'], ['stdPen', '標準報酬月額（厚生年金）', 'number', '健康保険と違うときだけ入れます。空欄なら同じ額を使います。'], ['birth', '生年月日', 'date', '介護保険（40〜64歳）の判定に使います。'], ['care', '介護保険', 'care', '「自動」は生年月日で判定します。生年月日が空欄のときは対象外になるので、対象か対象外を選びます。'], ['deps', '扶養親族等の数', 'number', '扶養控除等申告書の人数です。所得税の表の列を決めます。'], ['insure', '社会保険', 'bool', '外すと健康保険と厚生年金を引きません。'], ['empIns', '雇用保険', 'bool', '役員などは外します。'], ['noTax', '所得税を計算しない', 'boolR', '税理士さんの指示がある人だけ入れます。'], ['left', '退職', 'boolR', '入れると一覧から外します。過去の記録は残ります。']];
+const EMP_F = [['code', '社員コード', 'text', '今の明細の社員コードです。'], ['name', '氏名', 'text', '明細に出る名前です。'], ['uid', 'ポータルのアカウント', 'text', '日報を読むために使います。ポータルのログインIDを入れます。空欄の人は氏名で探します。'], ['gender', '性別', 'gender', '賃金台帳に載せる項目です。'], ['joined', '入社日', 'date', '有給の管理に使う予定です。'], ['kind', '区分', 'kind', '社員・役員などです。計算は下の「保険」の欄で変わります。'], ['email', '明細を送るメール', 'text', '任意です。空欄の人には送りません。'], ['consent', '電子交付の承諾日', 'date', '本人が承諾した日です。メールで送る前に入れます。'], ['base', '基本給', 'number', '月額です。'],['commute', '交通費', 'number', '毎月の定額です。所得税の対象から外します。'], ['std', '標準報酬月額（健康保険）', 'number', '年金事務所の決定通知書の額です。'], ['stdPen', '標準報酬月額（厚生年金）', 'number', '健康保険と違うときだけ入れます。空欄なら同じ額を使います。'], ['birth', '生年月日', 'date', '介護保険（40〜64歳）の判定に使います。'], ['care', '介護保険', 'care', '「自動」は生年月日で判定します。生年月日が空欄のときは対象外になるので、対象か対象外を選びます。'], ['deps', '扶養親族等の数', 'number', '扶養控除等申告書の人数です。所得税の表の列を決めます。家族手当にも使います。'], ['kids16', '16歳未満の家族', 'number', '扶養親族等の数に入らない16歳未満の家族の人数です。家族手当に使います。'], ['prevYm', '切り替え前の前月', 'month', 'アプリに切り替えて最初の賞与だけに使います。賞与の前の月を入れます。その月の給与をアプリで確定していれば、こちらは使いません。'], ['prevNet', '切り替え前の前月の給与', 'number', '上の月の給与から、交通費と社会保険料を引いた額です（前の明細の課税対象額）。賞与の所得税の率を決めます。'],['insure', '社会保険', 'bool', '外すと健康保険と厚生年金を引きません。'], ['empIns', '雇用保険', 'bool', '役員などは外します。'], ['noTax', '所得税を計算しない', 'boolR', '税理士さんの指示がある人だけ入れます。'], ['left', '退職', 'boolR', '入れると一覧から外します。過去の記録は残ります。']];
 function drawEmp() {
   portalEmps(ST.emps).then(n => { if (n && ST.tab === 'emp' && $('add')) drawEmp(); }).catch(() => {});
   M.innerHTML = '<div class="card"><div class="row"><h2 style="margin:0;">従業員</h2><span class="note">ポータルで「日報」にチェックがある人は自動で増えます。</span><span class="sp"></span><button class="b dark" id="add">＋ 追加</button></div></div><div class="card wrapx"><table class="t"><tr><th>氏名</th><th>区分</th><th class="n">基本給</th><th class="n">扶養</th><th>メール</th></tr>' + ST.emps.map(e => '<tr class="link" data-id="' + esc(e.id) + '"><td><b>' + esc(e.name) + '</b>' + (e.left ? ' <span class="tag">退職</span>' : '') + '</td><td>' + esc(e.kind) + '</td><td class="n">' + yen(e.base) + '</td><td class="n">' + (e.deps || 0) + '人</td><td>' + esc(e.email || '') + '</td></tr>').join('') + '</table></div>';
@@ -499,7 +502,7 @@ function editEmp(e0) {
 function drawSet() {
   const c = ST.cfg, y0 = yearOf(), w = { ...KY.workYear(y0, 0), year: y0 }, mh = Math.round(cfgOf().monthHours * 10) / 10;
   M.innerHTML = '<div class="card"><h2>アプリの版</h2><div>今の版：<b>' + APP_VER + '</b></div><div style="margin-top:8px;"><button class="b dark" id="ver">最新の版にする</button></div><div class="note">新しい版が出ているときは、押すと入れ替わります。</div></div>' +
-    CFG_DEF.map(([h, fs]) => '<div class="card"><h2>' + h + '</h2>' + fs.map(f => '<div class="set"><div class="k">' + f[1] + '</div><div class="row" style="flex-wrap:nowrap;gap:6px;"><input type="number" min="0" step="' + (f[2] === '倍' ? '0.01' : 'any') + '" data-c="' + f[0] + '"' + (f[2] === '倍' ? ' data-rate="1"' : '') + ' value="' + esc(f[2] === '倍' ? Number(c[f[0]]).toFixed(2) : c[f[0]]) + '"><span>' + f[2] + '</span></div><div class="d">' + f[3] + '</div></div>').join('') + (h === '基本の時間' ? '<div class="note" style="margin-top:8px;">' + w.year + '年の所定労働日数：平日 ' + w.weekdays + '日 − 祝日 ' + w.holidays + '日 ＝ <b>' + w.days + '日</b><br>月平均所定時間：<b>' + mh + '時間</b>（' + w.days + '日 × ' + c.stdH + '時間 ÷ 12）。時間単価＝基本給 ÷ この時間です。</div>' : '') + '</div>').join('') +
+    CFG_DEF.map(([h, fs]) => '<div class="card"><h2>' + h + '</h2>' + fs.map(f => '<div class="set"><div class="k">' + f[1] + '</div><div class="row" style="flex-wrap:nowrap;gap:6px;"><input type="number" min="0" step="' + (f[2] === '倍' ? '0.01' : 'any') + '" data-c="' + f[0] + '"' + (f[2] === '倍' ? ' data-rate="1"' : '') + ' value="' + esc(f[2] === '倍' ? Number(c[f[0]]).toFixed(2) : c[f[0]]) + '"><span>' + f[2] + '</span></div><div class="d">' + f[3] + '</div></div>').join('') + (h === '基本の時間' ? '<div class="note" style="margin-top:8px;">' + w.year + '年の所定労働日数：平日 ' + w.weekdays + '日 − 祝日 ' + w.holidays + '日 ＝ <b>' + w.days + '日</b><br>月平均所定時間：<b>' + mh + '時間</b>（' + w.days + '日 × ' + c.stdH + '時間 ÷ 12）。時間単価＝基本給 ÷ この時間です。<br>時間外は1か月の合計で丸めます（平日・所定休日・法定休日ごと）。30分未満は切り捨て、30分以上は1時間に切り上げます。</div>' : '') + '</div>').join('') +
     '<div class="card"><h2>保険料率（適用月ごと）</h2><div class="note">変わるときは行を足します。健康保険・介護保険・支援金・厚生年金は「保険の月」、雇用保険は「給与の月」で使います。社会保険は前月分を今月の給与から引くので、3月分の率は4月の給与から効きます。</div><div class="wrapx"><table class="t" id="rt"></table></div><button class="b" id="ra" style="margin-top:8px;">＋ 行を足す</button>' +
     '<div class="set" style="border:0;"><div class="k">健康保険</div><div></div><div class="d">協会けんぽ兵庫の率（全体）です。本人はこの半分です。毎年3月分から変わります。</div><div class="k">介護保険</div><div></div><div class="d">40〜64歳の人だけにかかります（全体の率）。全国共通です。</div><div class="k">支援金</div><div></div><div class="d">子ども・子育て支援金です（全体の率）。明細では健康保険料に含めます。</div><div class="k">厚生年金</div><div></div><div class="d">全体の率です。本人はこの半分です。</div><div class="k">雇用保険</div><div></div><div class="d">本人負担の率です（建設の事業）。毎年4月に変わります。</div></div></div>' +
     '<div class="card"><div class="row"><button class="b dark" id="sv">設定を保存</button><span id="sm" class="note"></span></div></div>';
