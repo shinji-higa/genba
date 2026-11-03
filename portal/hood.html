@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>フード注文</title>
-  <!-- Ver.20261103-19 -->
+  <!-- Ver.20261103-20 -->
   <style>
     /* 厨房フードの注文書。注文用図面（箱型・山型・二重）の寸法表を画面で入力し、数字入りの図を1台1ページで出す。フードはメーカー共通なので本体にメーカーは出さない。
        仕組みは金物注文（添付）kana.html と同じ（保存・提出・版・PDF）。2026-11-02 作成
@@ -690,9 +690,9 @@
       /* --- 平面図 --- */
       var cx = px0 + C1 * k, cy = py0 + D2 * k;   // 1つ目の開口の中心（上が奥なので D2 が上から）
       s += rc(px0, py0, pw, ph);
-      if (dbl) s += rc(px0 + ins * k, py0 + ins * k, pw - 2 * ins * k, ph - 2 * ins * k, menOf(it) === '5面体' ? '4 2' : '');
+      if (dbl) s += rc(px0 + ins * k, py0 + ins * k, pw - 2 * ins * k, ph - 2 * ins * k, '4 2');   // 外装の奥の折返し（上から見て奥なので点線。5面体・4面体とも）
       if (yama) {
-        var tx0 = px0 + E1 * k, ty0 = py0 + F3 * k, tw2 = E2 * k, th2 = F2 * k, i2 = ins * k, gd = dbl && menOf(it) === '5面体' ? '4 2' : eGuess || fGuess ? '3 2' : '';
+        var tx0 = px0 + E1 * k, ty0 = py0 + F3 * k, tw2 = E2 * k, th2 = F2 * k, i2 = ins * k, gd = dbl ? (menOf(it) === '5面体' ? '4 2' : '') : eGuess || fGuess ? '3 2' : '';
         s += rc(tx0, ty0, tw2, th2, gd) + ln(px0 + i2, py0 + i2, tx0, ty0, gd) + ln(px0 + pw - i2, py0 + i2, tx0 + tw2, ty0, gd) + ln(px0 + i2, py0 + ph - i2, tx0, ty0 + th2, gd) + ln(px0 + pw - i2, py0 + ph - i2, tx0 + tw2, ty0 + th2, gd);
       }
       s += ln(px0 - 6, cy, px0 + pw + 6, cy, '6 2 1 2', 0.4) + ln(cx, py0 - 6, cx, py0 + ph + 6, '6 2 1 2', 0.4);
