@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>フード注文</title>
-  <!-- Ver.20261103-10 -->
+  <!-- Ver.20261103-11 -->
   <style>
     /* 厨房フードの注文書。注文用図面（箱型・山型・二重）の寸法表を画面で入力し、数字入りの図を1台1ページで出す。フードはメーカー共通なので本体にメーカーは出さない。
        仕組みは金物注文（添付）kana.html と同じ（保存・提出・版・PDF）。2026-11-02 作成
@@ -349,9 +349,10 @@
        短管：角は 長さ len・フード側の接続 cj・先の接続 ej、丸は サイズ rs（NI・SP・正寸）と NEC長さ len */
     var TORI_CJ = ['突当溶接', 'T', 'ドン補', 'T2', '折返し溶接'], TORI_EJ = ['T', 'FG', '相FG', 'ドン補', '内T', '内FG', '正FG'], TORI_RS = ['NIサイズ', 'SPサイズ', '正寸'], NEC_DEF = 80, TK_DEF = 100;
     var FG_JOINTS = ['FG', '相FG', 'T2', 'ドン補', '内FG', '正FG'], ST_SIZES = ['25×25×3', '30×30×3', '40×40×3', '40×40×5', '50×50×4', '50×50×6'];
-    function stBySide(l) { return !l ? '' : l <= 750 ? '25×25×3' : l <= 1500 ? '30×30×3' : l <= 2200 ? '40×40×3' : '40×40×5'; }
+    var ST_DEF = '30×30×3';   // フランジ（鋼材）サイズの初期値。長辺から自動で決めることはしない
     function jName(c) { return c === 'T' ? 'TDC' : c; }
-    var BUN_J = ['T', 'FG', '内T', '内FG'];   // 分割の接合（角ダクトのボックスと同じ。初期は T）
+    var BUN_J = ['T', 'FG', '内T', '内FG'];
+    function bunJ(it) { var j = it.bj || BUN_J[0]; return FG_JOINTS.indexOf(j) >= 0 ? j + '(' + (it.bs || ST_DEF) + ')' : j; }   // 分割の接合（FG 系はフランジサイズも）   // 分割の接合（角ダクトのボックスと同じ。初期は T）
     var FACES = ['平面', '正面', '背面', '左側面', '右側面'];
     function opFace(o) { return o.face || FACES[0]; }
     function isPlan(o) { return opFace(o) === FACES[0]; }
@@ -369,7 +370,7 @@
       var cx = blankStr(o.x) ? L / 2 : L - num(o.x) - (rd ? 0 : w / 2), cy = blankStr(o.y) ? W / 2 : W - num(o.y) - (rd ? 0 : d / 2);
       return { cx: cx, cy: cy, w: w, d: d, left: cx - w / 2, right: cx + w / 2, front: cy - d / 2, back: cy + d / 2 };
     }
-    function opSt(o, jk, sk) { var j = o[jk] || 'T'; if (FG_JOINTS.indexOf(j) < 0) return ''; return o[sk] || (j === '正FG' ? '' : stBySide(Math.max(num(o.a), num(o.b)))); }
+    function opSt(o, jk, sk) { var j = o[jk] || 'T'; return FG_JOINTS.indexOf(j) < 0 ? '' : o[sk] || ST_DEF; }
     function opJ(o, jk, sk) { var st = opSt(o, jk, sk); return jName(o[jk] || 'T') + (st ? '(' + st + ')' : ''); }
     function opText(o) {
       var sz = o.kind === '丸' ? fmtN(num(o.a)) + 'φ' : fmtN(num(o.a)) + '×' + fmtN(num(o.b));
@@ -385,7 +386,7 @@
     function isZinc(it) { return it.mat === '亜鉛鋼板'; }
     function finsOf(it) { return isZinc(it) ? FINS_ZN : FINS; }
     function listOf(pre, s) { return s.split(',').map(function (x) { return pre + x; }); }
-    /* グリースフィルター。rec＝そのフィルターに合うダンパー（カタログの「最適」欄。クラコ＝ハイガード、ホーコス＝ファイヤーガード。フカガワは1つに決まっていないので無し） */
+    /* グリースフィルター。rec＝そのフィルターに合う防火シャッター（案内に出すだけ。自動では入れない）（カタログの「最適」欄。クラコ＝ハイガード、ホーコス＝ファイヤーガード。フカガワは1つに決まっていないので無し） */
     function withRec(models, recPre, recStr) {
       var m = {}; (recStr || '').split(',').forEach(function (p) { var a = p.split(':'); if (a[1]) m[a[0]] = recPre + a[1]; });
       return models.map(function (x) { var k = x.split('-').slice(1).join('-'); return { n: x, rec: m[k] || m[x] || '' }; });
@@ -404,7 +405,7 @@
       { maker: 'ホーコス', name: '低圧損Vフィルター FSVL', note: 'W＝両面、S＝片面', models: withRec(listOf('FSVL1-', '330W,525W,530W,540W,550W').concat(listOf('FSVL2-', '525W,530W,540W,550W'), listOf('FSVL3-', '525W,530W,540W,550W'), listOf('FSVL1-', '525S,530S,540S,550S'), listOf('FSVL2-', '525S,530S,540S,550S'), listOf('FSVL3-', '525S,530S,540S,550S')), 'FGS-',
         'FSVL1-330W:2015N,FSVL1-525W:3020N,FSVL1-530W:3025N,FSVL1-540W:3030N,FSVL1-550W:3535N,FSVL2-525W:5020N,FSVL2-530W:5025N,FSVL2-540W:5030N,FSVL2-550W:5035N,FSVL3-525W:7020N,FSVL3-530W:6025N,FSVL3-540W:6035N,FSVL3-550W:6040N,FSVL1-525S:2515N,FSVL1-530S:3015N,FSVL1-540S:3015N,FSVL1-550S:3020N,FSVL2-525S:4015N,FSVL2-530S:5015N,FSVL2-540S:7015N,FSVL2-550S:5020N,FSVL3-525S:6015N,FSVL3-530S:7015N,FSVL3-540S:8015N,FSVL3-550S:7020N') }
     ];
-    /* 防火シャッター・ダンパー */
+    /* 防火シャッター（ユーザー指示 2026-11-03：呼び名は防火シャッター。フィルターと別のメーカー・品目も選べる） */
     var FD_GROUPS = [
       { maker: 'クラコ', name: 'ハイガード HGL（防火風量調整ダンパー）', models: listOf('HGL-', '1515,2015,2020,2025,3015,3020,3025,3030,4015,4020,4025,4030,4040,5015,5020,5025,5030,5040,5050,6015,6020,6025,6030,6040,6050') },
       { maker: 'フカガワ', name: 'JED 防火ダンパー JD', models: listOf('JD-', '1515,2015,2020,2515,2520,2525,3015,3020,3025,3030,3515,3520,3525,3530,3535,4015,4020,4025,4030,4035,4040,4515,4520,4525,4530,4535,4540,4545,5015,5020,5025,5030,5035,5040,5045,5050,5515,5520,5525,5530,5535,5540,5545,5550,5555,6015,6020,6025,6030,6035,6040,6045,6050,6055,6060') },
@@ -417,7 +418,7 @@
     var STORE = 'hoodOrders.v1';
     var S = null;
     function blank() { return { id: uid(), no: '', orderer: '', site: '', room: '', orderDate: today(), delivDate: '', dest: '現場', memo: '', items: [], updated: 0 }; }
-    function blankItem() { return { id: uid(), shape: 'HB', mat: 'SUS304', fin: FINS[0], L: '', W: '', H: '', h: '', ops: [newOp()], E2: '', F2: '', holes: [], sp: '', bj: 'T', qty: 1, gf: '', gfQty: 1, fd: '', fdQty: 1, memo: '' }; }
+    function blankItem() { return { id: uid(), shape: 'HB', mat: 'SUS304', fin: FINS[0], L: '', W: '', H: '', h: '', ops: [], E2: '', F2: '', holes: [], sp: '', bj: 'T', bs: '', qty: 1, gf: '', gfQty: 1, fd: '', fdQty: 1, memo: '' }; }
     /* 分割（箱型だけ。ユーザー指示 2026-11-02）：sp＝分ける位置を左端からの寸法で並べたもの（例「1800」＝2分割、「1200,2400」＝3分割）。空欄＝分割なし */
     function splitList(it) { if (!isBox(it)) return []; return String(it.sp || '').split(/[,，、\s・]+/).map(function (x) { return num(x); }).filter(function (n) { return n > 0; }).sort(function (a, b) { return a - b; }); }
     function splitAuto(L, n) { var out = []; for (var i = 1; i < n; i++) out.push(Math.round(L * i / n)); return out; }
@@ -503,7 +504,6 @@
         var n = (isTube(o) ? '短管' : '開口') + (i + 1), s = faceSize(o, L, W, H), fw = s[0], fh = s[1], nm = opFace(o), plan = isPlan(o);
         if (!opSized(o)) { if (num(o.a) || num(o.b)) e.push(n + 'の大きさを入れてください'); return; }   // 何も入れていない欄は数えない
         if (isTube(o) && o.kind !== '丸' && !num(o.len)) e.push(n + 'の長さを入れてください');
-        if (isTube(o) && o.kind !== '丸' && o.ej === '正FG' && !o.es) e.push(n + 'の先の正FGの鋼材を選んでください');
         if (it.shape === 'HY' && !plan) e.push(n + '：山型は平面だけです');
         if (!fw || !fh) return;
         var b = opBox(o, fw, fh); boxes.push({ i: i, b: b, o: o, n: n, f: nm, fw: fw });
@@ -649,7 +649,7 @@
       s += dV(fx0 - 10, fy0, fy0 + fh, fmtN(H));
       if (it.shape === 'HW') s += dV(fx0 - X2, ySk - h * k, ySk, fmtN(h)) + dV(fx0 - X2, ySk, fy0 + fh, '150');
       if (it.shape === 'HY') s += dV(fx0 - X2, ySk, fy0 + fh, '150');
-      if (sp.length) { var p2 = 0; sp.concat([L]).forEach(function (x) { s += dH(fx0 + p2 * k, fx0 + x * k, fy0 + fh + 12, fmtN(x - p2), true); p2 = x; }); s += tx(fx0, fy0 + fh + 30, '分割 ' + (sp.length + 1) + 'つ（左端から ' + sp.map(fmtN).join('・') + '）接合 ' + bj, 'start', true); }
+      if (sp.length) { var p2 = 0; sp.concat([L]).forEach(function (x) { s += dH(fx0 + p2 * k, fx0 + x * k, fy0 + fh + 12, fmtN(x - p2), true); p2 = x; }); s += tx(fx0, fy0 + fh + 30, '分割 ' + (sp.length + 1) + 'つ（左端から ' + sp.map(fmtN).join('・') + '）接合 ' + bunJ(it), 'start', true); }
       /* --- 側面図（左＝手前）--- */
       var ySk2 = fy0 + fh - SKIRT * k, i3 = ins * k;
       if (it.shape === 'HY') s += rc(sx0, ySk2, sw, SKIRT * k) + pl([[sx0, ySk2], [sx0 + F1 * k, fy0], [sx0 + (F1 + F2) * k, fy0], [sx0 + sw, ySk2]], false, fGuess ? '3 2' : '');
@@ -702,7 +702,7 @@
         return '<div class="item' + (bad ? ' bad' : '') + '" onclick="openEdit(' + i + ')"><div class="item-ic">' + hoodSvg(it, 'thumb') + '</div><div class="item-b"><div class="item-t">' + circled(i + 1) + ' ' + esc(SHAPES[it.shape]) + '　' + esc(fmtN(num(it.L))) + '×' + esc(fmtN(num(it.W))) + '×' + esc(fmtN(num(it.H))) + (it.shape === 'HW' && num(it.h) ? '（h' + esc(fmtN(num(it.h))) + '）' : '') + (splitList(it).length ? '　' + (splitList(it).length + 1) + '分割' : '') + '</div>' +
           '<div class="item-s">' + esc(opsLine(it.ops) || '開口なし') + '<br>' + esc(it.mat) + ' ' + esc(it.fin) + '<br>' +
           '吊り穴 ' + (d.G ? esc(holeSum(it)) : '未入力') + '<br>' +
-          (it.gf ? 'フィルター ' + esc(it.gf) + '×' + esc(it.gfQty) : 'フィルター なし') + '　' + (it.fd ? 'ダンパー ' + esc(it.fd) + '×' + esc(it.fdQty) : 'ダンパー なし') + (bad ? '<br><span style="color:#b3261e;font-weight:700;">⚠ 確認が必要です</span>' : '') + '</div></div>' +
+          (it.gf ? 'フィルター ' + esc(it.gf) + '×' + esc(it.gfQty) : 'フィルター なし') + '　' + (it.fd ? '防火シャッター ' + esc(it.fd) + '×' + esc(it.fdQty) : '防火シャッター なし') + (bad ? '<br><span style="color:#b3261e;font-weight:700;">⚠ 確認が必要です</span>' : '') + '</div></div>' +
           '<div class="item-q">' + esc(it.qty) + '台</div></div>';
       }).join('');
     }
@@ -723,7 +723,7 @@
     function closeEdit() { closeSheet('edBg'); ED = -1; changed(); }
     function deleteItem() { var it = S.items[ED]; if (!it) return; askYes(circled(ED + 1) + ' を削除しますか？').then(function (ok) { if (ok) { S.items.splice(ED, 1); closeSheet('edBg'); ED = -1; changed(); } }); }
     function dupItem() { var it = S.items[ED]; if (!it) return; var c = JSON.parse(JSON.stringify(it)); c.id = uid(); S.items.splice(ED + 1, 0, c); ED = ED + 1; changed(); renderEdit(); toast('同じフードをもう1件入れました'); }
-    function edSet(k, v) { var it = S.items[ED]; if (!it) return; it[k] = v; if (k === 'gf') { var r = gfRec(v); if (r && !it.fd) it.fd = r; if (!v) it.fd = it.fd; } if (k === 'shape') { if (!isYama(it)) { it.h = ''; it.E2 = ''; it.F2 = ''; } if (it.shape !== 'HW') it.h = ''; if (!isBox(it)) it.sp = ''; if (it.shape === 'HY') it.ops.forEach(function (o) { if (!isPlan(o)) { o.face = FACES[0]; o.x = ''; o.y = ''; } }); stdRefresh(it); } if (k === 'mat' && finsOf(it).indexOf(it.fin) < 0) it.fin = finsOf(it)[0]; renderEdit(); changed(); }
+    function edSet(k, v) { var it = S.items[ED]; if (!it) return; it[k] = v; if (k === 'shape') { if (!isYama(it)) { it.h = ''; it.E2 = ''; it.F2 = ''; } if (it.shape !== 'HW') it.h = ''; if (!isBox(it)) it.sp = ''; if (it.shape === 'HY') it.ops.forEach(function (o) { if (!isPlan(o)) { o.face = FACES[0]; o.x = ''; o.y = ''; } }); stdRefresh(it); } if (k === 'mat' && finsOf(it).indexOf(it.fin) < 0) it.fin = finsOf(it)[0]; renderEdit(); changed(); }
     function edHangStd() { var it = S.items[ED]; if (!it) return; var L = num(it.L), W = num(it.W); if (!L || !W) { toast('先に L・W を入れてください'); return; } it.stdHole = true; it.holes = stdHoles(it, (holesOf(it)[0] || {}).d); renderEdit(); changed(); }
     // 標準の吊り穴のあいだは、分割・L・W を変えると入れ直す（手で直したらやめる。ユーザー指示 2026-11-03）
     function stdRefresh(it) { if (!it.stdHole || !num(it.L) || !num(it.W)) return; it.holes = stdHoles(it, (holesOf(it)[0] || {}).d); var el = document.getElementById('edHoles'); if (el) el.innerHTML = holesHtml(it); }
@@ -757,7 +757,7 @@
       var groups = kind === 'gf' ? GF_GROUPS : FD_GROUPS;
       if (v === '') { it[kind] = ''; }
       else if (v === 'other') { it[kind] = it[kind] && (kind === 'gf' ? groupOfGf(it[kind]) : groupOfFd(it[kind])) < 0 ? it[kind] : ' '; }
-      else { var m = groups[+v].models[0]; it[kind] = m.n || m; if (kind === 'gf') { var r = gfRec(it.gf); if (r) it.fd = r; } }
+      else { var m = groups[+v].models[0]; it[kind] = m.n || m; }
       if (it[kind] === ' ') it[kind] = '';
       renderEdit(); changed();
       if (v === 'other') { var inp = document.querySelector('#edBody input[placeholder="型式を入力"]'); if (inp) inp.focus(); }
@@ -779,10 +779,10 @@
         (yama ? '<div class="edbox-h" style="margin-top:10px;">天板（平らな部分。空欄＝工場におまかせ。1つ目の開口が芯）</div><div class="dims">' + dim('E2', 'E2 長さ方向', 'おまかせ') + dim('F2', 'F2 奥行方向', 'おまかせ') + '</div><div class="note" style="margin-top:4px;">E1＝<b id="cE1">' + (fmtN(d.E1) || '—') + '</b>　E3＝<b id="cE3">' + (fmtN(d.E3) || '—') + '</b>　F1＝<b id="cF1">' + (fmtN(d.F1) || '—') + '</b>　F3＝<b id="cF3">' + (fmtN(d.F3) || '—') + '</b></div>' : '') + '</div>' +
         '<div class="edbox"><div class="edbox-h">開口</div>' + opsHtml(it) + '<button type="button" class="btn btn-sub" onclick="addOp()">＋ 開口を追加</button>' + (opsOf(it).length ? '' : '<div class="note" style="margin-top:4px;">開口なし</div>') + '</div>' +
         '<div class="edbox"><div class="edbox-h">吊り穴　<span class="note" style="display:inline;">数 <b id="cG">' + (d.G ? holeSum(it) : '—') + '</b></span></div><div id="edHoles">' + holesHtml(it) + '</div><div style="display:flex;gap:6px;"><button type="button" class="btn btn-sub" onclick="addHole()">＋ 吊り穴を追加</button><button type="button" class="btn btn-sub" onclick="edHangStd()">標準で入れる</button><button type="button" class="btn btn-sub" onclick="clearHoles()">すべて消す</button></div><div class="note" style="margin-top:4px;">「標準で入れる」＝端から100の角に4個（φ12×4）。分割があれば分けた1つごとに4個（2分割8個、3分割12個）。今の吊り穴は入れ替わります。分割や L・W を変えると入れ直します（吊り穴を手で直すと止まります）。</div></div>' +
-        (box ? '<div class="edbox"><div class="edbox-h">分割（箱型だけ。空欄＝分割なし）</div><div class="fg"><label>分ける位置を左端からの寸法で並べる</label><div style="display:flex;gap:6px;"><input type="text" inputmode="numeric" value="' + esc(it.sp) + '" placeholder="例：1800（2分割）、1200, 2400（3分割）" oninput="edIn(\'sp\',this.value)"><button type="button" class="btn btn-sub" onclick="edSplitAuto(2)">2等分</button><button type="button" class="btn btn-sub" onclick="edSplitAuto(3)">3等分</button></div><div class="note" id="cSp">' + splitNote(it) + '</div></div><div class="spec-row" style="margin:8px 0 0;grid-template-columns:auto 1fr;"><span class="lbl">分割の接合</span>' + chipsArr('bj', BUN_J, it.bj || BUN_J[0]) + '</div></div>' : '') +
+        (box ? '<div class="edbox"><div class="edbox-h">分割（箱型だけ。空欄＝分割なし）</div><div class="fg"><label>分ける位置を左端からの寸法で並べる</label><div style="display:flex;gap:6px;"><input type="text" inputmode="numeric" value="' + esc(it.sp) + '" placeholder="例：1800（2分割）、1200, 2400（3分割）" oninput="edIn(\'sp\',this.value)"><button type="button" class="btn btn-sub" onclick="edSplitAuto(2)">2等分</button><button type="button" class="btn btn-sub" onclick="edSplitAuto(3)">3等分</button></div><div class="note" id="cSp">' + splitNote(it) + '</div></div><div class="spec-row" style="margin:8px 0 0;grid-template-columns:auto 1fr;"><span class="lbl">分割の接合</span>' + chipsArr('bj', BUN_J, it.bj || BUN_J[0]) + '</div>' + (FG_JOINTS.indexOf(it.bj || BUN_J[0]) >= 0 ? '<div class="spec-row" style="margin:8px 0 0;grid-template-columns:auto 1fr;"><span class="lbl">フランジサイズ</span><select onchange="edSet(\'bs\',this.value)" style="width:auto;">' + ST_SIZES.map(function (v) { return '<option' + ((it.bs || ST_DEF) === v ? ' selected' : '') + '>' + v + '</option>'; }).join('') + '</select></div>' : '') + '</div>' : '') +
         '<div class="edbox"><div class="edbox-h">グリースフィルター</div>' + modelSel('gf', it.gf) +
         (it.gf ? '<div class="fg" style="margin-top:8px;"><label>台数</label><div class="qty"><button type="button" onclick="edQty(\'gfQty\',-1)">−</button><input type="number" inputmode="numeric" min="1" value="' + esc(it.gfQty) + '" oninput="edIn(\'gfQty\',this.value)"><button type="button" onclick="edQty(\'gfQty\',1)">＋</button></div></div>' : '') + '</div>' +
-        '<div class="edbox"><div class="edbox-h">防火シャッター・ダンパー' + (rec ? '　<span class="note" style="display:inline;">（' + esc(it.gf) + ' に合うのは ' + esc(rec) + '）</span>' : '') + '</div>' + modelSel('fd', it.fd) +
+        '<div class="edbox"><div class="edbox-h">防火シャッター' + (rec ? '　<span class="note" style="display:inline;">（' + esc(it.gf) + ' に合うのは ' + esc(rec) + '。ほかも選べます）</span>' : '') + '</div>' + modelSel('fd', it.fd) +
         (it.fd ? '<div class="fg" style="margin-top:8px;"><label>台数</label><div class="qty"><button type="button" onclick="edQty(\'fdQty\',-1)">−</button><input type="number" inputmode="numeric" min="1" value="' + esc(it.fdQty) + '" oninput="edIn(\'fdQty\',this.value)"><button type="button" onclick="edQty(\'fdQty\',1)">＋</button></div></div>' : '') + '</div>' +
         '<div class="edbox"><div class="fg"><label>備考（この台の注文書に出ます）</label><input type="text" value="' + esc(it.memo) + '" oninput="edIn(\'memo\',this.value)"></div></div></div>';
       edCalc();
@@ -794,7 +794,7 @@
         var inp = function (key, dis, ph) { return '<input type="text" inputmode="numeric" data-op="' + i + ':' + key + '" value="' + esc(o[key]) + '" placeholder="' + esc(ph || '') + '" oninput="edOpIn(' + i + ',\'' + key + '\',this.value)"' + (dis ? ' disabled' : '') + '>'; };
         var sel = function (key, opts, names) { return '<select onchange="edOpSel(' + i + ',\'' + key + '\',this.value)">' + opts.map(function (v, n) { return '<option value="' + esc(v) + '"' + ((o[key] || '') === v ? ' selected' : '') + '>' + esc(names ? names[n] : v) + '</option>'; }).join('') + '</select>'; };
         var rd = o.kind === '丸', tube = isTube(o), f = function (lb, h) { return '<div><span class="lbl">' + lb + '</span>' + h + '</div>'; };
-        var stSel = function (key, jk, lb) { if (FG_JOINTS.indexOf(o[jk]) < 0) return ''; var au = stBySide(Math.max(num(o.a), num(o.b))); return f(lb, sel(key, [''].concat(ST_SIZES), [o[jk] === '正FG' ? '選んでください' : '自動' + (au ? '（' + au + '）' : '')].concat(ST_SIZES))); };
+        var stSel = function (key, jk, lb) { if (FG_JOINTS.indexOf(o[jk]) < 0) return ''; if (!o[key]) o[key] = ST_DEF; return f(lb, sel(key, ST_SIZES)); };
         var st = tube && !rd ? stSel('cs', 'cj', 'フードの鋼材') + stSel('es', 'ej', '先の鋼材') : '';
         return '<div class="open-card"><div class="open-head"><b>' + (tube ? '短管' : '開口') + (i + 1) + '</b>' + sel('use', ['開口', '短管']) + sel('kind', ['角', '丸']) + sel('face', facesFor(it)) + '<button type="button" class="open-del" onclick="delOp(' + i + ')">✕</button>' + '</div>' +
           '<div class="open-row">' + f(rd ? 'φ' : '横', inp('a')) + (rd ? (tube ? f('サイズ', sel('rs', TORI_RS)) : '') : f('縦', inp('b'))) + f(rd ? '右端から芯' : '右端から', inp('x', !opSized(o), '中央')) + f(opTop(o) + (rd ? '芯' : ''), inp('y', !opSized(o), '中央')) + '</div>' +
@@ -861,8 +861,8 @@
     function specTable(it, i) {
       var colW = [7, 11, 42, 14, 21, 18, 8, 19, 7, 19, 7];
       return '<div class="dp-sec gt">■ 仕様</div><table class="dp-sp"><colgroup>' + colW.map(function (w) { return '<col style="width:' + w + 'mm">'; }).join('') + '<col></colgroup>' +
-        '<tr><th>No.</th><th>形</th><th>開口</th><th>材質</th><th>仕上</th><th>吊り穴</th><th>台数</th><th>グリース<br>フィルター</th><th>台数</th><th>防火シャッター<br>ダンパー</th><th>台数</th><th>備考</th></tr>' +
-        '<tr' + (itemRed(it) ? ' class="red"' : '') + '>' + cell(circled(i + 1)) + cell(esc(SHAPES[it.shape])) + cell(opsOf(it).filter(opSized).map(function (o) { return esc(opFaceText(o)); }).join('<br>') || '開口なし', 'wrap') + cell(esc(it.mat), 'wrap') + cell(esc(it.fin), 'wrap') + cell(esc(holeSum(it)), 'wrap') + cell(esc(it.qty), 'q') + cell(it.gf ? esc(it.gf) : 'なし') + cell(it.gf ? esc(it.gfQty) : '—', 'q') + cell(it.fd ? esc(it.fd) : 'なし') + cell(it.fd ? esc(it.fdQty) : '—', 'q') + cell(esc(it.memo || ''), 'wrap l') + '</tr></table>';
+        '<tr><th>No.</th><th>形</th><th>開口</th><th>材質</th><th>仕上</th><th>吊り穴</th><th>台数</th><th>グリース<br>フィルター</th><th>台数</th><th>防火<br>シャッター</th><th>台数</th><th>備考</th></tr>' +
+        '<tr' + (itemRed(it) ? ' class="red"' : '') + '>' + cell(circled(i + 1)) + cell(esc(SHAPES[it.shape])) + cell((opsOf(it).filter(opSized).map(function (o) { return esc(opFaceText(o)); }).join('<br>') || '開口なし') + (splitList(it).length ? '<br>分割の接合 ' + esc(bunJ(it)) : ''), 'wrap') + cell(esc(it.mat), 'wrap') + cell(esc(it.fin), 'wrap') + cell(esc(holeSum(it)), 'wrap') + cell(esc(it.qty), 'q') + cell(it.gf ? esc(it.gf) : 'なし') + cell(it.gf ? esc(it.gfQty) : '—', 'q') + cell(it.fd ? esc(it.fd) : 'なし') + cell(it.fd ? esc(it.fdQty) : '—', 'q') + cell(esc(it.memo || ''), 'wrap l') + '</tr></table>';
     }
     function buildPages() {
       SLIP_DIFF = slipDiff();
@@ -1052,7 +1052,7 @@
       return JSON.stringify(x);
     }
     var HEAD_LBL = { no: '注文書NO', orderer: '注文者', room: '室名', orderDate: '発注日', delivDate: '搬入日', dest: '搬入先', memo: 'Memo', coAddr: '会社の住所' };
-    var ITEM_LBL = { shape: '形', mat: '材質', fin: '仕上', L: 'L', W: 'W', H: 'H', h: 'h', ops: '開口', E2: 'E2', F2: 'F2', holes: '吊り穴', sp: '分割', bj: '分割の接合', qty: '台数', gf: 'グリースフィルター', gfQty: 'フィルター台数', fd: '防火シャッター', fdQty: 'シャッター台数', memo: '備考' };
+    var ITEM_LBL = { shape: '形', mat: '材質', fin: '仕上', L: 'L', W: 'W', H: 'H', h: 'h', ops: '開口', E2: 'E2', F2: 'F2', holes: '吊り穴', sp: '分割', bj: '分割の接合', bs: '分割のフランジサイズ', qty: '台数', gf: 'グリースフィルター', gfQty: 'フィルター台数', fd: '防火シャッター', fdQty: 'シャッター台数', memo: '備考' };
     function dShow(v, k) { var m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(v); if (m) return (+m[2]) + '/' + (+m[3]); if (k === 'shape') return SHAPES[v] || v; if (k === 'ops') return opsLine(v) || 'なし'; if (k === 'holes') return holesLine(v) || '空'; return (v === '' || v == null) ? '空' : String(v); }
     function slipDiff() {
       if (!HOST || !S.base || (S.rev || 1) < 2 || !S.status) return null;
