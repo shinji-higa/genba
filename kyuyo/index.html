@@ -41,11 +41,11 @@
   .msg { font-weight: 700; color: var(--warn); margin: 6px 0; }
   .note { font-size: .84rem; color: var(--sub); }
   /* 設定：項目の横に説明（ユーザー指示 2026-11-02） */
-  .set { display: grid; grid-template-columns: minmax(170px, 230px) 130px 1fr; gap: 6px 14px; align-items: center; padding: 8px 0; border-bottom: 1px solid #e3e8ee; }
+  .set { display: grid; grid-template-columns: minmax(170px, 230px) 175px 1fr; gap: 6px 14px; align-items: center; padding: 8px 0; border-bottom: 1px solid #e3e8ee; }
   .set .k { font-weight: 700; }
-  .set input { width: 100%; text-align: right; }
+  .set input, .set select { width: 100%; max-width: 100%; text-align: right; }   /* 選択の箱も欄からはみ出さない */
   .set .d { font-size: .84rem; color: var(--sub); }
-  @media (max-width: 640px) { .set { grid-template-columns: 1fr 120px; } .set .d { grid-column: 1 / -1; } }
+  @media (max-width: 640px) { .set { grid-template-columns: 1fr 175px; } .set .d { grid-column: 1 / -1; } }
   /* 明細 */
   .slip { background: #fff; width: 100%; max-width: 760px; margin: 0 auto; border: 1px solid var(--line); border-radius: 12px; overflow: hidden; color: var(--ink); }
   .slip .top { background: linear-gradient(120deg, #14202e, #0b4f8a); color: #fff; padding: 18px 22px; display: flex; justify-content: space-between; gap: 10px; align-items: flex-end; }
@@ -78,12 +78,12 @@
 <main id="m"></main>
 
 <script src="tax.js?v=7"></script>
-<script src="calc.js?v=14"></script>
+<script src="calc.js?v=15"></script>
 <script type="module">
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
 import { getFirestore, collection, doc, getDoc, getDocs, setDoc, writeBatch, query, where } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
-const APP_VER = 'Ver.20261104-01';
+const APP_VER = 'Ver.20261104-02';
 const API = 'https://script.google.com/macros/s/AKfycbyW2hFHqIQuu-TsflPk_0zv7gquhoepspuvRG9-bMStPDSWSc2blcDFBtWs7MisP3f_/exec';
 const app = initializeApp({ apiKey: 'AIzaSyDVR4p4DO4s9h70uPlXUVlhNcMP9-YkQ5Q', authDomain: 'genba-portal-9077b.firebaseapp.com', projectId: 'genba-portal-9077b' });
 const auth = getAuth(app);
@@ -221,7 +221,7 @@ async function pay(action, data) { return FAST_ACT[action] ? FAST_ACT[action](da
 
 /* ---------- 初期値。設定画面で変えられる（説明は CFG_DEF の横の文）---------- */
 const DEF = {
-  stdH: 8, close: 20, ot: 1.25, holSho: 1.6, holHou: 1.6, otSho: 2, otHou: 2, night: 1.6, tripNight: 3500, familyPer: 10000, familyMax: 30000,
+  stdH: 8, close: 20, ot: 1.25, holSho: 1.6, holHou: 1.6, otSho: 2, otHou: 2, night: 1.6, tripNight: 3500, familyPer: 10000, familyMax: 30000, ot60: 1.5, noSat60: false,
   rates: [
     { from: '2026-03', health: 10.12, care: 1.62, child: 0, pension: 18.3, emp: 0.65 },
     { from: '2026-04', health: 10.12, care: 1.62, child: 0.23, pension: 18.3, emp: 0.6 }
@@ -236,6 +236,8 @@ const CFG_DEF = [
     ['ot', '時間外（平日）', '倍', '平日に8時間を超えた1時間の割増です。時間単価に掛けます。法律の下限は1.25です。'],
     ['holSho', '所定休日の出勤', '倍', '土曜日に出勤した日の掛率です。日額に掛けます。'],
     ['holHou', '法定休日の出勤', '倍', '日曜・祭日・休日に出勤した日の掛率です。日額に掛けます。法律の下限は1.35です。'],
+    ['ot60', '月60時間超の時間外', '倍', '平日と土曜日の時間外の合計が月60時間を超えたら、超えた平日の時間にこの率を使います（時間外の率との差を足します）。法律の下限は1.5です。'],
+    ['noSat60', '土曜日の時間外は数えない', 'check', ''],
     ['otSho', '所定休日の時間外', '倍', '土曜日に8時間を超えた1時間の掛率です。時間単価に掛けます。'],
     ['otHou', '法定休日の時間外', '倍', '日曜・祭日・休日に8時間を超えた1時間の掛率です。時間単価に掛けます。'],
     ['night', '夜間作業', '倍', '日報で「夜間作業」にチェックした日の掛率です。昼の1日分に掛けます。平日は基本給に入っている1倍を除いた分を足します。休日はその日の掛率（所定か法定）にこの上乗せ分を足します。']
@@ -324,7 +326,7 @@ function renderMonth() {
     (warn ? '<div class="msg">確認が必要な所が ' + warn + ' 件あります。直すと確定できます。</div>' : '') + '</div>' +
     '<div class="card wrapx"><table class="t"><tr><th>氏名</th><th>状態</th><th class="n">出勤</th><th class="n">時間外</th><th class="n">支給合計</th><th class="n">控除合計</th><th class="n">差引支給額</th></tr>' +
     list.map(e => { const r = MON.res[e.id] || {}, a = MON.att[e.id] || {}, st = (MON.saved[e.id] || {}).status, w = (r.warns || []).length;
-      return '<tr class="link" data-id="' + esc(e.id) + '"><td><b>' + esc(e.name) + '</b></td><td>' + (st === '確定' ? '<span class="tag ok">確定</span>' : MON.sheet === 'wait' && !st ? '<span class="tag">読み込み中</span>' : w ? '<span class="tag ng">要確認 ' + w + '</span>' : '<span class="tag">確認待ち</span>') + (st !== '確定' && MON.sheet === 'ok' && !a.rows ? ' <span class="tag ng">日報なし</span>' : '') + '</td><td class="n">' + (a.workDays || 0) + '日</td><td class="n">' + ((a.otH || 0) + (a.shoOtH || 0) + (a.houOtH || 0)) + 'h</td><td class="n">' + yen(r.payTotal) + '</td><td class="n">' + yen(r.dedTotal) + '</td><td class="n"><b>' + yen(r.net) + '</b></td></tr>'; }).join('') +
+      return '<tr class="link" data-id="' + esc(e.id) + '"><td><b>' + esc(e.name) + '</b></td><td>' + (st === '確定' ? '<span class="tag ok">確定</span>' : MON.sheet === 'wait' && !st ? '<span class="tag">読み込み中</span>' : w ? '<span class="tag ng">要確認 ' + w + '</span>' : '<span class="tag">確認待ち</span>') + (st !== '確定' && MON.sheet === 'ok' && !a.rows ? ' <span class="tag ng">日報なし</span>' : '') + (r.over60 > 0 ? ' <span class="tag ng">60時間超</span>' : '') + '</td><td class="n">' + (a.workDays || 0) + '日</td><td class="n">' + ((a.otH || 0) + (a.shoOtH || 0) + (a.houOtH || 0)) + 'h</td><td class="n">' + yen(r.payTotal) + '</td><td class="n">' + yen(r.dedTotal) + '</td><td class="n"><b>' + yen(r.net) + '</b></td></tr>'; }).join('') +
     '<tr><td colspan="4"><b>合計</b></td><td class="n"><b>' + yen(sum('payTotal')) + '</b></td><td class="n"><b>' + yen(sum('dedTotal')) + '</b></td><td class="n"><b>' + yen(sum('net')) + '</b></td></tr></table>' +
     (list.length ? '' : '<div class="note" style="margin-top:8px;">従業員のタブから人を追加してください。</div>') + '</div>';
   $('ym').onchange = e => { ST.ym = e.target.value; drawMonth(); };
@@ -355,7 +357,7 @@ function slipHtml(e, r, ym, att) {
   const a = att || {};
   return '<div class="slip"><div class="top"><div><div style="font-size:.8rem;opacity:.8;">エクスケアダクト株式会社</div><h3>給与明細</h3></div><div style="text-align:right;">' + ymLabel(ym) + '分<br><b>' + esc(e.name) + '</b> 様</div></div>' +
     '<div class="net"><span>差引支給額</span><b>¥' + yen(r.net) + '</b></div><div class="cols"><div><h4>支給</h4>' +
-    l('基本給', P.base) + l('時間外手当', P.ot) + l('所定休日出勤手当', P.shoDay) + l('所定休日時間外手当', P.shoOt) + l('法定休日出勤手当', P.houDay) + l('法定休日時間外手当', P.houOt) + l('夜間作業手当', P.night) + l('家族手当', P.family) + l('交通費', P.commute) + l('出張手当', P.trip) + l('欠勤の減額', P.absent) + l('遅刻・早退の減額', P.early) + l('遡及分', P.retro) + l('休業手当・自宅待機', P.leave) + l('その他の支給', P.other) + l('支給合計', r.payTotal, 1) +
+    l('基本給', P.base) + l('時間外手当', P.ot) + l('月60時間超の割増', P.ot60) + l('所定休日出勤手当', P.shoDay) + l('所定休日時間外手当', P.shoOt) + l('法定休日出勤手当', P.houDay) + l('法定休日時間外手当', P.houOt) + l('夜間作業手当', P.night) + l('家族手当', P.family) + l('交通費', P.commute) + l('出張手当', P.trip) + l('欠勤の減額', P.absent) + l('遅刻・早退の減額', P.early) + l('遡及分', P.retro) + l('休業手当・自宅待機', P.leave) + l('その他の支給', P.other) + l('支給合計', r.payTotal, 1) +
     '</div><div><h4>控除</h4>' + l('健康保険料', D.health) + l('厚生年金', D.pension) + l('雇用保険', D.emp) + l('所得税', D.tax) + l('住民税', D.resident) + l('年末調整', D.yearEnd) + l('その他の控除', D.otherDed) + l('控除合計', r.dedTotal, 1) + '</div></div>' +
     '<div class="att"><span>出勤 ' + (a.workDays || 0) + '日</span><span>有給 ' + (a.paidDays || 0) + '日</span><span>欠勤 ' + (a.absentDays || 0) + '日</span><span>時間外 ' + (a.otH || 0) + 'h</span><span>所定休日 ' + (a.shoDays || 0) + '日</span><span>法定休日 ' + (a.houDays || 0) + '日</span><span>夜間作業 ' + ((a.nightDays || 0) + (a.nightShoDays || 0) + (a.nightHouDays || 0)) + '日</span><span>早退 ' + (a.earlyH || 0) + 'h</span></div>' +
     '<div class="ft">時間単価 ' + yen(Math.round(r.hourly || 0)) + '円（基本給 ÷ 月平均 ' + (Math.round(c.monthHours * 10) / 10) + '時間）</div></div>';
@@ -364,7 +366,7 @@ function slipHtml(e, r, ym, att) {
 function mailText(e, r, ym) {
   const P = r.pay || {}, D = r.ded || {}, a = r.att || {}, l = (k, v) => v ? k + '：' + yen(v) + '円\n' : '';
   return e.name + ' 様\n\n' + ymLabel(ym) + '分の給与明細をお送りします。\n支給日：' + dLabel(payDayOf(ym)) + '\n\n■ 差引支給額：' + yen(r.net) + '円\n\n【支給】\n' +
-    l('基本給', P.base) + l('時間外手当', P.ot) + l('所定休日出勤手当', P.shoDay) + l('所定休日時間外手当', P.shoOt) + l('法定休日出勤手当', P.houDay) + l('法定休日時間外手当', P.houOt) + l('夜間作業手当', P.night) + l('家族手当', P.family) + l('交通費', P.commute) + l('出張手当', P.trip) + l('欠勤の減額', P.absent) + l('遅刻・早退の減額', P.early) + l('遡及分', P.retro) + l('休業手当・自宅待機', P.leave) + l('その他の支給', P.other) + '支給合計：' + yen(r.payTotal) + '円\n\n【控除】\n' +
+    l('基本給', P.base) + l('時間外手当', P.ot) + l('月60時間超の割増', P.ot60) + l('所定休日出勤手当', P.shoDay) + l('所定休日時間外手当', P.shoOt) + l('法定休日出勤手当', P.houDay) + l('法定休日時間外手当', P.houOt) + l('夜間作業手当', P.night) + l('家族手当', P.family) + l('交通費', P.commute) + l('出張手当', P.trip) + l('欠勤の減額', P.absent) + l('遅刻・早退の減額', P.early) + l('遡及分', P.retro) + l('休業手当・自宅待機', P.leave) + l('その他の支給', P.other) + '支給合計：' + yen(r.payTotal) + '円\n\n【控除】\n' +
     l('健康保険料', D.health) + l('厚生年金', D.pension) + l('雇用保険', D.emp) + l('所得税', D.tax) + l('住民税', D.resident) + l('年末調整', D.yearEnd) + l('その他の控除', D.otherDed) + '控除合計：' + yen(r.dedTotal) + '円\n\n【勤務】\n出勤 ' + (a.workDays || 0) + '日／有給 ' + (a.paidDays || 0) + '日／欠勤 ' + (a.absentDays || 0) + '日／時間外 ' + (a.otH || 0) + '時間／所定休日 ' + (a.shoDays || 0) + '日／法定休日 ' + (a.houDays || 0) + '日／夜間作業 ' + ((a.nightDays || 0) + (a.nightShoDays || 0) + (a.nightHouDays || 0)) + '日\n\nエクスケアダクト株式会社\n（このメールは給与管理アプリから送っています）\n';
 }
 async function sendSlips(list, ym) {
@@ -380,7 +382,7 @@ function drawPerson(id) {
   M.innerHTML = '<div class="row" style="margin-bottom:10px;"><button class="b" id="bk">← 一覧へ</button><b>' + esc(e.name) + '　' + ymLabel(ym) + '</b></div>' +
     '<div class="card"><h2>この月だけの入力</h2>' + (lock ? '<div class="note">確定済みなので直せません。</div>' : '') +
     '<div class="row" style="align-items:flex-end;">' + ADJ.map(a => '<label class="f">' + a[1] + '<br><input type="number" data-a="' + a[0] + '" value="' + esc(adj[a[0]] == null ? '' : adj[a[0]]) + '" style="width:120px;"' + (lock ? ' disabled' : '') + ' title="' + esc(a[2]) + '"></label>').join('') +
-    (lock ? (e.email ? '<button class="b" id="m1">この人にメールで送る</button>' : '') : '<button class="b dark" id="sv">保存</button>') + '</div><div class="note" id="tn"></div><div class="msg" id="pm"></div>' + ((MON.res[id].warns || []).map(w => '<div class="msg">' + esc(w) + '</div>').join('')) + '</div><div id="pv"></div>';
+    (lock ? (e.email ? '<button class="b" id="m1">この人にメールで送る</button>' : '') : '<button class="b dark" id="sv">保存</button>') + '</div><div class="note" id="tn"></div><div class="msg" id="pm"></div>' + ((MON.res[id].warns || []).map(w => '<div class="msg">' + esc(w) + '</div>').join('')) + ((MON.res[id].notes || []).map(w => '<div class="msg" style="color:var(--ink);background:#fff4d6;border-color:#d9a400;">' + esc(w) + '</div>').join('')) + '</div><div id="pv"></div>';
   const paint = () => { const r = MON.res[id]; $('pv').innerHTML = slipHtml(e, r, ym, MON.att[id]); $('tn').textContent = '所得税の自動計算は ' + yen(r.taxAuto) + '円です。' + (r.taxManual ? '手入力の ' + yen(r.ded.tax) + '円を使っています。' : '空欄のときはこの額を使います。'); };
   paint();
   $('bk').onclick = renderMonth;
@@ -448,7 +450,7 @@ async function pdfOf(htmls, name, wide) {
   box.remove(); pdf.save(name);
 }
 const attOf = r => r.att || {};
-const YR_ROWS = [['勤務', null], ['労働日数', r => { const a = attOf(r); return (a.workDays || 0) + (a.shoDays || 0) + (a.houDays || 0); }], ['労働時間', r => attOf(r).totalH], ['時間外の時間', r => { const a = attOf(r); return (a.otH || 0) + (a.shoOtH || 0) + (a.houOtH || 0); }], ['休日出勤の日数', r => { const a = attOf(r); return (a.shoDays || 0) + (a.houDays || 0); }], ['夜間作業の日数', r => { const a = attOf(r); return (a.nightDays || 0) + (a.nightShoDays || 0) + (a.nightHouDays || 0); }], ['有給の日数', r => attOf(r).paidDays], ['支給', null], ['基本給', r => r.pay && r.pay.base], ['時間外手当', r => r.pay && r.pay.ot], ['休日出勤手当', r => r.pay && (r.pay.shoDay + r.pay.shoOt + r.pay.houDay + r.pay.houOt)], ['夜間作業手当', r => r.pay && r.pay.night], ['家族手当', r => r.pay && r.pay.family], ['交通費', r => r.pay && r.pay.commute], ['出張手当', r => r.pay && r.pay.trip], ['支給合計', r => r.payTotal], ['控除', null], ['健康保険料', r => r.ded && r.ded.health], ['厚生年金', r => r.ded && r.ded.pension], ['雇用保険', r => r.ded && r.ded.emp], ['所得税', r => r.ded && r.ded.tax], ['住民税', r => r.ded && r.ded.resident], ['年末調整', r => r.ded && r.ded.yearEnd], ['控除合計', r => r.dedTotal], ['差引支給額', r => r.net]];
+const YR_ROWS = [['勤務', null], ['労働日数', r => { const a = attOf(r); return (a.workDays || 0) + (a.shoDays || 0) + (a.houDays || 0); }], ['労働時間', r => attOf(r).totalH], ['時間外の時間', r => { const a = attOf(r); return (a.otH || 0) + (a.shoOtH || 0) + (a.houOtH || 0); }], ['休日出勤の日数', r => { const a = attOf(r); return (a.shoDays || 0) + (a.houDays || 0); }], ['夜間作業の日数', r => { const a = attOf(r); return (a.nightDays || 0) + (a.nightShoDays || 0) + (a.nightHouDays || 0); }], ['有給の日数', r => attOf(r).paidDays], ['支給', null], ['基本給', r => r.pay && r.pay.base], ['時間外手当', r => r.pay && r.pay.ot], ['月60時間超の割増', r => r.pay && r.pay.ot60], ['休日出勤手当', r => r.pay && (r.pay.shoDay + r.pay.shoOt + r.pay.houDay + r.pay.houOt)], ['夜間作業手当', r => r.pay && r.pay.night], ['家族手当', r => r.pay && r.pay.family], ['交通費', r => r.pay && r.pay.commute], ['出張手当', r => r.pay && r.pay.trip], ['支給合計', r => r.payTotal], ['控除', null], ['健康保険料', r => r.ded && r.ded.health], ['厚生年金', r => r.ded && r.ded.pension], ['雇用保険', r => r.ded && r.ded.emp], ['所得税', r => r.ded && r.ded.tax], ['住民税', r => r.ded && r.ded.resident], ['年末調整', r => r.ded && r.ded.yearEnd], ['控除合計', r => r.dedTotal], ['差引支給額', r => r.net]];
 function ledgerHtml(e, y, data) {
   const months = Array.from({ length: 12 }, (_, i) => y + '-' + pad(i + 1)), row = ym => (data.months.find(x => x.ym === ym && x.id === e.id) || {}).result || {};
   const bon = data.bonus.filter(x => x.id === e.id);
@@ -478,7 +480,7 @@ async function drawYear() {
 }
 
 /* 従業員 */
-const EMP_F = [['code', '社員コード', 'text', '今の明細の社員コードです。'], ['name', '氏名', 'text', '明細に出る名前です。'], ['uid', 'ポータルのアカウント', 'text', '日報を読むために使います。ポータルのログインIDを入れます。空欄の人は氏名で探します。'], ['gender', '性別', 'gender', '賃金台帳に載せる項目です。'], ['joined', '入社日', 'date', '有給の管理に使う予定です。'], ['kind', '区分', 'kind', '社員・役員などです。計算は下の「保険」の欄で変わります。'], ['email', '明細を送るメール', 'text', '任意です。空欄の人には送りません。'], ['consent', '電子交付の承諾日', 'date', '本人が承諾した日です。メールで送る前に入れます。'], ['base', '基本給', 'number', '月額です。'],['commute', '交通費', 'number', '毎月の定額です。所得税の対象から外します。'], ['std', '標準報酬月額（健康保険）', 'number', '年金事務所の決定通知書の額です。'], ['stdPen', '標準報酬月額（厚生年金）', 'number', '健康保険と違うときだけ入れます。空欄なら同じ額を使います。'], ['birth', '生年月日', 'date', '介護保険（40〜64歳）の判定に使います。'], ['care', '介護保険', 'care', '「自動」は生年月日で判定します。生年月日が空欄のときは対象外になるので、対象か対象外を選びます。'], ['deps', '扶養親族等の数', 'number', '扶養控除等申告書の人数です。所得税の表の列を決めます。家族手当にも使います。'], ['kids16', '16歳未満の家族', 'number', '扶養親族等の数に入らない16歳未満の家族の人数です。家族手当に使います。'], ['prevYm', '切り替え前の前月', 'month', 'アプリに切り替えて最初の賞与だけに使います。賞与の前の月を入れます。その月の給与をアプリで確定していれば、こちらは使いません。'], ['prevNet', '切り替え前の前月の給与', 'number', '上の月の給与から、交通費と社会保険料を引いた額です（前の明細の課税対象額）。賞与の所得税の率を決めます。'],['insure', '社会保険', 'bool', '外すと健康保険と厚生年金を引きません。'], ['empIns', '雇用保険', 'bool', '役員などは外します。'], ['noTax', '所得税を計算しない', 'boolR', '税理士さんの指示がある人だけ入れます。'], ['left', '退職', 'boolR', '入れると一覧から外します。過去の記録は残ります。']];
+const EMP_F = [['code', '社員コード', 'text', '今の明細の社員コードです。'], ['name', '氏名', 'text', '明細に出る名前です。'], ['uid', 'ポータルのアカウント', 'text', '日報を読むために使います。ポータルのログインIDを入れます。空欄の人は氏名で探します。'], ['gender', '性別', 'gender', '賃金台帳に載せる項目です。'], ['joined', '入社日', 'date', '有給の管理に使う予定です。'], ['kind', '区分', 'kind', '社員・役員などです。計算は下の「保険」の欄で変わります。'], ['email', '明細を送るメール', 'text', '任意です。空欄の人には送りません。'], ['consent', '電子交付の承諾日', 'date', '本人が承諾した日です。メールで送る前に入れます。'], ['base', '基本給', 'number', '月額です。'],['commute', '交通費', 'number', '毎月の定額です。所得税の対象から外します。'], ['std', '標準報酬月額（健康保険）', 'number', '年金事務所の決定通知書の額です。'], ['stdPen', '標準報酬月額（厚生年金）', 'number', '健康保険と違うときだけ入れます。空欄なら同じ額を使います。'], ['birth', '生年月日', 'date', '介護保険（40〜64歳）の判定に使います。'], ['care', '介護保険', 'care', '「自動」は生年月日で判定します。生年月日が空欄のときは対象外になるので、対象か対象外を選びます。'], ['deps', '扶養親族等の数', 'number', '扶養控除等申告書の人数です。所得税の表の列を決めます。家族手当にも使います。'], ['kids16', '16歳未満の家族', 'number', '扶養親族等の数に入らない16歳未満の家族の人数です。家族手当に使います。'], ['prevYm', '切り替え前の前月', 'month', 'アプリに切り替えて最初の賞与だけに使います。賞与の前の月を入れます。その月の給与をアプリで確定していれば、こちらは使いません。'], ['prevNet', '切り替え前の前月の給与', 'number', '上の月の給与から、交通費と社会保険料を引いた額です（前の明細の課税対象額）。賞与の所得税の率を決めます。'],['insure', '社会保険', 'bool', '外すと健康保険と厚生年金を引きません。'], ['empIns', '雇用保険', 'bool', '役員などは外します。'], ['noFamily', '家族手当なし', 'boolR', '役員など、家族手当を払わない人に入れます。'], ['noTax', '所得税を計算しない', 'boolR', '税理士さんの指示がある人だけ入れます。'], ['left', '退職', 'boolR', '入れると一覧から外します。過去の記録は残ります。']];
 function drawEmp() {
   portalEmps(ST.emps).then(n => { if (n && ST.tab === 'emp' && $('add')) drawEmp(); }).catch(() => {});
   M.innerHTML = '<div class="card"><div class="row"><h2 style="margin:0;">従業員</h2><span class="note">ポータルで「日報」にチェックがある人は自動で増えます。</span><span class="sp"></span><button class="b dark" id="add">＋ 追加</button></div></div><div class="card wrapx"><table class="t"><tr><th>氏名</th><th>区分</th><th class="n">基本給</th><th class="n">扶養</th><th>メール</th></tr>' + ST.emps.map(e => '<tr class="link" data-id="' + esc(e.id) + '"><td><b>' + esc(e.name) + '</b>' + (e.left ? ' <span class="tag">退職</span>' : '') + '</td><td>' + esc(e.kind) + '</td><td class="n">' + yen(e.base) + '</td><td class="n">' + (e.deps || 0) + '人</td><td>' + esc(e.email || '') + '</td></tr>').join('') + '</table></div>';
@@ -502,7 +504,7 @@ function editEmp(e0) {
 function drawSet() {
   const c = ST.cfg, y0 = yearOf(), w = { ...KY.workYear(y0, 0), year: y0 }, mh = Math.round(cfgOf().monthHours * 10) / 10;
   M.innerHTML = '<div class="card"><h2>アプリの版</h2><div>今の版：<b>' + APP_VER + '</b></div><div style="margin-top:8px;"><button class="b dark" id="ver">最新の版にする</button></div><div class="note">新しい版が出ているときは、押すと入れ替わります。</div></div>' +
-    CFG_DEF.map(([h, fs]) => '<div class="card"><h2>' + h + '</h2>' + fs.map(f => '<div class="set"><div class="k">' + f[1] + '</div><div class="row" style="flex-wrap:nowrap;gap:6px;"><input type="number" min="0" step="' + (f[2] === '倍' ? '0.01' : 'any') + '" data-c="' + f[0] + '"' + (f[2] === '倍' ? ' data-rate="1"' : '') + ' value="' + esc(f[2] === '倍' ? Number(c[f[0]]).toFixed(2) : c[f[0]]) + '"><span>' + f[2] + '</span></div><div class="d">' + f[3] + '</div></div>').join('') + (h === '基本の時間' ? '<div class="note" style="margin-top:8px;">' + w.year + '年の所定労働日数：平日 ' + w.weekdays + '日 − 祝日 ' + w.holidays + '日 ＝ <b>' + w.days + '日</b><br>月平均所定時間：<b>' + mh + '時間</b>（' + w.days + '日 × ' + c.stdH + '時間 ÷ 12）。時間単価＝基本給 ÷ この時間です。<br>時間外は1か月の合計で丸めます（平日・所定休日・法定休日ごと）。30分未満は切り捨て、30分以上は1時間に切り上げます。</div>' : '') + '</div>').join('') +
+    CFG_DEF.map(([h, fs]) => '<div class="card"><h2>' + h + '</h2>' + fs.map(f => f[2] === 'check' ? '<div class="set"><div class="k">' + f[1] + '</div><div><input type="checkbox" data-c="' + f[0] + '"' + (c[f[0]] ? ' checked' : '') + ' style="width:22px;height:22px;"></div><div class="d">' + f[3] + '</div></div>' : '<div class="set"><div class="k">' + f[1] + '</div><div class="row" style="flex-wrap:nowrap;gap:6px;"><input type="number" min="0" step="' + (f[2] === '倍' ? '0.01' : 'any') + '" data-c="' + f[0] + '"' + (f[2] === '倍' ? ' data-rate="1"' : '') + ' value="' + esc(f[2] === '倍' ? Number(c[f[0]]).toFixed(2) : c[f[0]]) + '"><span>' + f[2] + '</span></div><div class="d">' + f[3] + '</div></div>').join('') + (h === '基本の時間' ? '<div class="note" style="margin-top:8px;">' + w.year + '年の所定労働日数：平日 ' + w.weekdays + '日 − 祝日 ' + w.holidays + '日 ＝ <b>' + w.days + '日</b><br>月平均所定時間：<b>' + mh + '時間</b>（' + w.days + '日 × ' + c.stdH + '時間 ÷ 12）。時間単価＝基本給 ÷ この時間です。<br>時間外は1か月の合計で丸めます（平日・所定休日・法定休日ごと）。30分未満は切り捨て、30分以上は1時間に切り上げます。</div>' : '') + '</div>').join('') +
     '<div class="card"><h2>保険料率（適用月ごと）</h2><div class="note">変わるときは行を足します。健康保険・介護保険・支援金・厚生年金は「保険の月」、雇用保険は「給与の月」で使います。社会保険は前月分を今月の給与から引くので、3月分の率は4月の給与から効きます。</div><div class="wrapx"><table class="t" id="rt"></table></div><button class="b" id="ra" style="margin-top:8px;">＋ 行を足す</button>' +
     '<div class="set" style="border:0;"><div class="k">健康保険</div><div></div><div class="d">協会けんぽ兵庫の率（全体）です。本人はこの半分です。毎年3月分から変わります。</div><div class="k">介護保険</div><div></div><div class="d">40〜64歳の人だけにかかります（全体の率）。全国共通です。</div><div class="k">支援金</div><div></div><div class="d">子ども・子育て支援金です（全体の率）。明細では健康保険料に含めます。</div><div class="k">厚生年金</div><div></div><div class="d">全体の率です。本人はこの半分です。</div><div class="k">雇用保険</div><div></div><div class="d">本人負担の率です（建設の事業）。毎年4月に変わります。</div></div></div>' +
     '<div class="card"><div class="row"><button class="b dark" id="sv">設定を保存</button><span id="sm" class="note"></span></div></div>';
@@ -515,7 +517,7 @@ function drawSet() {
   $('ver').onclick = () => { $('ver').textContent = '入れ替えています…'; refreshApp(); };
   $('ra').onclick = () => { rates.push({ ...(rates[rates.length - 1] || {}), from: '' }); drawR(); };
   $('sv').onclick = async () => {
-    const d = { rates }; M.querySelectorAll('[data-c]').forEach(i => { d[i.dataset.c] = i.dataset.rate ? Math.round(Number(i.value) * 100) / 100 : Number(i.value); });   // 掛率は小数点第2位まで
+    const d = { rates }; M.querySelectorAll('[data-c]').forEach(i => { d[i.dataset.c] = i.type === 'checkbox' ? i.checked : i.dataset.rate ? Math.round(Number(i.value) * 100) / 100 : Number(i.value); });   // 掛率は小数点第2位まで
     try { await pay('saveCfg', d); Object.assign(ST.cfg, d); drawSet(); $('sm').textContent = '保存しました'; } catch (x) { $('sm').textContent = x.message; }
   };
 }

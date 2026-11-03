@@ -3,7 +3,8 @@
    ・時間単価＝基本給÷月平均所定時間（年間所定時間÷12）。日額＝時間単価×8
    ・時間外は1か月の合計で丸める（平日・所定休日・法定休日ごと。30分未満は切り捨て、30分以上は1時間に切り上げ。ユーザー指示 2026-11-03）
    ・平日の時間外1.25、所定・法定休日の出勤は日額×1.6、休日の時間外は時間単価×2.0
-   ・家族手当＝（扶養親族等の数＋16歳未満の家族）×1万円、上限3万円（ユーザー指示 2026-11-03。金額は設定で変えられる）
+   ・家族手当＝（扶養親族等の数＋16歳未満の家族）×1万円、上限3万円（ユーザー指示 2026-11-03。金額は設定で変えられる）。役員など「家族手当なし」にチェックの人は0
+   ・月60時間超：平日＋土曜の時間外が60時間を超えたら、超えた平日の時間に（1.5−1.25）を上乗せ（2026-11-04）
    ・夜間作業：日報の夜間チェックの日は昼の1日分×1.6。平日は基本給に入っているので上乗せ分（0.6）を足す。休日は休日の掛率＋上乗せ分
    ・出張手当は1泊3,500円。明細に載せて振込に足す。税金と社会保険の計算には入れない
    ・社会保険は前月分を今月の給与から引く（率は「その保険月」のものを使う） */
@@ -80,6 +81,10 @@
     const o = {};
     o.base = base;
     o.ot = yen(hourly * cfg.ot * n('otH'));
+    // 月60時間超（ユーザー決定 2026-11-04）：数えるのは平日＋土曜の時間外（設定で土曜を外せる。日祝は法律で数えない）。
+    // 超えた時間は平日の時間外から先に当て、平日の分だけ（60時間超の率 − 平日の率）を上乗せする。土曜の時間外はもともと高い率なので足さない
+    const h60 = n('otH') + (cfg.noSat60 ? 0 : n('shoOtH')), over60 = Math.max(0, h60 - 60), w60 = Math.min(over60, n('otH'));
+    o.ot60 = yen(hourly * Math.max(0, (cfg.ot60 != null ? cfg.ot60 : 1.5) - cfg.ot) * w60);
     o.shoDay = yen(daily * (cfg.holSho != null ? cfg.holSho : cfg.hol) * n('shoDays'));
     o.shoOt = yen(hourly * (cfg.otSho != null ? cfg.otSho : cfg.holOt) * n('shoOtH'));
     o.houDay = yen(daily * (cfg.holHou != null ? cfg.holHou : cfg.hol) * n('houDays'));
@@ -93,7 +98,7 @@
     o.retro = a('retro');
     o.leave = a('leave');
     o.other = a('other');
-    const payTotal = o.base + o.ot + o.shoDay + o.shoOt + o.houDay + o.houOt + o.night + o.family + o.commute + o.trip + o.absent + o.early + o.retro + o.leave + o.other;
+    const payTotal = o.base + o.ot + o.ot60 + o.shoDay + o.shoOt + o.houDay + o.houOt + o.night + o.family + o.commute + o.trip + o.absent + o.early + o.retro + o.leave + o.other;
     const insPay = payTotal - o.trip;   // 雇用保険の対象（出張手当は外す）
     const insYm = ymAdd(ym, -1), r = rateAt(cfg.rates, insYm), ins = emp.insure !== false, emp2 = emp.empIns !== false;
     const std = Number(emp.std) || 0, stdP = Number(emp.stdPen) || std;
@@ -114,7 +119,9 @@
     const dedTotal = d.health + d.pension + d.emp + d.tax + d.resident + d.yearEnd + d.otherDed;
     if (base <= 0) warns.push('基本給が入っていません');
     if (ins && !std) warns.push('標準報酬月額が入っていません');
-    return { hourly, daily, pay: o, payTotal, ded: d, dedTotal, net: payTotal - dedTotal, taxable, taxAuto: t.tax, taxManual: manual, warns };
+    // notes は知らせるだけ（warns と違って確定は止めない）
+    const notes = over60 > 0 ? ['時間外が月60時間を超えています（' + h60 + '時間、超えた分 ' + over60 + '時間）。超えた平日の ' + w60 + '時間に割増を足しました。'] : [];
+    return { hourly, daily, pay: o, payTotal, ded: d, dedTotal, net: payTotal - dedTotal, taxable, taxAuto: t.tax, taxManual: manual, warns, notes, h60, over60 };
   }
 
   /** 賞与 */
@@ -153,7 +160,7 @@
     return { ...a, raw, otH: roundH(raw.otH), shoOtH: roundH(raw.shoOtH), houOtH: roundH(raw.houOtH) };
   }
   /** 家族手当：（扶養親族等の数＋16歳未満の家族）×1人の額、上限あり */
-  const familyPay = (emp, cfg) => Math.min(Number(cfg.familyMax != null ? cfg.familyMax : 30000), ((Number(emp.deps) || 0) + (Number(emp.kids16) || 0)) * Number(cfg.familyPer != null ? cfg.familyPer : 10000));
+  const familyPay = (emp, cfg) => emp.noFamily ? 0 : Math.min(Number(cfg.familyMax != null ? cfg.familyMax : 30000), ((Number(emp.deps) || 0) + (Number(emp.kids16) || 0)) * Number(cfg.familyPer != null ? cfg.familyPer : 10000));
 
   const api = { jpHolidays, workYear, calcMonth, calcBonus, monthlyTax, bonusRate, careTarget, payDay, period, rateAt, half, ymAdd, roundH, roundAtt, familyPay };
   if (typeof module !== 'undefined') module.exports = api; else root.KY = api;
