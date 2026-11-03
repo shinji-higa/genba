@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>消耗品注文</title>
-  <!-- Ver.20261103-03 -->
+  <!-- Ver.20261103-04 -->
   <style>
     /* 消耗品注文（フカガワの総合カタログの消耗品）。丸ダクト注文の注文書の仕組みを使う。2026-11-01 作成
        見た目は角ダクトの製作伝票にそろえる（白黒を基調に、薄い灰色は使わない） */
@@ -567,14 +567,14 @@
         { n: 'フリー入力', s: [], u: '個', free: true } ] }
     ];
 
-    /* フード付帯品（ユーザー指示 2026-11-03）：グリースフィルター3社とハイガード。型式はフード注文書と同じ。単位はどちらも台。フリー入力の前に置く */
+    /* フード付帯品（ユーザー指示 2026-11-03）：グリスフィルター3社とハイガード。型式はフード注文書と同じ。単位はどちらも台。フリー入力の前に置く */
     (function () {
       var L = function (pre, s) { return s.split(',').map(function (x) { return pre + x; }); };
       var DC = '50,40,30,25,3000,502,402,302,252,3002,503,403,303,253,3003,50H,40H,30H,25H,3000H,502H,402H,302H,252H,3002H,503H,403H,303H,253H,3003H';
       var FK = '3030,4040,2550,3050,4050,5050', HW = '330W,525W,530W,540W,550W', H4 = '525W,530W,540W,550W', HS = '525S,530S,540S,550S';
       var hk = function (p) { return L(p + '1-', HW).concat(L(p + '2-', H4), L(p + '3-', H4), L(p + '1-', HS), L(p + '2-', HS), L(p + '3-', HS)); };
       var g = { g: 'フード付帯品', p: 0, list: [
-        { n: 'グリースフィルター', s: [], u: '台', ml: 'タイプ', mats: [
+        { n: 'グリスフィルター', s: [], u: '台', ml: 'タイプ', nosub: true, mats: [
           { m: 'クラコ ダブルチェック DC型', s: L('DC-', DC), d: '両面：DC-50〜3003　片面：末尾H' },
           { m: 'クラコ ダブルチェック LLタイプ', s: L('LL-', DC), d: '低静圧。両面：LL-50〜3003　片面：末尾H' },
           { m: 'フカガワ S型（片面）', s: L('S1-', FK).concat(L('S2-', FK), L('S3-', FK)), d: 'S1＝単体、S2＝2連体、S3＝3連体' },
@@ -582,7 +582,7 @@
           { m: 'ホーコス F型グリーサー', s: hk('F'), d: 'W＝両面、S＝片面' },
           { m: 'ホーコス FSVH 高風量Vフィルター', s: hk('FSVH'), d: 'W＝両面、S＝片面' },
           { m: 'ホーコス FSVL 低圧損Vフィルター', s: hk('FSVL'), d: 'W＝両面、S＝片面' } ] },
-        { n: 'ハイガード HGL', s: L('HGL-', '1515,2015,2020,2025,3015,3020,3025,3030,4015,4020,4025,4030,4040,5015,5020,5025,5030,5040,5050,6015,6020,6025,6030,6040,6050'), u: '台', d: 'クラコ 防火風量調整ダンパー' } ] };
+        { n: 'ハイガード', s: L('HGL-', '1515,2015,2020,2025,3015,3020,3025,3030,4015,4020,4025,4030,4040,5015,5020,5025,5030,5040,5050,6015,6020,6025,6030,6040,6050'), u: '台', d: 'クラコ 防火風量調整ダンパー' } ] };
       var fi = CONS.findIndex(function (x) { return x.g === 'フリー入力'; });
       CONS.splice(fi < 0 ? CONS.length : fi, 0, g);
     })();
@@ -768,7 +768,7 @@
         });
         if (!list.length) return '';
         return '<div class="cons-g"><div class="cons-gh">' + esc(g.g) + (g.p ? '　<span class="note">カタログ p.' + g.p + '〜</span>' : '') + '</div><div class="cons-list">' +
-          list.map(function (x) { var sub = x.p.mats ? x.p.mats.map(function (m) { return m.m; }).join('・') : (x.p.d || ''); return '<button type="button" class="cons-p" onclick="pickCons(' + gi + ',' + x.pi + ')">' + esc(x.p.n) + (sub ? '<small>' + esc(sub) + '</small>' : '') + '</button>'; }).join('') + '</div></div>';
+          list.map(function (x) { var sub = x.p.nosub ? '' : x.p.mats ? x.p.mats.map(function (m) { return m.m; }).join('・') : (x.p.d || ''); return '<button type="button" class="cons-p" onclick="pickCons(' + gi + ',' + x.pi + ')">' + esc(x.p.n) + (sub ? '<small>' + esc(sub) + '</small>' : '') + '</button>'; }).join('') + '</div></div>';
       }).join('');
       document.getElementById('consPick').innerHTML = h || '<div class="empty">見つかりません。「その他」から品名を入れてください。</div>';
     }
