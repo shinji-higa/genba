@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>フード注文</title>
-  <!-- Ver.20261103-14 -->
+  <!-- Ver.20261103-16 -->
   <style>
     /* 厨房フードの注文書。注文用図面（箱型・山型・二重）の寸法表を画面で入力し、数字入りの図を1台1ページで出す。フードはメーカー共通なので本体にメーカーは出さない。
        仕組みは金物注文（添付）kana.html と同じ（保存・提出・版・PDF）。2026-11-02 作成
@@ -176,6 +176,9 @@
     .dp-fig { flex: 1; min-width: 0; border: 1px solid #000; padding: 1mm 1.5mm; }
     .dp-fig .cap { font-size: 8pt; font-weight: 700; font-family: "Yu Gothic", Meiryo, sans-serif; }
     .dp-fig svg { width: 100%; height: auto; display: block; margin: 0 auto; }
+    body.slip-mv .dp-fig [data-sp] { cursor: grab; }   /* 文字を動かす */
+    body.slip-mv .dp-fig [data-sp]:hover text { fill: #c25400; }
+    body.slip-mv .dp-fig { outline: 2px dashed #c25400; outline-offset: 2px; }
     .dp-hd { font-size: 7.5pt; margin-top: 1mm; }
     .dp-hd th { font-size: 7.5pt; line-height: 1.1; height: 5.6mm; }
     .dp-hd th.sub { font-size: 6.5pt; height: 4.2mm; padding: 0; }
@@ -207,6 +210,7 @@
         <span class="save-st host-only" id="saveState"></span>
         <button type="button" class="btn btn-sub" onclick="openSlips()">注文書一覧</button>
         <button type="button" class="btn btn-sub" onclick="saveSlip(true)">保存</button>
+        <button type="button" class="btn btn-sub only-desk slipMvBtn" onclick="slipMoveToggle()">文字を動かす</button>
         <button type="button" class="btn btn-sub only-desk" onclick="printSlip()">印刷</button>
         <button type="button" class="btn btn-dark only-desk host-only" onclick="openSubmit()">工場へ提出</button>
         <button type="button" class="btn btn-sub host-only" onclick="closeApp()">閉じる</button>
@@ -271,7 +275,7 @@
     <div class="sheet">
       <div class="sheet-h"><span class="ttl">注文書プレビュー</span><button type="button" class="btn btn-sub" id="pvZoomBtn" onclick="togglePvZoom()">拡大</button><button type="button" class="btn btn-sub" onclick="closeSheet('pvBg')">閉じる</button></div>
       <div class="sheet-b" style="background:#e9e9ec;"><div id="pvMobile"></div></div>
-      <div class="sheet-f"><button type="button" class="btn btn-sub" onclick="printSlip()">印刷</button><button type="button" class="btn btn-dark host-only" onclick="openSubmit()">工場へ提出</button></div>
+      <div class="sheet-f"><button type="button" class="btn btn-sub slipMvBtn" onclick="slipMoveToggle()">文字を動かす</button><button type="button" class="btn btn-sub" onclick="printSlip()">印刷</button><button type="button" class="btn btn-dark host-only" onclick="openSubmit()">工場へ提出</button></div>
     </div>
   </div>
 
@@ -479,7 +483,7 @@
     var HK_ANG = ['無し'].concat(['25×25×3', '30×30×3', '40×40×3', '40×40×5', '50×50×4', '50×50×6']), HK_DEF = '30×30×3';
     function hangWord(it) { return it && it.shape === 'HY' ? '吊り金物' : '吊り穴'; }
     function hkAng(it) { return it.hka || HK_DEF; }   // 吊り金物のアングル（無し＝アングルなし）
-    function hkText(it) { if (it.shape !== 'HY') return ''; var a = hkAng(it); return a === '無し' ? 'アングル無し' : 'アングル L' + a + (num(it.hkl) ? ' 長さ' + fmtN(num(it.hkl)) : ''); }
+    function hkText(it) { if (it.shape !== 'HY') return ''; var a = hkAng(it); return a === '無し' ? 'アングル無し' : 'アングル L' + a + ' 長さ' + fmtN(num(it.hkl) || 100); }
     function holeSet(h) { return h.face ? !blankStr(h.x) : !blankStr(h.x) && !blankStr(h.y); }
     function holeSum(it) { var c = {}, n = 0; holesOf(it).forEach(function (h) { if (holeSet(h)) { c[h.d] = (c[h.d] || 0) + 1; n++; } }); return HOLE_D.filter(function (v) { return c[v]; }).map(function (v) { return 'φ' + v + '×' + c[v]; }).join('・'); }
     function holesLine(a) { return (a || []).filter(holeSet).map(function (h) { return 'φ' + h.d + '（' + (h.face ? h.face + ' 右端から芯' + fmtN(num(h.x)) : '右端から芯' + fmtN(num(h.x)) + '・奥から芯' + fmtN(num(h.y))) + '）'; }).join('、'); }
@@ -630,11 +634,14 @@
       var pl = function (pts, close, dash) { return '<path d="M' + pts.map(function (p) { return p[0].toFixed(1) + ',' + p[1].toFixed(1); }).join(' L') + (close ? ' Z' : '') + '" fill="none"' + (dash ? ' stroke-dasharray="' + dash + '"' : '') + '/>'; };
       var tx = function (x, y, t, a, small) { return t === '' || t == null ? '' : '<text x="' + x.toFixed(1) + '" y="' + y.toFixed(1) + '" text-anchor="' + (a || 'middle') + '" stroke="none"' + (small ? ' font-size="' + (FS - 1.5) + '"' : '') + '>' + esc(t) + '</text>'; };
       var dH = function (x1, x2, y, t, below) { if (x2 - x1 < 1) return ''; return ln(x1, y, x2, y, '', 0.6) + ln(x1, y - 3, x1, y + 3, '', 0.6) + ln(x2, y - 3, x2, y + 3, '', 0.6) + tx((x1 + x2) / 2, below ? y + FS : y - 2, t); };
+      var fitW = function (t) { return String(t).length * FS * 0.6 + 2; };
+      var chainH = function (pts, y, below) { var o = '', n = 0, any = false; pts.slice(1).forEach(function (x, i) { var a = px0 + pts[i] * k, b = px0 + x * k, t = fmtN(x - pts[i]); if (b - a < 1) return; var tight = b - a < fitW(t); if (tight) { n++; any = true; } var sh = tight && n % 2 === 0 ? (below ? FS - 1 : -(FS - 1)) : 0; o += ln(a, y, b, y, '', 0.6) + ln(a, y - 3, a, y + 3, '', 0.6) + ln(b, y - 3, b, y + 3, '', 0.6) + tx((a + b) / 2, (below ? y + FS : y - 2) + sh, t, 'middle', tight); }); return { s: o, tight: any }; };
+      var chainV = function (pts, x, right) { var o = '', n = 0; pts.slice(1).forEach(function (y, i) { var a = py0 + pts[i] * k, b = py0 + y * k, t = fmtN(y - pts[i]); if (b - a < 1) return; var tight = b - a < FS + 1; if (tight) n++; var sh = tight && n % 2 === 0 ? 13 : 0; o += ln(x, a, x, b, '', 0.6) + ln(x - 3, a, x + 3, a, '', 0.6) + ln(x - 3, b, x + 3, b, '', 0.6) + tx(right ? x + 3 + sh : x - 3 - sh, (a + b) / 2 + FS * 0.35, t, right ? 'start' : 'end', tight); }); return o; };
       var dV = function (x, y1, y2, t, right) { if (y2 - y1 < 1) return ''; return ln(x, y1, x, y2, '', 0.6) + ln(x - 3, y1, x + 3, y1, '', 0.6) + ln(x - 3, y2, x + 3, y2, '', 0.6) + tx(right ? x + 3 : x - 3, (y1 + y2) / 2 + FS * 0.35, t, right ? 'start' : 'end'); };
       var head = function (vw, vh) { return '<svg viewBox="0 0 ' + vw + ' ' + vh + '" xmlns="http://www.w3.org/2000/svg" font-family="Yu Gothic,Meiryo,sans-serif" font-size="' + FS + '" fill="#000" stroke="#000" stroke-width="0.9">'; };
       var fxMid = 0;   // 正面図の横の真ん中（サイズの文字を内側へ向ける）
       // 接続の印（角ダクトの図と同じ丸枠の記号）
-      var jMk = function (x, y, c) { var rx = Math.max(6, c.length * 3.2 + 3); return '<rect x="' + (x - rx).toFixed(1) + '" y="' + (y - 6).toFixed(1) + '" width="' + (rx * 2).toFixed(1) + '" height="12" rx="6" ry="6" fill="#fff" stroke-width="0.7"/>' + tx(x, y + 3, c, 'middle', true); };
+      var jMk = function (x, y, c) { var rx = Math.max(6, c.length * 3.2 + 3); return '<g data-sp="j"><rect x="' + (x - rx).toFixed(1) + '" y="' + (y - 6).toFixed(1) + '" width="' + (rx * 2).toFixed(1) + '" height="12" rx="6" ry="6" fill="#fff" stroke-width="0.7"/>' + tx(x, y + 3, c, 'middle', true) + '</g>'; };   // 接続の記号は枠ごと動かす
       // 開口を正面・側面から見た形：短管は立ち上がりと先の接続（TDC＝口の線を外へ、FG 系＝さらに内に平行の線、ドン補＝両わきを突き出す。角ダクトの図と同じ）、開口は上の面に点線
       var mouth = function (x0, w, y0, k, p, mark) {
         if (!p.len) return ln(x0, y0 + 1.5, x0 + w, y0 + 1.5, '2 2', 0.8);
@@ -665,12 +672,13 @@
         return head(64, 48) + front((64 - tw) / 2, (48 - th) / 2 + ductH * kt, kt) + '</svg>';
       }
       // 縮尺と置き場
-      var tube = ops.some(function (p) { return p.len && p.o.kind !== '丸'; }), ML = yama ? 58 : 34, MR = 16, MT = 26, MB = sp.length ? 44 : 30, GAP = (yama ? 60 : 46) + (tube ? 16 : 0), GS = 18, VW = 340, X2 = 34;   // X2＝2本目の縦の寸法線の位置（左へ）
-      var k = Math.min((VW - ML - MR - GS) / (L + W), 320 / (W + H + ductH));
+      var needLeft = sized.some(function (o) { return opFace(o) === '左側面'; }) || holes.some(function (q) { return q.face === '左側面'; }), LG = yama ? 60 : 34;   // 左側面図と正面図のあいだ（正面図の H の寸法が入る幅）
+      var tube = ops.some(function (p) { return p.len && p.o.kind !== '丸'; }), ML = yama ? 58 : 34, MR = 16, MT = 26, MB = sp.length ? 44 : 30, GAP = (yama ? 68 : 52) + (tube ? 16 : 0), GS = 18, VW = 340, X2 = 34;   // X2＝2本目の縦の寸法線の位置（左へ）
+      var k = Math.min((VW - ML - MR - GS - (needLeft ? LG : 0)) / (L + W * (needLeft ? 2 : 1)), 320 / (W + H + ductH));
       var pw = L * k, ph = W * k, fh = H * k, sw = W * k;
-      var px0 = ML, py0 = MT, fx0 = ML, fy0 = py0 + ph + GAP + ductH * k, sx0 = fx0 + pw + GS;
+      var lx0 = ML, px0 = ML + (needLeft ? sw + LG : 0), py0 = MT, fx0 = px0, fy0 = py0 + ph + GAP + ductH * k, sx0 = fx0 + pw + GS;
       var legend = sized.map(function (o, i) { return (sized.length > 1 ? circled(i + 1) + ' ' : '') + opFaceText(o) + (isPlan(o) ? '' : '（' + opPos(o) + '）'); }).concat(holes.length ? [hangWord(it) + ' ' + holeSum(it) + (hkText(it) ? '　' + hkText(it) : '')] : [], holeFaceText(it) ? ['（' + holeFaceText(it) + '）'] : []);
-      VW = Math.max(VW, ML + pw + 72);   // 平面図の右の W の数字が切れないように
+      VW = Math.max(VW, px0 + pw + 72, sx0 + sw + MR);   // 平面図の右の W の数字が切れないように
       var VH = fy0 + fh + MB + legend.length * 11;
       s += head(VW, VH);
       /* --- 平面図 --- */
@@ -695,7 +703,7 @@
         }
         if (sized.length > 1) s += tx(mx, y0 - 4, circled(sized.indexOf(p.o) + 1));
       });
-      var angOn = it.shape === 'HY' && hkAng(it) !== '無し', angW = angOn ? parseFloat(hkAng(it)) : 0, angL = num(it.hkl) || 100;   // 吊り金物のアングル（長さ空欄の図は100で描く）
+      var angOn = it.shape === 'HY' && hkAng(it) !== '無し', angW = angOn ? parseFloat(hkAng(it)) : 0, angL = num(it.hkl) || 100;   // 吊り金物のアングル（長さの空欄＝100）
       var dep = Math.max(3, (angW || 30) * k), hdot = function (cx, cy, q) { return '<circle cx="' + cx.toFixed(1) + '" cy="' + cy.toFixed(1) + '" r="' + Math.max(1.8, num(q.d) * k / 2).toFixed(1) + '" fill="none" stroke-width="0.8"/>' + ln(cx - 3.5, cy, cx + 3.5, cy, '', 0.4) + ln(cx, cy - 3.5, cx, cy + 3.5, '', 0.4); };
       holes.forEach(function (q) {
         if (q.face) {   // フードの端の外：アングル（長さ angL・出 dep）の真ん中に穴
@@ -716,50 +724,61 @@
       ops.forEach(function (p) { if (p.o.kind === '丸') { hPts.push(p.b.cx); vPts.push(W - p.b.cy); } else { hPts.push(p.b.left, p.b.right); vPts.push(W - p.b.back, W - p.b.front); } });
       if (it.shape === 'HY' && ops.length && !guess) { hPts.push(E1, E1 + E2); vPts.push(F3, F3 + F2); }   // 山型の開口の寄りは天板の端から
       if (holes.length) {
-        var tP = chain([0, L].concat(holes.filter(function (q) { return !q.face || q.face === '背面'; }).map(function (q) { return q.face ? num(q.x) : L - num(q.x); }))), rP = chain([0, W].concat(holes.filter(function (q) { return !q.face || q.face === '右側面'; }).map(function (q) { return num(q.y) || num(q.x); })));   // 上＝背面の金物（左から）、右＝右側面の金物（奥から）。正面・左側面は図の下の文字
-        if (tP.length > 2) tP.slice(1).forEach(function (x, i) { s += dH(px0 + tP[i] * k, px0 + x * k, py0 - 8, fmtN(x - tP[i])); });
-        if (rP.length > 2) rP.slice(1).forEach(function (y, i) { s += dV(px0 + pw + 8, py0 + rP[i] * k, py0 + y * k, fmtN(y - rP[i]), true); });
+        var tP = chain([0, L].concat(holes.filter(function (q) { return !q.face || q.face === '背面'; }).map(function (q) { return q.face ? num(q.x) : L - num(q.x); }))), rP = chain([0, W].concat(holes.filter(function (q) { return !q.face || q.face === '右側面'; }).map(function (q) { return num(q.y) || num(q.x); })));   // 上＝背面の金物（左から）、右＝右側面の金物（奥から）。正面・左側面は図の下の文字。図が込み合うので寸法と文字は重ならない所に置く
+        if (tP.length > 2) s += chainH(tP, py0 - 8, false).s;
+        if (rP.length > 2) s += chainV(rP, px0 + pw + 8, true);
       } else s += tx(px0 + pw / 2, py0 - 9, '吊り穴（まだ）', 'middle', true);
+      var rowOff = 0;   // 開口の区切りの数字を下へずらしたら、L と E の段も下げる
       if (!guess) {
         hPts = chain(hPts); vPts = chain(vPts);
-        hPts.slice(1).forEach(function (x, i) { s += dH(px0 + hPts[i] * k, px0 + x * k, py0 + ph + 12, fmtN(x - hPts[i]), true); });
-        vPts.slice(1).forEach(function (y, i) { s += dV(px0 - 10, py0 + vPts[i] * k, py0 + y * k, fmtN(y - vPts[i])); });
+        var cb = chainH(hPts, py0 + ph + 12, true); s += cb.s; if (cb.tight) rowOff = 7;
+        s += chainV(vPts, px0 - 10, false);
       }
       if (yama) s += dV(px0 - X2, py0, py0 + F3 * k, fGuess ? '任' : fmtN(F3)) + dV(px0 - X2, py0 + F3 * k, py0 + (F3 + F2) * k, fGuess ? '任' : fmtN(F2)) + dV(px0 - X2, py0 + (F3 + F2) * k, py0 + ph, fGuess ? '任' : fmtN(F1));
       s += dV(px0 + pw + 34, py0, py0 + ph, fmtN(W), true);
-      s += dH(px0, px0 + pw, py0 + ph + 26, fmtN(L), true);
-      if (yama) s += dH(px0, px0 + E1 * k, py0 + ph + 40, eGuess ? '任' : fmtN(E1), true) + dH(px0 + E1 * k, px0 + (E1 + E2) * k, py0 + ph + 40, eGuess ? '任' : fmtN(E2), true) + dH(px0 + (E1 + E2) * k, px0 + pw, py0 + ph + 40, eGuess ? '任' : fmtN(E3), true);
+      s += dH(px0, px0 + pw, py0 + ph + 26 + rowOff, fmtN(L), true);
+      if (yama) { var yE = py0 + ph + 40 + rowOff; s += dH(px0, px0 + E1 * k, yE, eGuess ? '任' : fmtN(E1), true) + dH(px0 + E1 * k, px0 + (E1 + E2) * k, yE, eGuess ? '任' : fmtN(E2), true) + dH(px0 + (E1 + E2) * k, px0 + pw, yE, eGuess ? '任' : fmtN(E3), true); }
       /* --- 正面図 --- */
       s += front(fx0, fy0, k);
-      if (angOn) holes.forEach(function (q) {   // たれの一番上のアングル（正面図・側面図）
-        if (!q.face) return; var x = num(q.x), al = Math.max(3, angL * k), yT = fy0 + fh - SK * k - dep;
-        if (q.face === '正面' || q.face === '背面') { var xl = q.face === '正面' ? L - x : x; s += rc(fx0 + xl * k - al / 2, yT, al, dep) + rc(q.face === '正面' ? sx0 - dep : sx0 + sw, yT, dep, dep); }
-        else { var yl = q.face === '右側面' ? W - x : x; s += rc(sx0 + yl * k - al / 2, yT, al, dep) + rc(q.face === '右側面' ? fx0 + pw : fx0 - dep, yT, dep, dep); }
+      if (angOn) holes.forEach(function (q) {   // 吊り金物のアングル：上の辺をたれの線にそろえる（正面図・右側面図・左側面図）
+        if (!q.face) return; var x = num(q.x), al = Math.max(3, angL * k), yT = fy0 + fh - SK * k;
+        if (q.face === '正面' || q.face === '背面') {
+          s += rc(fx0 + (q.face === '正面' ? L - x : x) * k - al / 2, yT, al, dep) + rc(q.face === '正面' ? sx0 - dep : sx0 + sw, yT, dep, dep);   // 正面図に長さ、右側面図に出っ張り
+          if (needLeft) s += rc(q.face === '正面' ? lx0 + sw : lx0 - dep, yT, dep, dep);
+        } else if (q.face === '右側面') s += rc(sx0 + (W - x) * k - al / 2, yT, al, dep) + rc(fx0 + pw, yT, dep, dep);
+        else { s += rc(fx0 - dep, yT, dep, dep); if (needLeft) s += rc(lx0 + (W - x) * k - al / 2, yT, al, dep); }
       });
       var ySk = fy0 + fh - SK * k;
       s += dV(fx0 - 10, fy0, fy0 + fh, fmtN(H));
       if (it.shape === 'HW') s += dV(fx0 - X2, ySk - h * k, ySk, fmtN(h)) + dV(fx0 - X2, ySk, fy0 + fh, fmtN(SK));
       if (it.shape === 'HY') s += dV(fx0 - X2, ySk, fy0 + fh, fmtN(SK));
       if (sp.length) { var p2 = 0; sp.concat([L]).forEach(function (x) { s += dH(fx0 + p2 * k, fx0 + x * k, fy0 + fh + 12, fmtN(x - p2), true); p2 = x; }); s += tx(fx0, fy0 + fh + 30, '分割 ' + (sp.length + 1) + 'つ（左端から ' + sp.map(fmtN).join('・') + '）接合 ' + bunJ(it), 'start', true); }
-      /* --- 側面図（左＝手前）--- */
+      /* --- 右側面図（右から見る＝左が手前）と左側面図（左から見る＝左が奥）--- */
       var ySk2 = fy0 + fh - SK * k, i3 = ins * k;
-      if (it.shape === 'HY') s += rc(sx0, ySk2, sw, SK * k) + pl([[sx0, ySk2], [sx0 + F1 * k, fy0], [sx0 + (F1 + F2) * k, fy0], [sx0 + sw, ySk2]], false, fGuess ? '3 2' : '');
-      else {
-        s += rc(sx0, fy0, sw, fh) + ln(sx0, fy0 + 3, sx0 + sw, fy0 + 3, '', 0.5);
-        if (it.shape === 'HW') s += ln(sx0, ySk2, sx0 + sw, ySk2, '', 0.5) + pl([[sx0 + i3, ySk2], [sx0 + F1 * k, ySk2 - h * k], [sx0 + (F1 + F2) * k, ySk2 - h * k], [sx0 + sw - i3, ySk2]], false, fGuess ? '3 2' : '');
-      }
+      var side = function (x0, a1, a2) {   // a1＝左側の斜め、a2＝天板（右側面図は F1・F2、左側面図は F3・F2）
+        if (it.shape === 'HY') return rc(x0, ySk2, sw, SK * k) + pl([[x0, ySk2], [x0 + a1 * k, fy0], [x0 + (a1 + a2) * k, fy0], [x0 + sw, ySk2]], false, fGuess ? '3 2' : '');
+        var o = rc(x0, fy0, sw, fh) + ln(x0, fy0 + 3, x0 + sw, fy0 + 3, '', 0.5);
+        if (it.shape === 'HW') o += ln(x0, ySk2, x0 + sw, ySk2, '', 0.5) + pl([[x0 + i3, ySk2], [x0 + a1 * k, ySk2 - h * k], [x0 + (a1 + a2) * k, ySk2 - h * k], [x0 + sw - i3, ySk2]], false, fGuess ? '3 2' : '');
+        return o;
+      };
+      s += side(sx0, F1, F2);
       ops.forEach(function (p) { s += mouth(sx0 + p.b.front * k, p.b.d * k, fy0, k, p, 1); });
       s += dH(sx0, sx0 + sw, fy0 + fh + 12, fmtN(W), true);
-      /* --- 正面・背面・側面の開口（背面と左側面は向こう側なので点線。位置は図の下の文字）--- */
+      if (needLeft) {
+        s += side(lx0, F3, F2);
+        ops.forEach(function (p) { s += mouth(lx0 + (W - p.b.back) * k, p.b.d * k, fy0, k, p, 1); });
+        s += dH(lx0, lx0 + sw, fy0 + fh + 12, fmtN(W), true);
+      }
+      /* --- 正面・背面・側面の開口（向こう側は点線。左側面図を出すときは左側面の開口はそこに実線で。位置は図の下の文字）--- */
       sized.filter(function (o) { return !isPlan(o); }).forEach(function (o) {
-        var fc = opFace(o), fr = fc === '正面' || fc === '背面', fw = fr ? L : W, b = opBox(o, fw, H), far = fc === '背面' || fc === '左側面', tube = isTube(o), dash = far ? '3 2' : '';
-        var x0 = (fr ? fx0 : sx0) + (far ? fw - b.right : b.left) * k, y0 = fy0 + (H - b.back) * k, w = b.w * k, dd = b.d * k, mx = x0 + w / 2, my = y0 + dd / 2;
+        var fc = opFace(o), fr = fc === '正面' || fc === '背面', fw = fr ? L : W, b = opBox(o, fw, H), onL = fc === '左側面' && needLeft, far = !onL && (fc === '背面' || fc === '左側面'), tube = isTube(o), dash = far ? '3 2' : '';
+        var x0 = (onL ? lx0 : fr ? fx0 : sx0) + (far ? fw - b.right : b.left) * k, y0 = fy0 + (H - b.back) * k, w = b.w * k, dd = b.d * k, mx = x0 + w / 2, my = y0 + dd / 2;
         if (o.kind === '丸') s += '<circle cx="' + mx.toFixed(1) + '" cy="' + my.toFixed(1) + '" r="' + (w / 2).toFixed(1) + '" fill="#fff"' + (dash ? ' stroke-dasharray="' + dash + '"' : '') + '/>' + (tube ? '<circle cx="' + mx.toFixed(1) + '" cy="' + my.toFixed(1) + '" r="' + (w / 2 + 2).toFixed(1) + '" fill="none"' + (dash ? ' stroke-dasharray="' + dash + '"' : '') + '/>' : '');
         else s += rc(x0, y0, w, dd, dash) + (tube ? rc(x0 - 2, y0 - 2, w + 4, dd + 4, dash) : '');
         if (!tube) s += ln(mx - w * 0.3, my - dd * 0.3, mx + w * 0.3, my + dd * 0.3, dash) + ln(mx - w * 0.3, my + dd * 0.3, mx + w * 0.3, my - dd * 0.3, dash);
-        if (sized.length > 1) s += tx(mx, y0 - 4, circled(sized.indexOf(o) + 1));
+        if (sized.length > 1) s += tx(x0 + w + 4, my + 3, circled(sized.indexOf(o) + 1), 'start');
       });
-      s += tx(px0, py0 - 20, '平面図（上が奥）', 'start', true) + tx(fx0, fy0 - ductH * k - (tube ? 18 : 5), '正面図', 'start', true) + tx(sx0, fy0 - ductH * k - (tube ? 18 : 5), '側面図（左が手前）', 'start', true);
+      s += tx(px0, py0 - 20, '平面図（上が奥）', 'start', true) + tx(fx0, fy0 - ductH * k - (tube ? 18 : 5), '正面図', 'start', true) + tx(sx0, fy0 - ductH * k - (tube ? 18 : 5), '右側面図', 'start', true) + (needLeft ? tx(lx0, fy0 - ductH * k - (tube ? 18 : 5), '左側面図', 'start', true) : '');
       legend.forEach(function (t, i) { s += tx(4, fy0 + fh + MB + i * 11, t, 'start', t.length > 34); });
       return s + '</svg>';
     }
@@ -869,7 +888,7 @@
         (it.shape === 'HY' ? '<div class="edbox-h" style="margin-top:10px;">天板（平らな部分。E2・F2 空欄＝開口の横・縦＋50。E1・F1 空欄＝真ん中。開口の位置は天板の端から）</div><div class="dims">' + dim('E2', 'E2 長さ方向', '開口+50') + dim('F2', 'F2 奥行方向', '開口+50') + dim('E1', 'E1 左の斜め', '真ん中') + dim('F1', 'F1 手前の斜め', '真ん中') + '</div><div class="note" style="margin-top:4px;">E2＝<b id="cE2">' + (fmtN(d.E2) || '—') + '</b>　F2＝<b id="cF2">' + (fmtN(d.F2) || '—') + '</b>　E3＝<b id="cE3">' + (fmtN(d.E3) || '—') + '</b>　F3＝<b id="cF3">' + (fmtN(d.F3) || '—') + '</b></div>' : '') +
         (it.shape === 'HW' ? '<div class="edbox-h" style="margin-top:10px;">天板（平らな部分。空欄＝工場におまかせ。1つ目の開口が芯）</div><div class="dims">' + dim('E2', 'E2 長さ方向', 'おまかせ') + dim('F2', 'F2 奥行方向', 'おまかせ') + '</div><div class="note" style="margin-top:4px;">E1＝<b id="cE1">' + (fmtN(d.E1) || '—') + '</b>　E3＝<b id="cE3">' + (fmtN(d.E3) || '—') + '</b>　F1＝<b id="cF1">' + (fmtN(d.F1) || '—') + '</b>　F3＝<b id="cF3">' + (fmtN(d.F3) || '—') + '</b></div>' : '') + '</div>' +
         '<div class="edbox"><div class="edbox-h">開口</div>' + opsHtml(it) + '<button type="button" class="btn btn-sub" onclick="addOp()">＋ 開口を追加</button>' + (opsOf(it).length ? '' : '<div class="note" style="margin-top:4px;">開口なし</div>') + '</div>' +
-        '<div class="edbox"><div class="edbox-h">' + hangWord(it) + '　<span class="note" style="display:inline;">穴 <b id="cG">' + (d.G ? holeSum(it) : '—') + '</b></span></div><div id="edHoles">' + (it.shape === 'HY' ? '<div class="note" style="margin-bottom:6px;">フードの端の外（たれの一番上）に短いアングルを付け、アングルに吊り穴をあけます。位置は付ける面を外から見て右端から。</div><div class="open-row" style="grid-template-columns:1fr 1fr;"><div><span class="lbl">アングルの大きさ</span><select onchange="edSet(\'hka\',this.value)">' + HK_ANG.map(function (v) { return '<option' + (hkAng(it) === v ? ' selected' : '') + '>' + v + '</option>'; }).join('') + '</select></div><div><span class="lbl">アングルの長さ</span><input type="text" inputmode="numeric" value="' + esc(it.hkl) + '" placeholder="おまかせ" oninput="edIn(\'hkl\',this.value)"></div></div>' : '') + holesHtml(it) + '</div><div style="display:flex;gap:6px;"><button type="button" class="btn btn-sub" onclick="addHole()">＋ 追加</button><button type="button" class="btn btn-sub" onclick="edHangStd()">標準で入れる</button><button type="button" class="btn btn-sub" onclick="clearHoles()">すべて消す</button></div><div class="note" style="margin-top:4px;">' + (it.shape === 'HY' ? '「標準で入れる」＝正面と背面の端から100に2個ずつ（φ12×4）。' : '「標準で入れる」＝端から100の角に4個（φ12×4）。') + '分割があれば分けた1つごとに4個（2分割8個、3分割12個）。今の吊り穴は入れ替わります。分割や L・W を変えると入れ直します（吊り穴を手で直すと止まります）。</div></div>' +
+        '<div class="edbox"><div class="edbox-h">' + hangWord(it) + '　<span class="note" style="display:inline;">穴 <b id="cG">' + (d.G ? holeSum(it) : '—') + '</b></span></div><div id="edHoles">' + (it.shape === 'HY' ? '<div class="note" style="margin-bottom:6px;">フードの端の外（たれの一番上）に短いアングルを付け、アングルに吊り穴をあけます。位置は付ける面を外から見て右端から。</div><div class="open-row" style="grid-template-columns:1fr 1fr;"><div><span class="lbl">アングルの大きさ</span><select onchange="edSet(\'hka\',this.value)">' + HK_ANG.map(function (v) { return '<option' + (hkAng(it) === v ? ' selected' : '') + '>' + v + '</option>'; }).join('') + '</select></div><div><span class="lbl">アングルの長さ（空欄＝100）</span><input type="text" inputmode="numeric" value="' + esc(it.hkl) + '" placeholder="100" oninput="edIn(\'hkl\',this.value)"></div></div>' : '') + holesHtml(it) + '</div><div style="display:flex;gap:6px;"><button type="button" class="btn btn-sub" onclick="addHole()">＋ 追加</button><button type="button" class="btn btn-sub" onclick="edHangStd()">標準で入れる</button><button type="button" class="btn btn-sub" onclick="clearHoles()">すべて消す</button></div><div class="note" style="margin-top:4px;">' + (it.shape === 'HY' ? '「標準で入れる」＝正面と背面の端から100に2個ずつ（φ12×4）。' : '「標準で入れる」＝端から100の角に4個（φ12×4）。') + '分割があれば分けた1つごとに4個（2分割8個、3分割12個）。今の吊り穴は入れ替わります。分割や L・W を変えると入れ直します（吊り穴を手で直すと止まります）。</div></div>' +
         (box ? '<div class="edbox"><div class="edbox-h">分割（箱型だけ。空欄＝分割なし）</div><div class="fg"><label>分ける位置を左端からの寸法で並べる</label><div style="display:flex;gap:6px;"><input type="text" inputmode="numeric" value="' + esc(it.sp) + '" placeholder="例：1800（2分割）、1200, 2400（3分割）" oninput="edIn(\'sp\',this.value)"><button type="button" class="btn btn-sub" onclick="edSplitAuto(2)">2等分</button><button type="button" class="btn btn-sub" onclick="edSplitAuto(3)">3等分</button></div><div class="note" id="cSp">' + splitNote(it) + '</div></div><div class="spec-row" style="margin:8px 0 0;grid-template-columns:auto 1fr;"><span class="lbl">分割の接合</span>' + chipsArr('bj', BUN_J, it.bj || BUN_J[0]) + '</div>' + (FG_JOINTS.indexOf(it.bj || BUN_J[0]) >= 0 ? '<div class="spec-row" style="margin:8px 0 0;grid-template-columns:auto 1fr;"><span class="lbl">フランジサイズ</span><select onchange="edSet(\'bs\',this.value)" style="width:auto;">' + ST_SIZES.map(function (v) { return '<option' + ((it.bs || ST_DEF) === v ? ' selected' : '') + '>' + v + '</option>'; }).join('') + '</select></div>' : '') + '</div>' : '') +
         '<div class="edbox"><div class="edbox-h">グリースフィルター・防火シャッター</div>' + chipsHtml('gfm', GFM, it.gfm || '') + '</div>' +
         (it.gfm === 'set' ? '<div class="edbox"><div class="edbox-h">グリースフィルター</div>' + mdlHtml(it, 'gf') + '</div>' : '') +
@@ -946,7 +965,7 @@
     // 1台1ページ（ユーザー指示 2026-11-03）：その台の数字入りの図を幅いっぱいに。maxH＝ページに収まる図の高さ（mm）
     function figHtml(it, i, maxH) {
       var cap = circled(i + 1) + ' ' + SHAPE_LONG[it.shape] + '　' + fmtN(num(it.L)) + '×' + fmtN(num(it.W)) + '×' + fmtN(num(it.H));
-      return '<div class="dp-figs"><div class="dp-fig"><div class="cap">' + esc(cap) + '</div>' + hoodSvg(it, 'slip').replace('<svg ', '<svg style="max-height:' + maxH + 'mm" ') + '</div></div>';
+      return '<div class="dp-figs"><div class="dp-fig" data-ed="' + i + '"><div class="cap">' + esc(cap) + '</div>' + hoodSvg(it, 'slip').replace('<svg ', '<svg style="max-height:' + maxH + 'mm" ') + '</div></div>';
     }
     function cell(v, cls) { return '<td' + (cls ? ' class="' + cls + '"' : '') + '>' + v + '</td>'; }
     // 寸法はすべて図に書く（角ダクトのチャンバーと同じ。ユーザー指示 2026-11-03）。表は寸法以外だけ
@@ -985,13 +1004,66 @@
         host.innerHTML = pages.map(function (p) {
           return '<div class="pv-page" style="width:' + (793.7 * sc) + 'px;height:' + (1122.5 * sc) + 'px;"><div style="transform:scale(' + sc + ');transform-origin:0 0;">' + p + '</div></div>';
         }).join('');
+        slipMovesApply(host);
       });
     }
     function openPreview() { openSheet('pvBg'); renderPreview(); }
     var PV_ZOOM = false;
     function togglePvZoom() { PV_ZOOM = !PV_ZOOM; document.getElementById('pvZoomBtn').textContent = PV_ZOOM ? '全体' : '拡大'; renderPreview(); }
+    /* ===== 注文書の文字を動かす（角ダクトの製作伝票と同じ。ユーザー指示 2026-11-03）=====
+       工場に渡す前の確認で、重なった文字・接続の記号・寸法の数字を指（マウス）でずらす。線は動かさない。
+       動かした位置は保存しない（この画面を開いているあいだだけ。フードを直すとそのフードは自動の位置に戻る）。2回押すとその文字は元の位置へ。印刷と PDF はずらした位置のまま */
+    var SLIP_MOVE = false, SLIP_MV = {};   // SLIP_MV＝{ フードの中身: { 部品: [横, 縦] } }
+    function slipMoveToggle() {
+      SLIP_MOVE = !SLIP_MOVE; document.body.classList.toggle('slip-mv', SLIP_MOVE);
+      [].forEach.call(document.querySelectorAll('.slipMvBtn'), function (b) { b.textContent = SLIP_MOVE ? '動かし終わる' : '文字を動かす'; b.classList.toggle('btn-dark', SLIP_MOVE); });
+      if (SLIP_MOVE) { toast('注文書の図の文字や記号をつかんでずらしてください。2回押すと元の位置に戻ります'); if (!document.getElementById('pvDesk') || !document.getElementById('pvDesk').offsetParent) openPreview(); }
+    }
+    function f1(n) { return (Math.round(n * 10) / 10).toFixed(1); }
+    function spPrep(svg) {   // 文字に番号を付ける（接続の記号は枠ごと、ほかの文字は1つずつ）
+      if (svg.getAttribute('data-spp')) return; svg.setAttribute('data-spp', '1');
+      [].forEach.call(svg.querySelectorAll('text'), function (tt) { if (tt.parentNode.closest('[data-sp]')) return; var w = document.createElementNS('http://www.w3.org/2000/svg', 'g'); w.setAttribute('data-sp', 't'); tt.parentNode.insertBefore(w, tt); w.appendChild(tt); });
+      [].forEach.call(svg.querySelectorAll('[data-sp]'), function (g, i) { g.setAttribute('data-i', i); });
+    }
+    function slipItemOf(svg) { var c = svg.closest('[data-ed]'); return c ? S.items[+c.getAttribute('data-ed')] : null; }
+    function slipMovesApply(root) {
+      root.querySelectorAll('.dp-fig svg').forEach(function (svg) {
+        spPrep(svg);
+        var it = slipItemOf(svg), mv = it && SLIP_MV[JSON.stringify(it)]; if (!mv) return;
+        Object.keys(mv).forEach(function (k) { var el = svg.querySelector('[data-i="' + k + '"]'); if (el) el.setAttribute('transform', 'translate(' + f1(mv[k][0]) + ' ' + f1(mv[k][1]) + ')'); });
+      });
+    }
+    function svgPt(svg, ev) { var p = svg.createSVGPoint(); p.x = ev.clientX; p.y = ev.clientY; return p.matrixTransform(svg.getScreenCTM().inverse()); }   // 画面の点 → 図の座標
+    (function () {
+      var drag = null, last = null;   // last＝2回押したかを見る（スマホも同じ）
+      var pick = function (ev) {
+        var svg = ev.target.closest && ev.target.closest('.dp-fig svg'); if (!SLIP_MOVE || !svg || svg.closest('#print-root')) return null;
+        var g = ev.target.closest('[data-sp]'); if (!g) return null;
+        var it = slipItemOf(svg); if (!it) return null;
+        return { svg: svg, el: g, ik: JSON.stringify(it), key: g.getAttribute('data-i') };
+      };
+      document.addEventListener('pointerdown', function (ev) {
+        var p = pick(ev); if (!p) return;
+        var now = Date.now(), twice = last && last.k === p.ik + p.key && now - last.t < 450;
+        last = { k: p.ik + p.key, t: now };
+        if (twice && SLIP_MV[p.ik] && SLIP_MV[p.ik][p.key]) { delete SLIP_MV[p.ik][p.key]; last = null; ev.preventDefault(); renderPreview(); return; }
+        var v0 = (SLIP_MV[p.ik] || {})[p.key] || [0, 0];
+        drag = { p: p, p0: svgPt(p.svg, ev), v0: v0.slice(), v: null };
+        try { p.svg.setPointerCapture(ev.pointerId); } catch (e) { }
+        ev.preventDefault();
+      });
+      document.addEventListener('pointermove', function (ev) {
+        if (!drag) return;
+        var q = svgPt(drag.p.svg, ev), dx = q.x - drag.p0.x, dy = q.y - drag.p0.y;
+        if (!drag.v && Math.hypot(dx, dy) < 1) return;
+        drag.v = [drag.v0[0] + dx, drag.v0[1] + dy];
+        drag.p.el.setAttribute('transform', 'translate(' + f1(drag.v[0]) + ' ' + f1(drag.v[1]) + ')');
+      });
+      var end = function () { if (!drag) return; var d = drag; drag = null; if (!d.v) return; (SLIP_MV[d.p.ik] = SLIP_MV[d.p.ik] || {})[d.p.key] = d.v; renderPreview(); };
+      document.addEventListener('pointerup', end); document.addEventListener('pointercancel', end);
+    })();
     function printSlip() {
-      document.getElementById('print-root').innerHTML = buildPages().join('');
+      var pr = document.getElementById('print-root'); pr.innerHTML = buildPages().join(''); slipMovesApply(pr);
       setTimeout(function () { window.print(); }, 50);
     }
 
@@ -1229,7 +1301,7 @@
         var tmp = document.createElement('div');
         tmp.style.cssText = 'position:fixed;left:-12000px;top:0;background:#fff;';
         PDF_NOW = true; try { tmp.innerHTML = buildPages().join(''); } finally { PDF_NOW = false; }
-        document.body.appendChild(tmp);
+        document.body.appendChild(tmp); slipMovesApply(tmp);   // 動かした文字の位置もそのまま
         var pages = [].slice.call(tmp.querySelectorAll('.dp')), pdf = new window.jspdf.jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait', compress: true });
         return pages.reduce(function (p, dp, i) {
           return p.then(function () {
