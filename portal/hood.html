@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>フード注文</title>
-  <!-- Ver.20261103-20 -->
+  <!-- Ver.20261103-21 -->
   <style>
     /* 厨房フードの注文書。注文用図面（箱型・山型・二重）の寸法表を画面で入力し、数字入りの図を1台1ページで出す。フードはメーカー共通なので本体にメーカーは出さない。
        仕組みは金物注文（添付）kana.html と同じ（保存・提出・版・PDF）。2026-11-02 作成
@@ -643,6 +643,8 @@
       var dV = function (x, y1, y2, t, right) { if (y2 - y1 < 1) return ''; return ln(x, y1, x, y2, '', 0.6) + ln(x - 3, y1, x + 3, y1, '', 0.6) + ln(x - 3, y2, x + 3, y2, '', 0.6) + tx(right ? x + 3 : x - 3, (y1 + y2) / 2 + FS * 0.35, t, right ? 'start' : 'end'); };
       var head = function (vw, vh) { return '<svg viewBox="0 0 ' + vw + ' ' + vh + '" xmlns="http://www.w3.org/2000/svg" font-family="Yu Gothic,Meiryo,sans-serif" font-size="' + FS + '" fill="#000" stroke="#000" stroke-width="0.9">'; };
       var fxMid = 0;   // 正面図の横の真ん中（サイズの文字を内側へ向ける）
+      // 平面の開口の印の高さ：二重の4面体は山型の天板（外装の上の板が無い。上の板の線は図に残す。ユーザー指示 2026-11-03）
+      var opY = function (y0, k) { return dbl && menOf(it) === '4面体' ? y0 + Math.max(0, H - SK - h) * k : y0; };
       // 接続の印（角ダクトの図と同じ丸枠の記号）
       var jMk = function (x, y, c) { var rx = Math.max(6.5, c.length * FS * 0.32 + 3); return '<g data-sp="j"><rect x="' + (x - rx).toFixed(1) + '" y="' + (y - 6).toFixed(1) + '" width="' + (rx * 2).toFixed(1) + '" height="12" rx="6" ry="6" fill="#fff" stroke-width="0.7"/>' + tx(x, y + 3, c, 'middle', true) + '</g>'; };   // 接続の記号は枠ごと動かす
       // 開口を正面・側面から見た形：短管は立ち上がりと先の接続（TDC＝口の線を外へ、FG 系＝さらに内に平行の線、ドン補＝両わきを突き出す。角ダクトの図と同じ）、開口は上の面に点線
@@ -666,7 +668,7 @@
           if (it.shape === 'HW') o += ln(fx0, ySk, fx0 + pw, ySk, '', 0.5) + pl([[fx0 + i, ySk], [fx0 + E1 * k, ySk - h * k], [fx0 + (E1 + E2) * k, ySk - h * k], [fx0 + pw - i, ySk]], false, eGuess ? '3 2' : '');
         }
         fxMid = fx0 + pw / 2;
-        ops.forEach(function (p) { o += mouth(fx0 + p.b.left * k, p.b.w * k, fy0, k, p, thumb ? 0 : 2); });
+        ops.forEach(function (p) { o += mouth(fx0 + p.b.left * k, p.b.w * k, opY(fy0, k), k, p, thumb ? 0 : 2); });
         sp.forEach(function (x) { o += ln(fx0 + x * k, fy0, fx0 + x * k, fy0 + fh, '4 2', 0.7) + (thumb ? '' : jMk(fx0 + x * k, fy0 + fh / 2, bj)); });
         return o;
       };
@@ -768,11 +770,11 @@
         return o;
       };
       s += side(sx0, F1, F2);
-      ops.forEach(function (p) { s += mouth(sx0 + p.b.front * k, p.b.d * k, fy0, k, p, 1); });
+      ops.forEach(function (p) { s += mouth(sx0 + p.b.front * k, p.b.d * k, opY(fy0, k), k, p, 1); });
       s += dH(sx0, sx0 + sw, fy0 + fh + 12, fmtN(W), true);
       if (needLeft) {
         s += side(lx0, F3, F2);
-        ops.forEach(function (p) { s += mouth(lx0 + (W - p.b.back) * k, p.b.d * k, fy0, k, p, 1); });
+        ops.forEach(function (p) { s += mouth(lx0 + (W - p.b.back) * k, p.b.d * k, opY(fy0, k), k, p, 1); });
         s += dH(lx0, lx0 + sw, fy0 + fh + 12, fmtN(W), true);
       }
       /* --- 正面・背面・側面の開口（向こう側は点線。左側面図を出すときは左側面の開口はそこに実線で。位置は図の下の文字）--- */
