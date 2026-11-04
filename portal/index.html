@@ -141,7 +141,7 @@ storage.maxUploadRetryTime = 60000;   // 電波が切れたら1分で一度あ�
 const auth = getAuth(app);
 auth.languageCode = 'ja';   // パスワード再設定のメールと画面を日本語にする
 const db = initializeFirestore(app, { localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }) });
-const APP_VER = 'Ver.20261104-15';
+const APP_VER = 'Ver.20261104-16';
 
 /* ---------- 電波なしでも使う（今の現場管理と同じ考え方） ----------
    ・保存は押した瞬間に完了の形。電波が戻ったら自動で送る（データは Firestore が端末に貯める）
@@ -2828,7 +2828,9 @@ function showAddUser() {
     $('save').disabled = true; $('err').textContent = '追加しています…';
     try {
       await admin('create', { email, password: $('p').value });
-      await setDoc(doc(db, 'users', email), { name, isMaster: $('m').checked, group: '', home: 'エクスケア' });
+      // ログインはできたあとで人の情報の保存に失敗したときは、もう一度押せば続きから入る（サーバー側で同じメールを受け付ける。2026-11-04 不具合）
+      try { await setDoc(doc(db, 'users', email), { name, isMaster: $('m').checked, group: '', home: 'エクスケア' }); }
+      catch (e2) { throw new Error('ログインは作れましたが、人の情報を保存できませんでした（' + (e2.message || e2) + '）。もう一度「追加する」を押してください。'); }
       showUser(email, '追加しました。担当現場を選んで保存してください。');
     } catch (e) { $('save').disabled = false; $('err').textContent = e.message; }
   };
