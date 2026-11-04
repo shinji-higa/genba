@@ -123,7 +123,7 @@
     if (ins && !std) warns.push('標準報酬月額が入っていません');
     // notes は知らせるだけ（warns と違って確定は止めない）
     const notes = over60 > 0 ? ['時間外が月60時間を超えています（' + h60 + '時間、超えた分 ' + over60 + '時間）。超えた平日の ' + w60 + '時間に割増を足しました。'] : [];
-    if (pro > 0) notes.push('入社か退職の月なので、在籍していない所定労働日 ' + pro + '日分を日割りで引きました（日額 ' + yen(daily) + '円）。');
+    if (pro > 0) notes.push('入社か退職の月なので、在籍していない所定労働日 ' + pro + '日分を日割りで引きました（日額 ' + yen(daily).toLocaleString('ja-JP') + '円）。');
     return { hourly, daily, pay: o, payTotal, ded: d, dedTotal, net: payTotal - dedTotal, taxable, taxAuto: t.tax, taxManual: manual, warns, notes, h60, over60, proDays: pro };
   }
 
