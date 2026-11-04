@@ -83,7 +83,7 @@
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
 import { getFirestore, collection, doc, getDoc, getDocs, setDoc, deleteDoc, writeBatch, query, where } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
-const APP_VER = 'Ver.20261104-20';
+const APP_VER = 'Ver.20261104-21';
 const API = 'https://script.google.com/macros/s/AKfycbyW2hFHqIQuu-TsflPk_0zv7gquhoepspuvRG9-bMStPDSWSc2blcDFBtWs7MisP3f_/exec';
 const app = initializeApp({ apiKey: 'AIzaSyDVR4p4DO4s9h70uPlXUVlhNcMP9-YkQ5Q', authDomain: 'genba-portal-9077b.firebaseapp.com', projectId: 'genba-portal-9077b' });
 const auth = getAuth(app);
@@ -251,7 +251,7 @@ async function pay(action, data) { return FAST_ACT[action] ? FAST_ACT[action](da
 
 /* ---------- 初期値。設定画面で変えられる（説明は CFG_DEF の横の文）---------- */
 const DEF = {
-  stdH: 8, close: 20, ot: 1.25, holSho: 1.6, holHou: 1.6, otSho: 2, otHou: 2, night: 1.6, tripNight: 3500, familyPer: 10000, familyMax: 30000, ot60: 1.5, noSat60: false, submitMemo: '',
+  stdH: 8, close: 20, ot: 1.25, holSho: 1.6, holHou: 1.6, otSho: 2, otHou: 2, night: 1.6, tripNight: 3500, familyPer: 10000, familyMax: 30000, ot60: 1.5, noSat60: false, memoTax: '', memoSr: '',
   rates: [
     { from: '2026-03', health: 10.12, care: 1.62, child: 0, pension: 18.3, emp: 0.65 },
     { from: '2026-04', health: 10.12, care: 1.62, child: 0.23, pension: 18.3, emp: 0.6 }
@@ -277,8 +277,9 @@ const CFG_DEF = [
     ['familyPer', '家族手当（1人）', '円', '従業員の「扶養親族等の数」と「16歳未満の家族」を足した人数に掛けます。'],
     ['familyMax', '家族手当の上限', '円', '人数が多くても、この額までにします。']
   ]],
-  ['提出のメモ', [   // 税理士さん・社労士さんへの渡し方と時期は決まっていないので、メモで残せるようにする（ユーザー指示 2026-11-04）
-    ['submitMemo', '税理士さん・社労士さんへの渡し方と時期', 'memo', '渡すもの・渡し方（メール・紙など）・時期を書いておきます。「提出データ」の画面にも出ます。計算には使いません。']
+  ['提出のメモ', [   // 渡し方と時期は決まっていないので、税理士さん・社労士さんを分けてメモで残す（ユーザー指示 2026-11-04）。提出するファイルには入れない
+    ['memoTax', '税理士さんへの渡し方と時期', 'memo', '渡すもの・渡し方（メール・紙など）・時期を書いておきます。「提出データ」の画面に全文が出ます。提出するファイル（PDF・スプレッドシート）には入りません。計算には使いません。'],
+    ['memoSr', '社労士さんへの渡し方と時期', 'memo', '渡すもの・渡し方（メール・紙など）・時期を書いておきます。「提出データ」の画面に全文が出ます。提出するファイル（PDF・スプレッドシート）には入りません。計算には使いません。']
   ]]
 ];
 const EMP_KIND = ['社員', '役員', 'その他'];
@@ -585,7 +586,9 @@ async function drawYear() {
     if (ST.tab !== 'year' || ST.yr !== y) return;
     data.months.forEach(x => { const c = cfgOf(x.ym); x.result.hourly = c.monthHours > 0 ? x.result.pay.base / c.monthHours : 0; });
     const yms = [...new Set(data.months.map(x => x.ym))].sort(), bms = [...new Set(data.bonus.map(x => x.ym))].sort();
-    M.innerHTML = '<div class="card"><div class="row"><label class="f">年<br><input type="number" id="yr" value="' + y + '" style="width:100px;"></label><span class="sp"></span><button class="b dark" id="l">全員の賃金台帳（PDF）</button><button class="b" id="c">賃金台帳（Googleスプレッドシート）</button></div><div class="note">確定した月だけが載ります。税理士さん・社労士さんへの提出用です。</div>' + (ST.cfg.submitMemo ? '<div class="msg" style="white-space:pre-wrap;color:var(--ink);background:#f1f4f8;border-color:var(--line);margin-top:8px;"><b>提出のメモ</b>（設定で直せます）\n' + esc(ST.cfg.submitMemo) + '</div>' : '') +
+    // 提出のメモ（設定で入れたもの）は画面だけに全文を出す。PDF・スプレッドシートには入れない（ユーザー指示 2026-11-04）
+    const memo = [['税理士さん', ST.cfg.memoTax], ['社労士さん', ST.cfg.memoSr]].filter(x => String(x[1] || '').trim());
+    M.innerHTML = (memo.length ? '<div class="card"><h2>提出のメモ</h2>' + memo.map(([who, t]) => '<div style="margin-top:8px;"><div style="font-weight:700;">' + who + '</div><div style="white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.7;padding:8px 10px;background:#f6f8fb;border:1px solid var(--line);border-radius:6px;margin-top:4px;">' + esc(t) + '</div></div>').join('') + '<div class="note" style="margin-top:6px;">設定の「提出のメモ」で直せます。提出するファイルには入りません。</div></div>' : '') + '<div class="card"><div class="row"><label class="f">年<br><input type="number" id="yr" value="' + y + '" style="width:100px;"></label><span class="sp"></span><button class="b dark" id="l">全員の賃金台帳（PDF）</button><button class="b" id="c">賃金台帳（Googleスプレッドシート）</button></div><div class="note">確定した月だけが載ります。税理士さん・社労士さんへの提出用です。</div>' +
       '<div class="row" style="margin-top:8px;"><select id="lp">' + list.map(e => '<option value="' + esc(e.id) + '">' + esc(e.name) + '</option>').join('') + '</select><button class="b" id="lv">賃金台帳を画面で見る</button><button class="b" id="lpp">この人のPDF（台帳と明細）</button></div><div class="note">選んだ人の、その年の賃金台帳と、確定した給与明細・賞与明細を1つのPDFにします（個人別の提出用）。</div></div><div class="card wrapx" id="lw" style="display:none;"></div>' +
       '<div class="card"><h2>月ごとの給与明細（PDF）</h2>' + (yms.length ? '<div class="row">' + yms.map(m => '<button class="b" data-m="' + m + '">' + ymLabel(m) + '</button>').join('') + '</div>' : '<div class="note">確定した月がありません。</div>') + '</div>' +
       '<div class="card"><h2>賞与明細（PDF）</h2>' + (bms.length ? '<div class="row">' + bms.map(m => '<button class="b" data-bm="' + m + '">' + ymLabel(m) + '</button>').join('') + '</div>' : '<div class="note">確定した賞与がありません。</div>') + '</div><div class="note" id="ym2"></div>';
@@ -701,10 +704,12 @@ function editEmp(e0) {
 function drawSet() {
   const c = ST.cfg, y0 = yearOf(), w = { ...KY.workYear(y0, 0), year: y0 }, mh = Math.round(cfgOf().monthHours * 10) / 10;
   M.innerHTML = '<div class="card"><h2>アプリの版</h2><div>今の版：<b>' + APP_VER + '</b></div><div style="margin-top:8px;"><button class="b dark" id="ver">最新の版にする</button></div><div class="note">新しい版が出ているときは、押すと入れ替わります。</div></div>' +
-    CFG_DEF.map(([h, fs]) => '<div class="card"><h2>' + h + '</h2>' + fs.map(f => f[2] === 'memo' ? '<div class="set"><div class="k">' + f[1] + '</div><div><textarea data-c="' + f[0] + '" rows="5" style="width:100%;min-width:260px;font:inherit;padding:8px;border:1px solid var(--line);border-radius:6px;">' + esc(c[f[0]] || '') + '</textarea></div><div class="d">' + f[3] + '</div></div>' : f[2] === 'check' ? '<div class="set"><div class="k">' + f[1] + '</div><div><input type="checkbox" data-c="' + f[0] + '"' + (c[f[0]] ? ' checked' : '') + ' style="width:22px;height:22px;"></div><div class="d">' + f[3] + '</div></div>' : '<div class="set"><div class="k">' + f[1] + '</div><div class="row" style="flex-wrap:nowrap;gap:6px;"><input type="number" min="0" step="' + (f[2] === '倍' ? '0.01' : 'any') + '" data-c="' + f[0] + '"' + (f[2] === '倍' ? ' data-rate="1"' : '') + ' value="' + esc(f[2] === '倍' ? Number(c[f[0]]).toFixed(2) : c[f[0]]) + '"><span>' + f[2] + '</span></div><div class="d">' + f[3] + '</div></div>').join('') + (h === '基本の時間' ? '<div class="note" style="margin-top:8px;">' + w.year + '年の所定労働日数：平日 ' + w.weekdays + '日 − 祝日 ' + w.holidays + '日 ＝ <b>' + w.days + '日</b><br>月平均所定時間：<b>' + mh + '時間</b>（' + w.days + '日 × ' + c.stdH + '時間 ÷ 12）。時間単価＝基本給 ÷ この時間です。<br>時間外は1か月の合計で丸めます（平日・所定休日・法定休日ごと）。30分未満は切り捨て、30分以上は1時間に切り上げます。</div>' : '') + '</div>').join('') +
+    CFG_DEF.map(([h, fs]) => '<div class="card"><h2>' + h + '</h2>' + fs.map(f => f[2] === 'memo' ? '<div style="padding:10px 0;border-bottom:1px solid #e3e8ee;"><div style="font-weight:700;">' + f[1] + '</div><div style="font-size:.84rem;color:var(--sub);margin:2px 0 6px;">' + f[3] + '</div><textarea data-c="' + f[0] + '" data-grow="1" style="display:block;width:100%;box-sizing:border-box;min-height:84px;overflow:hidden;resize:none;font:inherit;line-height:1.6;padding:8px 10px;border:1px solid var(--line);border-radius:6px;">' + esc(c[f[0]] || '') + '</textarea></div>' : f[2] === 'check' ? '<div class="set"><div class="k">' + f[1] + '</div><div><input type="checkbox" data-c="' + f[0] + '"' + (c[f[0]] ? ' checked' : '') + ' style="width:22px;height:22px;"></div><div class="d">' + f[3] + '</div></div>' : '<div class="set"><div class="k">' + f[1] + '</div><div class="row" style="flex-wrap:nowrap;gap:6px;"><input type="number" min="0" step="' + (f[2] === '倍' ? '0.01' : 'any') + '" data-c="' + f[0] + '"' + (f[2] === '倍' ? ' data-rate="1"' : '') + ' value="' + esc(f[2] === '倍' ? Number(c[f[0]]).toFixed(2) : c[f[0]]) + '"><span>' + f[2] + '</span></div><div class="d">' + f[3] + '</div></div>').join('') + (h === '基本の時間' ? '<div class="note" style="margin-top:8px;">' + w.year + '年の所定労働日数：平日 ' + w.weekdays + '日 − 祝日 ' + w.holidays + '日 ＝ <b>' + w.days + '日</b><br>月平均所定時間：<b>' + mh + '時間</b>（' + w.days + '日 × ' + c.stdH + '時間 ÷ 12）。時間単価＝基本給 ÷ この時間です。<br>時間外は1か月の合計で丸めます（平日・所定休日・法定休日ごと）。30分未満は切り捨て、30分以上は1時間に切り上げます。</div>' : '') + '</div>').join('') +
     '<div class="card"><h2>保険料率（適用月ごと）</h2><div class="note">変わるときは行を足します。健康保険・介護保険・支援金・厚生年金は「保険の月」、雇用保険は「給与の月」で使います。社会保険は前月分を今月の給与から引くので、3月分の率は4月の給与から効きます。</div><div class="wrapx"><table class="t" id="rt"></table></div><button class="b" id="ra" style="margin-top:8px;">＋ 行を足す</button>' +
     '<div class="set" style="border:0;"><div class="k">健康保険</div><div></div><div class="d">協会けんぽ兵庫の率（全体）です。本人はこの半分です。毎年3月分から変わります。</div><div class="k">介護保険</div><div></div><div class="d">40〜64歳の人だけにかかります（全体の率）。全国共通です。</div><div class="k">支援金</div><div></div><div class="d">子ども・子育て支援金です（全体の率）。明細では健康保険料に含めます。</div><div class="k">厚生年金</div><div></div><div class="d">全体の率です。本人はこの半分です。</div><div class="k">雇用保険</div><div></div><div class="d">本人負担の率です（建設の事業）。毎年4月に変わります。</div></div></div>' +
     '<div class="card"><div class="row"><button class="b dark" id="sv">設定を保存</button><span id="sm" class="note"></span></div></div>';
+  // メモの欄は中の文の長さに合わせて高くする（スクロールさせず全文を見せる。ユーザー指示 2026-11-04）
+  M.querySelectorAll('textarea[data-grow]').forEach(t => { const g = () => { t.style.height = 'auto'; t.style.height = (t.scrollHeight + 2) + 'px'; }; t.oninput = g; g(); });
   const rates = JSON.parse(JSON.stringify(c.rates || []));
   const drawR = () => {
     $('rt').innerHTML = '<tr><th>適用月</th><th>健康保険%</th><th>介護保険%</th><th>支援金%</th><th>厚生年金%</th><th>雇用保険%</th></tr>' + rates.map((r, i) => '<tr><td><input type="month" data-i="' + i + '" data-k="from" value="' + esc(r.from) + '"></td>' + ['health', 'care', 'child', 'pension', 'emp'].map(k => '<td><input type="number" step="any" data-i="' + i + '" data-k="' + k + '" value="' + esc(r[k]) + '" style="width:88px;"></td>').join('') + '</tr>').join('');
