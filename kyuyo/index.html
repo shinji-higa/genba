@@ -83,7 +83,7 @@
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
 import { getFirestore, collection, doc, getDoc, getDocs, setDoc, deleteDoc, writeBatch, query, where } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
-const APP_VER = 'Ver.20261104-13';
+const APP_VER = 'Ver.20261104-14';
 const API = 'https://script.google.com/macros/s/AKfycbyW2hFHqIQuu-TsflPk_0zv7gquhoepspuvRG9-bMStPDSWSc2blcDFBtWs7MisP3f_/exec';
 const app = initializeApp({ apiKey: 'AIzaSyDVR4p4DO4s9h70uPlXUVlhNcMP9-YkQ5Q', authDomain: 'genba-portal-9077b.firebaseapp.com', projectId: 'genba-portal-9077b' });
 const auth = getAuth(app);
@@ -546,12 +546,15 @@ const YR_ROWS = [['勤務', null], ['賃金計算期間', (r, ym) => { if (!r.pa
 const hNum = n => String(Math.round(n * 100) / 100);
 /* 賞与も同じ台帳に、支給した月の列で載せる（ユーザー指示 2026-11-03） */
 const BN_ROWS = [['賞与', null], ['賞与額', r => r.amount], ['健康保険料（賞与）', r => r.ded && r.ded.health], ['厚生年金（賞与）', r => r.ded && r.ded.pension], ['雇用保険（賞与）', r => r.ded && r.ded.emp], ['所得税（賞与）', r => r.ded && r.ded.tax], ['控除合計（賞与）', r => r.dedTotal], ['差引支給額（賞与）', r => r.net]];
-function ledgerHtml(e, y, data) {
+/* PDF は1人を2ページに分ける（1枚に全部入れると文字が約1.3mmになり、印刷すると読めなかった。2026-11-04）。
+   part 1 = 勤務と支給、part 2 = 控除と賞与。part なしは画面用で全部を1つの表に出す */
+function ledgerHtml(e, y, data, part) {
+  const ci = YR_ROWS.findIndex(r => r[0] === '控除'), yr = part === 1 ? YR_ROWS.slice(0, ci) : part === 2 ? YR_ROWS.slice(ci) : YR_ROWS;
   const months = Array.from({ length: 12 }, (_, i) => y + '-' + pad(i + 1)), row = ym => (data.months.find(x => x.ym === ym && x.id === e.id) || {}).result || {};
   const bon = data.bonus.filter(x => x.id === e.id), brow = ym => (bon.find(x => x.ym === ym) || {}).result || {};
   const rows = (list, get) => list.map(([k, f, ty]) => { if (!f) return '<tr><td colspan="14" style="background:#f1f4f8;font-weight:800;">' + k + '</td></tr>'; let s = 0; const v = months.map(m => { const x = f(get(m), m); if (ty === 't') return '<td class="n" style="white-space:nowrap;">' + esc(x || '') + '</td>'; const n = Number(x) || 0; s += n; return '<td class="n">' + (n ? (ty === 'h' ? hNum(n) : yen(n)) : '') + '</td>'; }).join(''); const b = /合計|差引/.test(k) ? 'font-weight:800;' : ''; return '<tr style="' + b + '"><td style="white-space:nowrap;">' + k + '</td>' + v + '<td class="n"><b>' + (ty === 't' ? '' : ty === 'h' ? hNum(s) : yen(s)) + '</b></td></tr>'; }).join('');
-  return '<div style="font-family:inherit;color:#14202e;"><div style="display:flex;justify-content:space-between;align-items:flex-end;border-bottom:3px solid #0b4f8a;padding-bottom:6px;margin-bottom:8px;"><b style="font-size:18px;letter-spacing:.1em;">賃金台帳　' + y + '年</b><span>エクスケアダクト株式会社　　氏名 <b>' + esc(e.name) + '</b>　　性別 <b>' + esc(e.gender || '未入力') + '</b></span></div><table class="t" style="font-size:10px;"><tr><th>項目</th>' + months.map(m => '<th class="n">' + Number(m.slice(5)) + '月</th>').join('') + '<th class="n">合計</th></tr>' +
-    rows(YR_ROWS, row) + (bon.length ? rows(BN_ROWS, brow) : '') + '</table></div>';
+  return '<div style="font-family:inherit;color:#14202e;">' + (part ? '<style>table.lg td,table.lg th{padding:4px 6px;}</style>' : '') + '<div style="display:flex;justify-content:space-between;align-items:flex-end;border-bottom:3px solid #0b4f8a;padding-bottom:6px;margin-bottom:8px;"><b style="font-size:18px;letter-spacing:.1em;">賃金台帳　' + y + '年' + (part ? '<span style="font-size:13px;letter-spacing:0;">（' + part + '/2）</span>' : '') + '</b><span>エクスケアダクト株式会社　　氏名 <b>' + esc(e.name) + '</b>　　性別 <b>' + esc(e.gender || '未入力') + '</b></span></div><table class="t' + (part ? ' lg' : '') + '" style="font-size:' + (part ? 11 : 10) + 'px;"><tr><th>項目</th>' + months.map(m => '<th class="n">' + Number(m.slice(5)) + '月</th>').join('') + '<th class="n">合計</th></tr>' +
+    rows(yr, row) + (bon.length && part !== 1 ? rows(BN_ROWS, brow) : '') + '</table></div>';
 }
 async function drawYear() {
   const y = ST.yr || String(new Date().getFullYear()); ST.yr = y; busy();
@@ -567,7 +570,7 @@ async function drawYear() {
       '<div class="card"><h2>賞与明細（PDF）</h2>' + (bms.length ? '<div class="row">' + bms.map(m => '<button class="b" data-bm="' + m + '">' + ymLabel(m) + '</button>').join('') + '</div>' : '<div class="note">確定した賞与がありません。</div>') + '</div><div class="note" id="ym2"></div>';
     $('yr').onchange = e => { ST.yr = e.target.value; drawYear(); };
     $('lv').onclick = () => { const e = list.find(x => x.id === $('lp').value); $('lw').style.display = ''; $('lw').innerHTML = ledgerHtml(e, y, data); };   // PDFを作る前に画面で確かめる
-    $('l').onclick = () => { $('ym2').textContent = 'PDFを作っています…'; pdfOf(list.map(e => ledgerHtml(e, y, data)), '賃金台帳_' + y + '.pdf', true).then(() => { $('ym2').textContent = ''; }, x => { $('ym2').textContent = x.message; }); };
+    $('l').onclick = () => { $('ym2').textContent = 'PDFを作っています…'; pdfOf(list.flatMap(e => [ledgerHtml(e, y, data, 1), ledgerHtml(e, y, data, 2)]), '賃金台帳_' + y + '.pdf', true).then(() => { $('ym2').textContent = ''; }, x => { $('ym2').textContent = x.message; }); };
     $('c').onclick = () => {
       const months = Array.from({ length: 12 }, (_, i) => y + '-' + pad(i + 1)), out = [['氏名', '性別', '項目'].concat(months.map(m => Number(m.slice(5)) + '月'))];
       list.forEach(e => YR_ROWS.filter(r => r[1]).forEach(([k, f, ty]) => out.push([e.name, e.gender || '', k].concat(months.map(m => { const v = f((data.months.find(x => x.ym === m && x.id === e.id) || {}).result || {}, m); return ty === 't' ? v || '' : Number(v) || 0; })))));
