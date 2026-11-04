@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>金物注文</title>
-  <!-- Ver.20261104-12 -->
+  <!-- Ver.20261104-13 -->
   <style>
     /* 金物注文（鋼材テンプレート）。三角ブラケット・穴あきアングルの図面の寸法を画面で入力し、数字入りの図面を1件1ページで出す（立体図はやめた 2026-11-04）。
        仕組みはフード注文 hood.html と同じ（保存・提出・版・PDF）。2026-11-04 作成
@@ -724,9 +724,27 @@
       renderEdit(); changed();
     }
     function edFlip() { var it = S.items[ED]; if (!it) return; it.flip = !it.flip; renderEdit(); changed(); toast(it.flip ? '左右反対にしました' : '図のとおりに戻しました'); }
-    function edIn(k, v) { var it = S.items[ED]; if (!it) return; it[k] = v; touched(); edCalc(); }
-    function edSeg(k, i, v) { var it = S.items[ED]; if (!it) return; rowOf(it, rowDef(it, k)).s[i] = String(v).replace(/[^\d.]/g, ''); touched(); edCalc(); }
-    function edGauge(v) { var it = S.items[ED]; if (!it) return; it.g = String(v).replace(/[^\d.]/g, ''); touched(); edCalc(); }
+    /* ありえない数字は入れさせない（ユーザー指示 2026-11-04）。打った欄は前の数字に戻して理由を出す。
+       止める：数字以外（－など）、穴の位置の 0、穴の位置の合計が全体の長さ（A・B）を超える、穴芯 G が辺の長さ以上。
+       知らせるだけ：A・B を小さくしたとき・G が厚さ以下（打っている途中の数字で止めないため） */
+    var NUM_KEYS = { L: 1, H: 1, qty: 1 };
+    function cleanNum(v) { var s = String(v == null ? '' : v).replace(/[^\d.]/g, ''), i = s.indexOf('.'); return i < 0 ? s : s.slice(0, i + 1) + s.slice(i + 1).replace(/\./g, ''); }
+    function showVal(v) { var el = document.activeElement; if (el && el.tagName === 'INPUT' && el.value !== v) el.value = v; }
+    function reject(old, msg) { showVal(old == null ? '' : String(old)); toast(msg); }
+    function totOther(it, r) { return totIn(it, r.on) || rowsOf(it).filter(function (q) { return q.on === r.on && q.k !== r.k && rowFull(it, q); }).map(function (q) { return rowSum(it, q); })[0] || 0; }
+    function edIn(k, v) { var it = S.items[ED]; if (!it) return; if (NUM_KEYS[k]) { v = cleanNum(v); showVal(v); } it[k] = v; touched(); edCalc(); }
+    function edSeg(k, i, v) {
+      var it = S.items[ED]; if (!it) return; var r = rowDef(it, k), o = rowOf(it, r), old = o.s[i], LT = lettersOf(it); v = cleanNum(v);
+      if (v !== '' && num(v) <= 0) { reject(old, LT[k] + (i + 1) + ' に 0 は入れられません（' + (i === 0 || i === o.s.length - 1 ? '端に穴はあけられません' : '同じ位置に穴が2つになります') + '）'); return; }
+      var T = totOther(it, r), sum = o.s.reduce(function (a, x, j) { return a + (j === i ? num(v) : num(x)); }, 0);
+      if (T && sum > T) { reject(old, LT[k] + ' の合計 ' + fmtN(sum) + ' が ' + LT[r.on] + '（' + fmtN(T) + '）を超えます'); return; }
+      showVal(v); o.s[i] = v; touched(); edCalc();
+    }
+    function edGauge(v) {
+      var it = S.items[ED]; if (!it) return; var lg = legOf(it); v = cleanNum(v);
+      if (v !== '' && num(v) >= lg.a) { reject(it.g, 'G（穴芯）は辺の長さ ' + fmtN(lg.a) + ' より小さくしてください'); return; }
+      showVal(v); it.g = v; touched(); edCalc();
+    }
     function edCount(k, v) { var it = S.items[ED]; if (!it) return; setCount(it, rowDef(it, k), v); renderEdit(); changed(); }
     function edDia(k, i, v) { var it = S.items[ED]; if (!it) return; var o = rowOf(it, rowDef(it, k)); if (i < 0) o.d = o.d.map(function () { return v; }); else o.d[i] = v; renderEdit(); changed(); }
     function edQty(k, dv) { var it = S.items[ED]; if (!it) return; it[k] = Math.max(1, (num(it[k]) || 0) + dv); renderEdit(); changed(); }
