@@ -83,7 +83,7 @@
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
 import { getFirestore, collection, doc, getDoc, getDocs, setDoc, deleteDoc, writeBatch, query, where } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
-const APP_VER = 'Ver.20261104-24';
+const APP_VER = 'Ver.20261104-25';
 const API = 'https://script.google.com/macros/s/AKfycbyW2hFHqIQuu-TsflPk_0zv7gquhoepspuvRG9-bMStPDSWSc2blcDFBtWs7MisP3f_/exec';
 const app = initializeApp({ apiKey: 'AIzaSyDVR4p4DO4s9h70uPlXUVlhNcMP9-YkQ5Q', authDomain: 'genba-portal-9077b.firebaseapp.com', projectId: 'genba-portal-9077b' });
 const auth = getAuth(app);
@@ -359,7 +359,7 @@ function readAtText(mon) {
 /* 日報シートから読んだ日時は、上の帯のアカウント名の左にいつも出す（どのタブでも。ユーザー指示 2026-11-04）。「今月の給与」で選んでいる月の分 */
 function showReadAt() {
   const el = $('rdat'); if (!el) return;
-  el.innerHTML = MON ? '日報シートから読んだ日時（' + esc(ymLabel(MON.ym)) + '）：<b style="color:#fff;">' + esc(readAtText(MON) || '全員確定済み') + '</b>' : '日報シートから読んだ日時：<b style="color:#fff;">まだ開いていません</b>';
+  el.innerHTML = MON ? '日報シートから読んだ日時（' + esc(ymLabel(MON.ym)) + '）：<span style="color:#fff;font-weight:700;">' + esc(readAtText(MON) || '全員確定済み') + '</span>' : '日報シートから読んだ日時：<span style="color:#fff;font-weight:700;">まだ開いていません</span>';   // header b の大きい字にならないよう span で
 }
 function calcOne(e) {
   const s = MON.saved[e.id] || {}, adj = s.adj || {};
