@@ -83,7 +83,7 @@
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
 import { getFirestore, collection, doc, getDoc, getDocs, setDoc, deleteDoc, writeBatch, query, where } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
-const APP_VER = 'Ver.20261104-12';
+const APP_VER = 'Ver.20261104-13';
 const API = 'https://script.google.com/macros/s/AKfycbyW2hFHqIQuu-TsflPk_0zv7gquhoepspuvRG9-bMStPDSWSc2blcDFBtWs7MisP3f_/exec';
 const app = initializeApp({ apiKey: 'AIzaSyDVR4p4DO4s9h70uPlXUVlhNcMP9-YkQ5Q', authDomain: 'genba-portal-9077b.firebaseapp.com', projectId: 'genba-portal-9077b' });
 const auth = getAuth(app);
@@ -410,11 +410,13 @@ function slipHtml(e, r, ym, att) {
     '<div class="ft">時間単価 ' + yen(Math.round(r.hourly || 0)) + '円（基本給 ÷ 月平均 ' + (Math.round(c.monthHours * 10) / 10) + '時間）</div></div>';
 }
 /* 明細のメール：データは付けず文章だけ（ユーザー指示 2026-11-02） */
+/* メールの最後の会社情報（承諾書のひな形のフッターと同じ。送り元が人事なので代表者の行の代わりに「人事」。2026-11-04） */
+const MAIL_SIGN = '――――――――――――――――――――\nエクスケアダクト株式会社　人事\n〒661-0961　兵庫県尼崎市戸ノ内町5丁目10-16\nTEL (06)6420-4045　FAX (06)6420-4046\n';
 function mailText(e, r, ym) {
   const P = r.pay || {}, D = r.ded || {}, a = r.att || {}, l = (k, v) => v ? k + '：' + yen(v) + '円\n' : '';
   return e.name + ' 様\n\n' + ymLabel(ym) + '分の給与明細をお送りします。\n支給日：' + dLabel(payDayOf(ym)) + '\n\n■ 差引支給額：' + yen(r.net) + '円\n\n【支給】\n' +
     l('基本給', P.base) + l('時間外手当', P.ot) + l('月60時間超の割増', P.ot60) + l('所定休日出勤手当', P.shoDay) + l('所定休日時間外手当', P.shoOt) + l('法定休日出勤手当', P.houDay) + l('法定休日時間外手当', P.houOt) + l('夜間作業手当', P.night) + l('家族手当', P.family) + l('交通費', P.commute) + l('出張手当', P.trip) + l('欠勤の減額', P.absent) + l('日割りの減額', P.prorate) + l('遅刻・早退の減額', P.early) + l('遡及分', P.retro) + l('休業手当・自宅待機', P.leave) + l('その他の支給', P.other) + '支給合計：' + yen(r.payTotal) + '円\n\n【控除】\n' +
-    l('健康保険料', D.health) + l('厚生年金', D.pension) + l('雇用保険', D.emp) + l('所得税', D.tax) + l('住民税', D.resident) + l('年末調整', D.yearEnd) + l('その他の控除', D.otherDed) + '控除合計：' + yen(r.dedTotal) + '円\n\n【勤務】\n出勤 ' + (a.workDays || 0) + '日／有給 ' + (a.paidDays || 0) + '日／欠勤 ' + (a.absentDays || 0) + '日／時間外 ' + (a.otH || 0) + '時間／所定休日 ' + (a.shoDays || 0) + '日／法定休日 ' + (a.houDays || 0) + '日／夜間作業 ' + ((a.nightDays || 0) + (a.nightShoDays || 0) + (a.nightHouDays || 0)) + '日\n\nエクスケアダクト株式会社\n（このメールは給与管理アプリから送っています）\n';
+    l('健康保険料', D.health) + l('厚生年金', D.pension) + l('雇用保険', D.emp) + l('所得税', D.tax) + l('住民税', D.resident) + l('年末調整', D.yearEnd) + l('その他の控除', D.otherDed) + '控除合計：' + yen(r.dedTotal) + '円\n\n【勤務】\n出勤 ' + (a.workDays || 0) + '日／有給 ' + (a.paidDays || 0) + '日／欠勤 ' + (a.absentDays || 0) + '日／時間外 ' + (a.otH || 0) + '時間／所定休日 ' + (a.shoDays || 0) + '日／法定休日 ' + (a.houDays || 0) + '日／夜間作業 ' + ((a.nightDays || 0) + (a.nightShoDays || 0) + (a.nightHouDays || 0)) + '日\n\n' + MAIL_SIGN;
 }
 /* 明細メールの「送信済み（日時）」。確定し直したあとに送ると、サーバーが件名に【訂正】を付ける（ユーザー決定 2026-11-03） */
 const sentTag = (sent, id) => { const s = (sent || {})[id]; return s ? '<span class="tag">送信済み ' + esc(String(s.at).slice(5, 16)) + (s.n > 1 ? '（' + s.n + '回）' : '') + '</span> ' : ''; };
@@ -430,7 +432,7 @@ function bonusSlipHtml(e, r, ym) {
 function bonusMailText(e, r, ym) {
   const D = r.ded || {}, l = (k, v) => v ? k + '：' + yen(v) + '円\n' : '';
   return e.name + ' 様\n\n' + ymLabel(ym) + '分の賞与明細をお送りします。\n\n■ 差引支給額：' + yen(r.net) + '円\n\n【支給】\n賞与額：' + yen(r.amount) + '円\n\n【控除】\n' +
-    l('健康保険料', D.health) + l('厚生年金', D.pension) + l('雇用保険', D.emp) + l('所得税', D.tax) + '控除合計：' + yen(r.dedTotal) + '円\n\nエクスケアダクト株式会社\n（このメールは給与管理アプリから送っています）\n';
+    l('健康保険料', D.health) + l('厚生年金', D.pension) + l('雇用保険', D.emp) + l('所得税', D.tax) + '控除合計：' + yen(r.dedTotal) + '円\n\n' + MAIL_SIGN;
 }
 async function sendBonusSlips(list, ym, res) {
   try {
