@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>金物注文</title>
-  <!-- Ver.20261104-04 -->
+  <!-- Ver.20261104-06 -->
   <style>
     /* 金物注文（鋼材テンプレート）。三角ブラケット・穴あきアングルの図面の寸法を画面で入力し、数字入りの図面を1件1ページで出す（立体図はやめた 2026-11-04）。
        仕組みはフード注文 hood.html と同じ（保存・提出・版・PDF）。2026-11-04 作成
@@ -645,8 +645,8 @@
     });
 
     /* ===== 金物1件の入力（寸法・穴・仕様のタブ。ユーザー指示 2026-11-04）===== */
-    var ED = -1, EDTAB = 'dim';
-    function addItem() { if (revLocked()) { lockedToast(); return; } var last = S.items[S.items.length - 1], it = blankItem(last && last.shape); if (last) { it.st = last.st; it.sto = last.sto; it.fin = last.fin; it.unit = last.unit; } S.items.push(it); changed(); EDTAB = 'dim'; openEdit(S.items.length - 1); }
+    var ED = -1;
+    function addItem() { if (revLocked()) { lockedToast(); return; } var last = S.items[S.items.length - 1], it = blankItem(last && last.shape); if (last) { it.st = last.st; it.sto = last.sto; it.fin = last.fin; it.unit = last.unit; } S.items.push(it); changed(); openEdit(S.items.length - 1); }
     function openEdit(i) { if (revLocked()) { lockedToast(); return; } ED = i; renderEdit(); openSheet('edBg'); }
     function decideEdit() { closeEdit(); }
     function closeEdit() { closeSheet('edBg'); ED = -1; changed(); }
@@ -658,7 +658,6 @@
       if (k === 'unit' && v === 'セット') it.flip = false;
       renderEdit(); changed();
     }
-    function edTab(v) { EDTAB = v; renderEdit(); }
     function edFlip() { var it = S.items[ED]; if (!it) return; it.flip = !it.flip; renderEdit(); changed(); toast(it.flip ? '左右反対にしました' : '図のとおりに戻しました'); }
     function edIn(k, v) { var it = S.items[ED]; if (!it) return; it[k] = v; touched(); edCalc(); }
     function edSeg(k, i, v) { var it = S.items[ED]; if (!it) return; rowOf(it, rowDef(it, k)).s[i] = String(v).replace(/[^\d.]/g, ''); touched(); edCalc(); }
@@ -683,45 +682,53 @@
     }
     function chipsHtml(k, map, cur) { return '<div class="chips">' + Object.keys(map).map(function (v) { return '<span class="chip' + (cur === v ? ' on' : '') + '" onclick="edSet(\'' + k + '\',\'' + v + '\')">' + esc(map[v]) + '</span>'; }).join('') + '</div>'; }
     function chipsArr(k, arr, cur) { var m = {}; arr.forEach(function (v) { m[v] = v; }); return chipsHtml(k, m, cur); }
+    /* 入力の並びはフード注文と同じ（ユーザー指示 2026-11-04）：品名・数量 → 仕様（鋼材・仕上げ）→ 寸法 → 穴（面ごとのカード。穴を1行ずつ足す・消す）→ 備考 */
     function renderEdit() {
       var it = S.items[ED]; if (!it) return;
       var sh = SHP[it.shape], LT = lettersOf(it), nums = holeNums(it);
       document.getElementById('edTitle').textContent = circled(ED + 1) + ' ' + SHAPES[it.shape];
       var numIn = function (id, v, on) { return '<input type="text" inputmode="numeric" id="' + id + '" value="' + esc(v) + '" oninput="' + on + '">'; };
-      var sel = function (on, arr, cur, fmt) { return '<select onchange="' + on + '">' + arr.map(function (v) { return '<option value="' + esc(v) + '"' + (v === cur ? ' selected' : '') + '>' + esc(fmt ? fmt(v) : v) + '</option>'; }).join('') + '</select>'; };
-      var tab = function (v, lb) { return '<span class="chip' + (EDTAB === v ? ' on' : '') + '" onclick="edTab(\'' + v + '\')">' + lb + '</span>'; };
-      var body = '';
-      if (EDTAB === 'dim') {
-        body = '<div class="edbox"><div class="edbox-h">長さ（mm）</div><div class="dims">' + sh.lens.map(function (x) { return '<div><label>' + LT[x[0]] + '　' + esc(x[1]) + '</label>' + numIn('len_' + x[0], it[x[0]], 'edIn(\'' + x[0] + '\',this.value)') + '</div>'; }).join('') + '</div>' +
-          '<div class="note" style="margin-top:4px;">空欄なら、穴の寸法を全部入れたときに自動で入ります。</div></div>' +
-          sh.rows.map(function (r) {
-            var o = rowOf(it, r), L = LT[r.k]; if (!o.d.length) return '';
-            var nm = nums[r.k].map(circled);
-            return '<div class="edbox"><div class="edbox-h">' + L + '　' + esc(r.lb) + '（' + r.from + '）' + nm.join('') + '</div><div class="dims">' + o.s.map(function (v, i) {
-              return '<div><label>' + L + (i + 1) + '　' + (i ? nm[i - 1] : '端') + '→' + (i < nm.length ? nm[i] : '端') + '</label>' + numIn('seg_' + r.k + '_' + i, v, 'edSeg(\'' + r.k + '\',' + i + ',this.value)') + '</div>';
-            }).join('') + '</div><div class="fg" style="margin:8px 0 0;"><label>' + LT['g_' + r.k] + '　穴の線（角から）</label><div class="dims"><div>' + numIn('g_' + r.k, o.g, 'edGauge(\'' + r.k + '\',this.value)') + '</div><div class="calc">反対側 <span id="gop_' + r.k + '">—</span></div></div></div></div>';
-          }).join('') +
-          '<div class="note">入れていない寸法は、図に記号（赤い A・C1・G1 など）で出ます。1つの並びで1区間だけ空欄にすると、全体の長さから自動で計算します。穴の数は「穴」のタブで変えます。</div>';
-      } else if (EDTAB === 'hole') {
-        body = sh.rows.map(function (r) {
-          var o = rowOf(it, r), nm = nums[r.k].map(circled);
-          return '<div class="edbox"><div class="edbox-h">' + esc(r.lb) + '</div><div class="fg"><label>穴の数</label><div class="qty"><button type="button" onclick="edCount(\'' + r.k + '\',' + (o.d.length - 1) + ')">−</button><input type="number" inputmode="numeric" min="0" max="20" value="' + o.d.length + '" onchange="edCount(\'' + r.k + '\',this.value)"><button type="button" onclick="edCount(\'' + r.k + '\',' + (o.d.length + 1) + ')">＋</button></div></div>' +
-            (o.d.length ? '<div class="dims">' + o.d.map(function (d, i) { return '<div><label>' + nm[i] + ' の大きさ</label>' + sel('edDia(\'' + r.k + '\',' + i + ',this.value)', HOLE_D, d, function (v) { return 'φ' + v; }) + '</div>'; }).join('') + '<div><label>まとめて変える</label>' + sel('edDia(\'' + r.k + '\',-1,this.value)', [''].concat(HOLE_D), '', function (v) { return v ? 'φ' + v : '—'; }) + '</div></div>' : '<div class="note">穴なし</div>') + '</div>';
-        }).join('') + '<div class="note">穴の番号は図面の順（' + (it.shape === 'TB' ? '上の面 → 壁側 → 横材の正面 → 縦材の正面' : '正面 → 上の面') + '）に付きます。穴の位置は「寸法」のタブで入れます。</div>';
-      } else {
-        body = '<div class="edbox"><div class="spec-row"><span class="lbl">鋼材</span>' + sel('edSet(\'st\',this.value)', STEELS, it.st) + '</div>' + (it.st === 'その他' ? '<div class="fg"><input type="text" value="' + esc(it.sto) + '" placeholder="例：L60×60×5" oninput="edIn(\'sto\',this.value)"></div>' : '') +
-          '<div class="spec-row" style="margin-bottom:0;"><span class="lbl">仕上げ</span>' + sel('edSet(\'fin\',this.value)', FINS, finOf(it)) + '</div></div>';
-      }
+      var f = function (lb, h) { return '<div><span class="lbl">' + lb + '</span>' + h + '</div>'; };
+      var dsel = function (k, i, d) { return '<select onchange="edDia(\'' + k + '\',' + i + ',this.value)">' + HOLE_D.map(function (v) { return '<option value="' + v + '"' + (v === d ? ' selected' : '') + '>φ' + v + '</option>'; }).join('') + '</select>'; };
+      var card = function (r) {
+        var o = rowOf(it, r), L = LT[r.k], nm = nums[r.k].map(circled), n = o.d.length, last = n ? nm[n - 1] : '';
+        var h = '<div class="open-card"><div class="open-head"><b>' + L + '　' + esc(r.lb) + '</b><span class="note" style="flex:1;">（' + (n ? r.from + '・穴 ' + n + '個' : '穴なし') + '）</span>' + (n ? '<button type="button" class="btn btn-sub" onclick="edNoHole(\'' + r.k + '\')">この面は穴なし</button>' : '') + '</div>';
+        h += o.d.map(function (d, i) {
+          return '<div class="open-row" style="grid-template-columns:34px 1fr 1fr 40px;"><div style="align-self:center;font-weight:800;font-size:1.05rem;">' + nm[i] + '</div>' + f('大きさ', dsel(r.k, i, d)) + f(L + (i + 1) + '　' + (i ? nm[i - 1] : '端') + '→' + nm[i], numIn('seg_' + r.k + '_' + i, o.s[i], 'edSeg(\'' + r.k + '\',' + i + ',this.value)')) + '<div style="align-self:end;"><button type="button" class="open-del" onclick="edDelHole(\'' + r.k + '\',' + i + ')">✕</button></div></div>';
+        }).join('');
+        if (n) h += '<div class="open-row" style="grid-template-columns:34px 1fr 1fr 40px;"><div></div><div></div>' + f(L + (n + 1) + '　' + last + '→端', numIn('seg_' + r.k + '_' + n, o.s[n], 'edSeg(\'' + r.k + '\',' + n + ',this.value)')) + '<div></div></div>' +
+          '<div class="open-row" style="grid-template-columns:1fr 1fr;">' + f(LT['g_' + r.k] + '　穴の線（角から）', numIn('g_' + r.k, o.g, 'edGauge(\'' + r.k + '\',this.value)')) + '<div style="align-self:end;"><div class="calc">反対側 <span id="gop_' + r.k + '">—</span></div></div></div>';
+        else h += '<div class="note" style="margin-bottom:6px;">穴なし</div>';
+        return h + '<button type="button" class="btn btn-sub" onclick="edAddHole(\'' + r.k + '\')">＋ 穴を追加</button></div>';
+      };
       document.getElementById('edBody').innerHTML =
         '<div class="ed-fig"><div id="edFigSvg" onclick="figZoom()" title="押すと拡大">' + bracketSvg(it, 'val') + '</div>' +
         (isSet(it) ? '<div class="note" style="margin-top:6px;">セット＝図のものと左右反対のもの、各1台で1組</div>' : '<button type="button" class="btn btn-sub" style="margin-top:6px;" onclick="edFlip()">' + (it.flip ? '反転をやめる（図のとおりに戻す）' : '反転（左右反対にする）') + '</button>' + (it.flip ? '<span class="note" style="margin-left:8px;">反転中</span>' : '')) + '</div>' +
         '<div class="ed-form"><div class="errbox" id="edErr" style="display:none;margin:0 0 10px;"></div><div class="note" id="edMiss" style="display:none;margin:0 0 8px;color:#c62828;font-weight:700;"></div>' +
-        '<div class="edbox"><div class="spec-row"><span class="lbl">品名</span>' + chipsHtml('shape', SHAPES, it.shape) + '</div>' +
-        '<div class="fg"><label>数量</label><div class="qty"><button type="button" onclick="edQty(\'qty\',-1)">−</button><input type="number" inputmode="numeric" min="1" value="' + esc(it.qty) + '" oninput="edIn(\'qty\',this.value)"><button type="button" onclick="edQty(\'qty\',1)">＋</button></div></div>' +
-        '<div class="spec-row" style="margin-bottom:0;"><span class="lbl">単位</span>' + chipsArr('unit', UNITS, it.unit) + '</div><div class="note">台＝図のとおり1台（左右反対がほしいときは図の下の「反転」）。セット＝左右対称の2台で1組</div></div>' +
-        '<div class="chips" style="margin:0 0 10px;">' + tab('dim', '寸法') + tab('hole', '穴') + tab('spec', '仕様') + '</div>' + body +
+        '<div class="edbox"><div class="fg"><label>数量</label><div class="qty"><button type="button" onclick="edQty(\'qty\',-1)">−</button><input type="number" inputmode="numeric" min="1" value="' + esc(it.qty) + '" oninput="edIn(\'qty\',this.value)"><button type="button" onclick="edQty(\'qty\',1)">＋</button></div></div>' +
+        '<div class="spec-row"><span class="lbl">単位</span>' + chipsArr('unit', UNITS, it.unit) + '</div><div class="note" style="margin:-4px 0 8px;">台＝図のとおり1台（左右反対がほしいときは図の下の「反転」）。セット＝左右対称の2台で1組</div>' +
+        '<div class="spec-row" style="margin-bottom:0;"><span class="lbl">品名</span>' + chipsHtml('shape', SHAPES, it.shape) + '</div></div>' +
+        '<div class="edbox"><div class="edbox-h">仕様</div><div class="spec-row"><span class="lbl">鋼材</span>' + chipsArr('st', STEELS, it.st) + '</div>' + (it.st === 'その他' ? '<div class="fg"><input type="text" value="' + esc(it.sto) + '" placeholder="鋼材の大きさ（例：L75×75×9）" oninput="edIn(\'sto\',this.value)"></div>' : '') +
+        '<div class="spec-row" style="margin-bottom:0;"><span class="lbl">仕上げ</span>' + chipsArr('fin', FINS, finOf(it)) + '</div></div>' +
+        '<div class="edbox"><div class="edbox-h">寸法（mm）</div><div class="dims">' + sh.lens.map(function (x) { return '<div><label>' + LT[x[0]] + '　' + esc(x[1]) + '</label>' + numIn('len_' + x[0], it[x[0]], 'edIn(\'' + x[0] + '\',this.value)') + '</div>'; }).join('') + '</div>' +
+        '<div class="note" style="margin-top:4px;">空欄なら、穴の寸法を全部入れたときに自動で入ります。入れていない寸法は図に赤い記号（A・C1・G1 など）で出ます。</div></div>' +
+        '<div class="edbox"><div class="edbox-h" style="display:flex;align-items:center;gap:8px;"><span style="flex:1;">穴　<span class="note" style="display:inline;">' + esc(holeSum(it)) + '</span></span>' + (holeCount(it) ? '<button type="button" class="btn btn-sub" onclick="edNoHole(\'\')">すべて穴なし</button>' : '') + '</div>' + sh.rows.map(card).join('') +
+        '<div class="note">穴の番号（丸の数字）は図面の順（' + (it.shape === 'TB' ? '上の面 → 壁側 → 横材の正面 → 縦材の正面' : '正面 → 上の面') + '）に付きます。1つの面で1区間だけ空欄にすると、全体の長さから自動で計算します。</div></div>' +
         '<div class="edbox"><div class="fg"><label>備考（注文書に出ます）</label><input type="text" value="' + esc(it.memo) + '" oninput="edIn(\'memo\',this.value)"></div></div></div>';
       edCalc();
+    }
+    // 穴を足す（最後の穴の後ろに。大きさは前の穴と同じ）・消す（前後の区間を1つにまとめる）
+    function edAddHole(k) { var it = S.items[ED]; if (!it) return; var r = rowDef(it, k); setCount(it, r, holesN(it, r) + 1); renderEdit(); changed(); }
+    // 穴なし（ユーザー指示 2026-11-04：穴なしの金物もある）。k＝面、空＝全部の面
+    function edNoHole(k) {
+      var it = S.items[ED]; if (!it) return; var rs = rowsOf(it).filter(function (r) { return !k || r.k === k; });
+      askYes((k ? rowDef(it, k).lb + 'の穴' : '全部の面の穴') + 'をなしにしますか？').then(function (ok) { if (!ok) return; rs.forEach(function (r) { setCount(it, r, 0); rowOf(it, r).g = ''; }); renderEdit(); changed(); });
+    }
+    function edDelHole(k, i) {
+      var it = S.items[ED]; if (!it) return; var o = rowOf(it, rowDef(it, k)), a = num(o.s[i]), b = num(o.s[i + 1]);
+      o.d.splice(i, 1); o.s.splice(i, 2, a && b ? String(a + b) : '');
+      if (!o.d.length) o.s = [];
+      renderEdit(); changed();
     }
     // 図を押すと画面いっぱいに（角ダクトの製作伝票と同じ）
     function figZoom() {
