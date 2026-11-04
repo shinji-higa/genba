@@ -94,7 +94,7 @@
       <div class="portal-actions" style="margin-bottom: 12px;">
         <button type="button" id="addSite" class="btn btn-dark" style="display: none;">＋ 現場新規追加</button>
         <div id="noAdd" style="display:none; padding:12px; background:#f7f7f9; color:#555; font-size:0.82rem; font-weight:600; border:1px dashed var(--border); border-radius:4px; text-align:center;">新規に現場を追加する場合は、EXD担当者に連絡</div>
-        <button type="button" id="btnGoDaily" class="btn btn-outline" style="display: none;">日報</button>
+        <button type="button" id="btnGoDaily" class="btn btn-outline" style="display: none;">日報<span id="leaveCnt" style="display: none; margin-left: 6px; min-width: 18px; padding: 0 5px; border-radius: 9px; background: #e53935; color: #fff; font-size: 0.72rem; font-weight: 700; line-height: 18px; text-align: center;" title="有給の承認待ち"></span></button>
         <button type="button" id="btnGoHealth" class="btn btn-outline" style="display: none;">体調<span id="healthDot" class="hl-dot" style="display: none;" title="今日の体調チェックがまだです"></span></button>
       </div>
       <div class="search-row">
@@ -121,7 +121,7 @@
 <script type="module">
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
-import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager, collection, query, where, doc, getDoc, getDocs, getDocFromCache, getDocsFromCache, setDoc, updateDoc, writeBatch, onSnapshot, disableNetwork, enableNetwork, deleteDoc, orderBy, limit, waitForPendingWrites, runTransaction } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
+import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager, collection, query, where, doc, getDoc, getDocs, getDocFromCache, getDocsFromCache, setDoc, updateDoc, writeBatch, onSnapshot, disableNetwork, enableNetwork, deleteDoc, deleteField, orderBy, limit, waitForPendingWrites, runTransaction } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
 import { getStorage, ref as stRef, uploadBytesResumable, getDownloadURL } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-storage.js';
 
@@ -141,7 +141,7 @@ storage.maxUploadRetryTime = 60000;   // 電波が切れたら1分で一度あ�
 const auth = getAuth(app);
 auth.languageCode = 'ja';   // パスワード再設定のメールと画面を日本語にする
 const db = initializeFirestore(app, { localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }) });
-const APP_VER = 'Ver.20261104-16';
+const APP_VER = 'Ver.20261104-17';
 
 /* ---------- 電波なしでも使う（今の現場管理と同じ考え方） ----------
    ・保存は押した瞬間に完了の形。電波が戻ったら自動で送る（データは Firestore が端末に貯める）
@@ -367,9 +367,9 @@ async function resetMail(email) {
   if (!d || !d.ok) throw new Error((d && d.m) || '送れませんでした');
 }
 /* 日報が届いたら、すぐスプレッドシートへ書くようにサーバーへ頼む。電波が無くて失敗した分は毎晩の処理が拾う */
-const dailyPush = p => p.then(async () => {
+const dailyPush = (p, uid) => p.then(async () => {
   const idToken = await auth.currentUser.getIdToken();
-  await fetch(PORTAL_API, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ fn: 'daily', idToken }) });
+  await fetch(PORTAL_API, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ fn: 'daily', idToken, data: { uid: uid || me.uid } }) });
 }).catch(e => { window.portalLastError = e && e.code; });
 async function admin(action, data) {
   const idToken = await auth.currentUser.getIdToken();
@@ -465,8 +465,9 @@ function showList() {
   show('panelPortal', '現場選択');
   $('addSite').style.display = me.canAddSite ? '' : 'none';
   $('noAdd').style.display = me.canAddSite ? 'none' : '';
-  $('btnGoDaily').style.display = me.canDaily ? '' : 'none';
+  $('btnGoDaily').style.display = me.canDaily || me.isMaster ? '' : 'none';
   $('btnGoDaily').onclick = dOpen;
+  leaveWatch();
   $('btnGoHealth').onclick = hOpen;
   let hChecked = false;
   stop = onSnapshot(sitesQuery(), { includeMetadataChanges: true }, snap => {
@@ -1864,14 +1865,51 @@ function payCalc(kubun, start, end, night, type) {
 }
 const typeBadge = t => '<span class="dt-badge' + (t === '所定休日' ? ' sat' : t === '法定休日' ? ' hol' : '') + '">' + esc(t) + '</span>';
 let D = null;
-const dCol = () => collection(db, 'daily', me.uid, 'days');
+/* D.uid：入力する人。ふだんは本人。マスターはほかの人の分を代わりに入れられる（本人が入れたのと同じ形で保存し、本人には知らせない。2026-11-04 ユーザー指示） */
+const dCol = () => collection(db, 'daily', D ? D.uid : me.uid, 'days');
+/* 有給の申請（leaveReqs）：本人かマスターが日報で「有給」を保存すると申請中になる。マスターが承認すると日報シートに有給の行が入る。決めたら申請は消す */
+let leaveOff = null, leaveUid = '', leaveList = [];
+function leaveWatch() {
+  if (!me.isMaster) { if (leaveOff) { leaveOff(); leaveOff = null; } leaveList = []; $('leaveCnt').style.display = 'none'; return; }
+  if (leaveOff && leaveUid === me.uid) return;
+  if (leaveOff) leaveOff();
+  leaveUid = me.uid;
+  leaveOff = onSnapshot(query(collection(db, 'leaveReqs'), where('status', '==', '申請中')), s => {
+    leaveList = s.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => String(a.date).localeCompare(String(b.date)) || String(a.name).localeCompare(String(b.name), 'ja'));
+    $('leaveCnt').textContent = leaveList.length;
+    $('leaveCnt').style.display = leaveList.length ? 'inline-block' : 'none';
+    dLeaveDraw();
+  }, () => {});
+}
+const dDay = ds => { const p = String(ds).split('/').map(Number); return p[1] + '/' + p[2] + '(' + DOW[new Date(p[0], p[1] - 1, p[2]).getDay()] + ')'; };
+function dLeaveDraw() {
+  const box = $('dLeave');
+  if (!box) return;
+  if (!leaveList.length) { box.innerHTML = ''; return; }
+  box.innerHTML = '<div class="info-card"><div class="card-header-row"><span style="font-weight: 700;">🌴 有給の承認待ち（' + leaveList.length + '件）</span></div>' +
+    leaveList.map(r => '<div style="display: flex; align-items: center; gap: 8px; padding: 8px 0; border-top: 1px solid var(--border);"><div style="flex: 1; min-width: 0;"><b>' + esc(dDay(r.date)) + '</b> ' + esc(r.name || r.uid) + '</div>' +
+      '<button type="button" class="btn btn-dark" data-lv="' + esc(r.id) + '" data-v="承認" style="width: auto; padding: 6px 14px;">承認</button><button type="button" class="btn btn-sub" data-lv="' + esc(r.id) + '" data-v="却下" style="width: auto; padding: 6px 14px;">却下</button></div>').join('') + '</div>';
+  box.querySelectorAll('[data-lv]').forEach(b => { b.onclick = () => leaveDecide(leaveList.find(r => r.id === b.dataset.lv), b.dataset.v); });
+}
+async function leaveDecide(r, v) {
+  if (!r || !confirm(r.name + ' ' + dDay(r.date) + ' の有給を「' + v + '」にしますか？')) return;
+  const ref = doc(db, 'daily', r.uid, 'days', dsId(r.date)), b = writeBatch(db);
+  let cur = null;
+  try { const s = await getDoc(ref); cur = s.exists() ? s.data() : null; } catch (e) { alert('読み込めませんでした。電波のある所でもう一度押してください。'); return; }
+  // 日報がもう有給でない（取り下げ・書き換え）ときは、申請だけ消す
+  if (cur && !cur.deleted && cur.kubun === '有給') b.update(ref, { leave: v, syncedAt: deleteField() });
+  b.delete(doc(db, 'leaveReqs', r.id));
+  dailyPush(fire(b.commit(), '有給の' + v), r.uid);
+  if (r.self && cur && cur.kubun === '有給') fire(setDoc(doc(collection(db, 'notices')), { site: '', siteName: '有給', type: 'leave', text: dDay(r.date) + ' の有給が' + (v === '承認' ? '承認されました。' : '却下されました。'), by: me.uid, byName: me.name || me.uid, at: Date.now(), members: [r.uid], mentions: [], target: '' }), 'お知らせ');
+}
 function dOpen() {
   stopWatch();
   show('panelDaily', '日報', showList);
   $('speed').textContent = '';
   const t = new Date(), pm = dPayMonth(dsOf(t)), hours = Array.from({ length: 48 }, (_, i) => '<option value="' + i / 2 + '">' + hm(i / 2) + '</option>').join('');
-  D = { y: pm[0], m: pm[1], entries: {}, sel: dsOf(t), kubun: '出勤', sites: [] };
+  D = { y: pm[0], m: pm[1], entries: {}, sel: dsOf(t), kubun: '出勤', sites: [], uid: me.uid, name: me.name || me.uid };
   $('panelDaily').innerHTML =
+    (me.isMaster ? '<div id="dLeave"></div><div class="info-card"><div class="form-group" style="margin-bottom: 0;"><label for="dWho">入力する人</label><select id="dWho"><option value="' + esc(me.uid) + '">' + esc(me.name || me.uid) + '（自分）</option></select></div></div>' : '') +
     '<div class="info-card"><div class="card-header-row"><span style="font-weight: 700;">📝 日報入力</span><span id="dType" class="daily-daytype"></span></div>' +
     '<div class="form-group"><label for="dDate">日付</label><input type="date" id="dDate" class="date-input"></div>' +
     '<div class="form-group"><label>区分</label><div id="dKubun" class="daily-kb-row">' + ['出勤', '欠勤', '有給'].map(k => '<button type="button" class="daily-kb" data-k="' + k + '">' + k + '</button>').join('') + '</div></div>' +
@@ -1893,8 +1931,24 @@ function dOpen() {
   $('dSave').onclick = dSave;
   $('dDel').onclick = () => {
     if (!confirm('この日の日報を削除しますか？')) return;
-    dailyPush(fire(setDoc(doc(dCol(), dsId(D.sel)), { date: D.sel, deleted: true, at: Date.now(), by: me.uid }), '日報の削除'));
+    const e = D.entries[D.sel];
+    if (e && e.kubun === '有給' && e.leave === '申請中') fire(deleteDoc(doc(db, 'leaveReqs', D.uid + '_' + dsId(D.sel))), '有給の取り下げ');
+    dailyPush(fire(setDoc(doc(dCol(), dsId(D.sel)), { date: D.sel, deleted: true, at: Date.now(), by: D.uid }), '日報の削除'), D.uid);
   };
+  if (me.isMaster) {
+    dLeaveDraw();
+    const q = query(collection(db, 'users'), where('canDaily', '==', true));
+    oRead(() => getDocs(q), () => getDocsFromCache(q)).then(s => {
+      if (!$('dWho')) return;
+      const others = s.docs.filter(d => d.id !== me.uid).map(d => ({ uid: d.id, name: d.data().name || d.id })).sort((a, b) => a.name.localeCompare(b.name, 'ja'));
+      $('dWho').innerHTML += others.map(u => '<option value="' + esc(u.uid) + '">' + esc(u.name) + '</option>').join('');
+    }).catch(() => {});
+    $('dWho').onchange = () => {
+      const o = $('dWho').selectedOptions[0];
+      D.uid = $('dWho').value; D.name = D.uid === me.uid ? (me.name || me.uid) : o.textContent;
+      dLoad();
+    };
+  }
   const m = doc(db, 'meta', 'companyDays');
   oRead(() => getDoc(m), () => getDocFromCache(m)).then(d => { companyDays = (d.exists() && d.data().days) || {}; if (D) dRender(); }).catch(() => {});
   dLoad();
@@ -1946,7 +2000,7 @@ function dRender() {
         if (e.night) sub.push('🌙夜間作業');
         if (e.site) sub.push(esc(e.site));
         body = '<div>' + hm(+e.start) + '〜' + hm(+e.end) + '</div>' + (sub.length ? '<div class="dl-sub">' + sub.join(' · ') + '</div>' : '');
-      } else body = '<b>' + esc(e.kubun) + '</b>';
+      } else body = '<b>' + esc(e.kubun) + '</b>' + (e.kubun === '有給' && e.leave ? ' <span' + (e.leave === '却下' ? ' class="ds-missing"' : '') + '>（' + esc(e.leave === '承認' ? '承認済み' : e.leave) + '）</span>' : '');
     } else if (d.type === '平日' && d.date <= today) body = '<span class="dl-miss">未入力</span>';
     rows.push('<div class="dl-row' + (d.date === D.sel ? ' sel' : '') + (d.type === '所定休日' ? ' sat' : d.type === '法定休日' ? ' hol' : '') + '" data-d="' + d.date + '"><div class="dl-date">' + d.day + '<small>(' + DOW[d.dow] + ')</small></div>' +
       '<div class="dl-type">' + (d.type !== '平日' ? typeBadge(d.type) : '') + (d.name ? '<div class="dl-hname">' + esc(d.name) + '</div>' : '') + '</div><div class="dl-body">' + body + '</div></div>');
@@ -1963,7 +2017,7 @@ function dRender() {
   $('dMemo').value = e ? (e.memo || '') : '';
   // 保存済みの日はその現場。新しく入れる日は、前回入れた現場（無ければ担当の最初の現場）
   let lastS = [];
-  try { lastS = JSON.parse(localStorage.getItem('portalDailySites:' + me.uid) || '[]') || []; } catch (x) {}
+  try { lastS = JSON.parse(localStorage.getItem('portalDailySites:' + D.uid) || '[]') || []; } catch (x) {}
   D.sites = e ? String(e.site || '').split('、').map(x => x.trim()).filter(Boolean) : (lastS.length ? lastS.slice() : (allSites[0] ? [allSites[0].siteName] : []));
   $('dSite').value = '';
   dChips();
@@ -1994,9 +2048,16 @@ function dSave() {
   const k = D.kubun, work = k === '出勤', start = +$('dStart').value, end = +$('dEnd').value, night = work && $('dNight').checked;
   if (work && end <= start && !night) { alert('退勤が出勤より前になっています（夜間作業のときは「夜間作業」にチェックしてください）。'); return; }
   dAddSite();
-  try { if (D.sites.length) localStorage.setItem('portalDailySites:' + me.uid, JSON.stringify(D.sites)); } catch (x) {}
-  const t = dayType(D.sel), c = payCalc(k, start, end, night, t.type);
-  dailyPush(fire(setDoc(doc(dCol(), dsId(D.sel)), { date: D.sel, dow: DOW[t.dow], type: t.type, kubun: k, start: work ? start : '', end: work ? end : '', brk: c.brk, hours: c.hours, ot: c.ot, early: c.early, night: !!c.night, site: D.sites.join('、').slice(0, 500), memo: $('dMemo').value.trim().slice(0, 500), at: Date.now(), by: me.uid, byName: me.name || me.uid }), '日報'));
+  try { if (D.sites.length) localStorage.setItem('portalDailySites:' + D.uid, JSON.stringify(D.sites)); } catch (x) {}
+  const t = dayType(D.sel), c = payCalc(k, start, end, night, t.type), self = D.uid === me.uid, prev = D.entries[D.sel], reqId = D.uid + '_' + dsId(D.sel);
+  // 本人が入れたのと同じ形（by・byName は入力する人）。有給は申請中で保存し、承認待ちの一覧に出す
+  const rec = { date: D.sel, dow: DOW[t.dow], type: t.type, kubun: k, start: work ? start : '', end: work ? end : '', brk: c.brk, hours: c.hours, ot: c.ot, early: c.early, night: !!c.night, site: D.sites.join('、').slice(0, 500), memo: $('dMemo').value.trim().slice(0, 500), at: Date.now(), by: D.uid, byName: D.name || D.uid };
+  if (k === '有給') rec.leave = '申請中';
+  dailyPush(fire(setDoc(doc(dCol(), dsId(D.sel)), rec), '日報'), D.uid);
+  if (k === '有給') {
+    fire(setDoc(doc(db, 'leaveReqs', reqId), { uid: D.uid, name: D.name || D.uid, date: D.sel, status: '申請中', self, at: Date.now() }), '有給の申請');
+    if (self && !me.isMaster) fire(setDoc(doc(collection(db, 'notices')), { site: '', siteName: '有給', type: 'leave', text: '有給の申請：' + dDay(D.sel), by: me.uid, byName: me.name || me.uid, at: Date.now(), members: [], mentions: [], target: '' }), 'お知らせ');
+  } else if (prev && prev.kubun === '有給' && prev.leave === '申請中') fire(deleteDoc(doc(db, 'leaveReqs', reqId)), '有給の取り下げ');
   const b = $('dSave');
   b.textContent = '保存しました ✓';
   setTimeout(() => { if ($('dSave')) $('dSave').textContent = 'この内容で保存'; }, 1500);
@@ -2687,7 +2748,7 @@ async function setOpen() {
 /* ---------- お知らせ（見た目は今の現場管理と同じ）----------
    現場の人とマスターに届く。自分の操作は自分には出さない。30日より古いものは出さない。未読は現場カードにも出す（案 E）。
    音の出る通知（アプリを閉じていても届くもの）はまだ入れていない */
-const N_TYPES = { report: '報告', photo: '写真', doc: '資料', site: '現場情報', health: '体調' };
+const N_TYPES = { report: '報告', photo: '写真', doc: '資料', site: '現場情報', health: '体調', leave: '有給' };
 const clip = (s, n) => { s = String(s || ''); return s.length > n ? s.slice(0, n) + '…' : s; };
 let nItems = [], nReads = { all: 0, ids: {} }, nUnsub = [], nFilter = 'all', nSort = 'date', nAsc = false, nLimit = 30, nActor = '';
 const nIsRead = it => (it.at || 0) <= (nReads.all || 0) || !!(nReads.ids || {})[it.id];
@@ -2765,13 +2826,13 @@ function nRender() {
     html += '<div class="notice-card' + (read ? '' : ' unread') + '" data-n="' + esc(it.id) + '"><div class="notice-card-top">' + (read ? '' : '<span class="notice-new">未読</span>') +
       '<span class="notice-type t-' + esc(it.type) + '">' + esc(N_TYPES[it.type] || 'お知らせ') + '</span>' + ((it.mentions || []).includes(me.uid) ? '<span class="notice-mention">@あなた</span>' : '') +
       '<span style="flex:1;"></span><span>' + esc(rWhen(it.at)) + '</span></div>' + (nSort === 'site' ? '' : '<div class="notice-site">' + esc(it.siteName) + '</div>') +
-      '<div class="notice-text">' + trShow(it.text, (it.tr || {}).text) + '</div><div class="notice-foot"><span>👤 ' + esc(it.byName) + '</span><span style="flex:1;"></span><button type="button" class="btn btn-sub" data-open="' + esc(it.site) + '" style="padding:2px 8px; font-size:0.75rem;">' + (it.type === 'health' ? '体調を開く' : '現場を開く') + '</button></div></div>';
+      '<div class="notice-text">' + trShow(it.text, (it.tr || {}).text) + '</div><div class="notice-foot"><span>👤 ' + esc(it.byName) + '</span><span style="flex:1;"></span><button type="button" class="btn btn-sub" data-open="' + esc(it.site) + '" data-ot="' + esc(it.type) + '" style="padding:2px 8px; font-size:0.75rem;">' + (it.type === 'health' ? '体調を開く' : it.type === 'leave' ? '日報を開く' : '現場を開く') + '</button></div></div>';
   });
   if (rest > 0) html += '<button type="button" class="btn btn-sub" id="nMore" style="width:100%; margin-top:8px;">▼ 以前のお知らせを表示（残り' + rest + '件）</button>';
   $('nBox').innerHTML = html;
   $('nBox').querySelectorAll('[data-n]').forEach(c => { c.onclick = () => nRead(c.dataset.n); });
   $('nBox').querySelectorAll('[data-open]').forEach(b => {
-    b.onclick = e => { e.stopPropagation(); nRead(b.closest('[data-n]').dataset.n); if (b.dataset.open) showDetail(b.dataset.open); else hOpen(); };
+    b.onclick = e => { e.stopPropagation(); nRead(b.closest('[data-n]').dataset.n); if (b.dataset.open) showDetail(b.dataset.open); else if (b.dataset.ot === 'leave') dOpen(); else hOpen(); };
   });
   if ($('nMore')) $('nMore').onclick = () => { nLimit += 30; nRender(); };
 }
