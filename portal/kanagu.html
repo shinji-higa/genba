@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>金物注文</title>
-  <!-- Ver.20261104-10 -->
+  <!-- Ver.20261104-11 -->
   <style>
     /* 金物注文（鋼材テンプレート）。三角ブラケット・穴あきアングルの図面の寸法を画面で入力し、数字入りの図面を1件1ページで出す（立体図はやめた 2026-11-04）。
        仕組みはフード注文 hood.html と同じ（保存・提出・版・PDF）。2026-11-04 作成
@@ -535,6 +535,7 @@
       var VW = xR + rm, VH = yB + bm;
       var MX = function (x) { return flip ? VW - x : x; }, f = function (v) { return v.toFixed(1); };
       var ln = function (x1, y1, x2, y2, w, col) { return '<line x1="' + f(MX(x1)) + '" y1="' + f(y1) + '" x2="' + f(MX(x2)) + '" y2="' + f(y2) + '" stroke="' + (col || '#000') + '" stroke-width="' + (w || 0.5) + '"/>'; };
+      var dl = function (x1, y1, x2, y2) { return '<line x1="' + f(MX(x1)) + '" y1="' + f(y1) + '" x2="' + f(MX(x2)) + '" y2="' + f(y2) + '" stroke="#1d4f91" stroke-width="0.6" stroke-dasharray="3 2"/>'; };   // 隠れている線（点線）
       var pg = function (pts) { return '<polygon points="' + pts.map(function (p) { return f(MX(p[0])) + ',' + f(p[1]); }).join(' ') + '" fill="#eef4fb" stroke="#1d4f91" stroke-width="' + (thumb ? 0.7 : 0.9) + '"/>'; };
       var ci = function (x, y, d) { return '<circle cx="' + f(MX(x)) + '" cy="' + f(y) + '" r="' + f(thumb ? 0.8 : Math.max(1.6, (num(d) || 12) / 2 * k)) + '" fill="#fff" stroke="#000" stroke-width="' + (thumb ? 0.4 : 0.6) + '"/>'; };
       var dot = function (x, y) { return '<circle cx="' + f(MX(x)) + '" cy="' + f(y) + '" r="1.3" fill="#000"/>'; };
@@ -562,12 +563,17 @@
       var gl = function (r) { var g = gOf(r); return [fmtC(g), fmtC(a - g)]; };
       var o = '';
       // 部材
-      o += pg([[X(0), y0], [X(L), y0], [X(L), y0 + ah], [X(0), y0 + ah]]) + ln(X(0), y0 + th, X(L), y0 + th, 0.5, '#1d4f91');   // 横材（上の線＝上の面の厚み）
+      o += pg([[X(0), y0], [X(L), y0], [X(L), y0 + ah], [X(0), y0 + ah]]) + ln(X(0), y0 + th, tb ? X(L) - th : X(L), y0 + th, 0.5, '#1d4f91');   // 横材（上の線＝上の面の厚み）
       if (tb) {
-        o += pg([[X(L) - aw, y0 + ah], [X(L), y0 + ah], [X(L), yB], [X(L) - aw, yB]]) + ln(X(L) - th, y0 + ah, X(L) - th, yB, 0.5, '#1d4f91');   // 縦材
+        o += pg([[X(L) - aw, y0 + ah], [X(L), y0 + ah], [X(L), yB], [X(L) - aw, yB]]) + ln(X(L) - th, y0, X(L) - th, yB, 0.5, '#1d4f91');   // 縦材（壁側の厚みの線は上まで通す）
         var dg = diagOf(L, H, a), P = function (q) { return [X(q[0]), Y(H - q[1])]; };   // 斜材（z＝下からの高さ）
+        // 厚みと継ぎ目の線（元の図面と同じ。ユーザー指示 2026-11-04）：先＝端の厚みの縦線と角からの斜め線、図下＝縦材の下の厚みの線と斜め線
         o += pg([P(dg.A), P(dg.D), P(dg.C), P(dg.B)]);
         o += ln(P(dg.A)[0] + t * dg.n[0] * k, P(dg.A)[1] - t * dg.n[1] * k, P(dg.D)[0] + t * dg.n[0] * k, P(dg.D)[1] - t * dg.n[1] * k, 0.5, '#1d4f91');
+        if (!thumb) {
+          o += ln(X(0) + th, y0 + th, X(0) + th, y0 + ah, 0.5, '#1d4f91') + ln(X(0), y0, X(0) + ah, y0 + ah, 0.5, '#1d4f91');   // 先
+          o += ln(X(L) - aw, yB - th, X(L), yB - th, 0.5, '#1d4f91') + ln(X(L) - aw, yB - aw, X(L), yB, 0.5, '#1d4f91');   // 図下
+        }
       }
       // 穴：正面の穴は丸、もう一方の面の穴は短い線（図面と同じ）
       rowsOf(it).forEach(function (r) {
@@ -596,7 +602,7 @@
         if (holesN(it, r3)) o += chainV(cx2, ends(r3), segLabels(it, r3), nmOf(r3), cx1 + 2) + cap(cx2, y0 - 6, LT.r3 + ' ' + fn(r3));
         o += chainV(cx3, [0, H], [totLabel(it, 'H')], null, cx2 + 2);
         // 横から見た縦材（壁側の面の穴を丸で）
-        o += pg([[svX, y0], [svX + aw, y0], [svX + aw, yB], [svX, yB]]);
+        o += pg([[svX, y0], [svX + aw, y0], [svX + aw, yB], [svX, yB]]) + dl(svX + aw - th, y0, svX + aw - th, yB);   // 正面の板の厚み（隠れているので点線。ユーザー指示 2026-11-04）
         if (holesN(it, r3)) {
           var g4 = gOf(r3), t4 = gl(r3), d3 = rowOf(it, r3).d;
           drawPos(it, r3).forEach(function (p, i) { o += ci(svX + aw - g4 * k, Y(p), d3[i]) + tx(svX + aw + 14, Y(p) + 4, circled(nums.r3[i]), FS + 2); });
