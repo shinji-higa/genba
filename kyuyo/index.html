@@ -83,7 +83,7 @@
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
 import { getFirestore, collection, doc, getDoc, getDocs, setDoc, deleteDoc, writeBatch, query, where } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
-const APP_VER = 'Ver.20261104-17';
+const APP_VER = 'Ver.20261104-18';
 const API = 'https://script.google.com/macros/s/AKfycbyW2hFHqIQuu-TsflPk_0zv7gquhoepspuvRG9-bMStPDSWSc2blcDFBtWs7MisP3f_/exec';
 const app = initializeApp({ apiKey: 'AIzaSyDVR4p4DO4s9h70uPlXUVlhNcMP9-YkQ5Q', authDomain: 'genba-portal-9077b.firebaseapp.com', projectId: 'genba-portal-9077b' });
 const auth = getAuth(app);
@@ -587,7 +587,7 @@ async function drawYear() {
     // 賃金台帳を Google スプレッドシートへ（CSV の代わり。1人1シート。ユーザー決定 2026-11-04）。表は PDF の台帳と同じ行・同じ合計
     $('c').onclick = async () => {
       const months = Array.from({ length: 12 }, (_, i) => y + '-' + pad(i + 1)), head = ['項目'].concat(months.map(m => Number(m.slice(5)) + '月'), ['合計']);
-      const block = (rows, get) => rows.map(([k, f, ty]) => { if (!f) return [k]; const v = months.map(m => { const x = f(get(m), m); return ty === 't' ? x || '' : Number(x) || 0; }); return [k].concat(v, [ty === 't' ? '' : ty === 'h' ? Number(hNum(v.reduce((a, b) => a + b, 0))) : v.reduce((a, b) => a + b, 0)]); });
+      const block = (rows, get) => rows.map(([k, f, ty]) => { if (!f) return [k]; const v = months.map(m => { const x = f(get(m), m); return ty === 't' ? x || '' : Number(x) || 0; }); const s = ty === 't' ? '' : ty === 'h' ? Number(hNum(v.reduce((a, b) => a + b, 0))) : v.reduce((a, b) => a + b, 0); return [k].concat(ty === 'h' ? v.concat([s]).map(n => n || '') : v.concat([s])); });   // 日数・時間の 0 は空欄（金額の 0 はサーバーの書式で空欄に見せる）
       const sheets = list.map(e => {
         const row = m => (data.months.find(x => x.ym === m && x.id === e.id) || {}).result || {}, bon = data.bonus.filter(x => x.id === e.id), brow = m => (bon.find(x => x.ym === m) || {}).result || {};
         return { name: e.name, rows: [['氏名', e.name], ['性別', e.gender || '未入力'], ['賃金台帳', y + '年（確定した月だけ）'], head].concat(block(YR_ROWS, row), bon.length ? block(BN_ROWS, brow) : []) };
