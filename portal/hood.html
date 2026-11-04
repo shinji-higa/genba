@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>フード注文</title>
-  <!-- Ver.20261104-03 -->
+  <!-- Ver.20261104-04 -->
   <style>
     /* 厨房フードの注文書。注文用図面（箱型・山型・二重）の寸法表を画面で入力し、数字入りの図を1台1ページで出す。フードはメーカー共通なので本体にメーカーは出さない。
        仕組みは金物注文（添付）kana.html と同じ（保存・提出・版・PDF）。2026-11-02 作成
@@ -41,6 +41,7 @@
     input:focus, select:focus, textarea:focus { border-color: #111; }
     input::placeholder, textarea::placeholder { color: #6b6b6b; }
     input[readonly] { background: #ececec; }
+    input[type="date"][readonly] { background: #fff; }   /* 日付はポータルのカレンダーで入れる欄。入力できない欄と見分けがつくよう白（ユーザー指示 2026-11-04） */
     textarea { resize: vertical; min-height: 56px; }
     .g2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
     .g3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }

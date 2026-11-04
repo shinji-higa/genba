@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>金物注文</title>
-  <!-- Ver.20261104-11 -->
+  <!-- Ver.20261104-12 -->
   <style>
     /* 金物注文（鋼材テンプレート）。三角ブラケット・穴あきアングルの図面の寸法を画面で入力し、数字入りの図面を1件1ページで出す（立体図はやめた 2026-11-04）。
        仕組みはフード注文 hood.html と同じ（保存・提出・版・PDF）。2026-11-04 作成
@@ -41,6 +41,7 @@
     input:focus, select:focus, textarea:focus { border-color: #111; }
     input::placeholder, textarea::placeholder { color: #6b6b6b; }
     input[readonly] { background: #ececec; }
+    input[type="date"][readonly] { background: #fff; }   /* 日付はポータルのカレンダーで入れる欄。入力できない欄と見分けがつくよう白（ユーザー指示 2026-11-04） */
     textarea { resize: vertical; min-height: 56px; }
     .g2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
     .g3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
@@ -249,7 +250,7 @@
         </div>
 
         <div class="card">
-          <div class="card-h"><span>金物（<span id="itemCount">0</span>件）</span>
+          <div class="card-h"><span>金物（<span id="itemCount">0件</span>）</span>
             <span><button type="button" class="btn btn-dark" onclick="addItem()">＋ 金物を追加</button></span></div>
           <div class="items" id="items"></div>
         </div>
@@ -416,14 +417,15 @@
     /* 長さと区間：全体（A・B）は入れたものを使う。空欄なら、区間を全部入れた並びの合計（自動）。
        区間が1つだけ空欄で全体が決まっていれば、その区間は全体から計算（自動） */
     function totIn(it, on) { return num(it[on]); }
-    function rowFull(it, r) { var o = rowOf(it, r); return o.d.length > 0 && o.s.every(function (v) { return num(v) > 0; }); }
+    function rowFull(it, r) { var o = rowOf(it, r); return o.d.length > 0 && o.s.every(function (v) { return !blankStr(v); }); }
     function rowSum(it, r) { return rowOf(it, r).s.reduce(function (a, v) { return a + num(v); }, 0); }
     function totAuto(it, on) { var rs = rowsOf(it).filter(function (r) { return r.on === on && rowFull(it, r); }); return rs.length ? rowSum(it, rs[0]) : 0; }
     function totOf(it, on) { return totIn(it, on) || totAuto(it, on); }
     function segsOf(it, r) {   // v＝決まった区間（null＝未定）、auto＝計算で出したもの
-      var o = rowOf(it, r), v = o.s.map(num), T = totOf(it, r.on), blank = v.filter(function (x) { return !x; }).length, auto = v.map(function () { return false; });
-      if (blank === 1 && T) { var known = v.reduce(function (a, b) { return a + b; }, 0); v = v.map(function (x, i) { if (x) return x; auto[i] = true; return T - known; }); return { v: v, auto: auto }; }
-      return { v: v.map(function (x) { return x || null; }), auto: auto };
+      // 空欄だけを「未定」にする。0 と入れたら 0 のまま（自動の数字に置き換えない。確認で知らせる）
+      var o = rowOf(it, r), bl = o.s.map(blankStr), v = o.s.map(num), T = totOf(it, r.on), blank = bl.filter(Boolean).length, auto = v.map(function () { return false; });
+      if (blank === 1 && T) { var known = v.reduce(function (a, b) { return a + b; }, 0); v = v.map(function (x, i) { if (!bl[i]) return x; auto[i] = true; return T - known; }); return { v: v, auto: auto }; }
+      return { v: v.map(function (x, i) { return bl[i] ? null : x; }), auto: auto };
     }
     function drawTot(it, on) { var x = totOf(it, on); if (x > 0) return x; var d = SHP[it.shape].lens.filter(function (q) { return q[0] === on; })[0]; return d ? d[2] : 1000; }
     function drawSegs(it, r) {   // 図を描くための区間（未定の区間は残りを等分。入れる前でも形が出るように）
@@ -505,7 +507,8 @@
       sh.lens.forEach(function (x) { if (!totOf(it, x[0])) e.push(LT[x[0]] + '（' + x[1] + '）を入れてください'); });
       sh.rows.forEach(function (r) {
         var o = rowOf(it, r); if (!o.d.length) return;
-        var nm = LT[r.k] + '（' + r.lb + '）', v = o.s.map(num), blank = v.filter(function (x) { return !x; }).length, T = totOf(it, r.on), sum = rowSum(it, r);
+        var nm = LT[r.k] + '（' + r.lb + '）', v = o.s.map(num), blank = o.s.filter(blankStr).length, T = totOf(it, r.on), sum = rowSum(it, r);
+        o.s.forEach(function (x, i) { if (!blankStr(x) && num(x) <= 0) e.push(LT[r.k] + (i + 1) + ' が 0 です（' + (i === 0 || i === o.s.length - 1 ? '端に穴はあけられません' : '同じ位置に穴が2つになります') + '）'); });
         if (blank > 1 || (blank === 1 && !T)) e.push(nm + ' の寸法を入れてください');
         else if (blank === 1 && T - sum <= 0) e.push(nm + ' の合計が' + LT[r.on] + 'を超えています');
         else if (!blank && totIn(it, r.on) && Math.abs(sum - totIn(it, r.on)) > 0.01) e.push(nm + ' の合計 ' + fmtN(sum) + ' が ' + LT[r.on] + '（' + fmtN(totIn(it, r.on)) + '）と合いません');
@@ -678,7 +681,8 @@
     function setOpt(k, v) { S[k] = v; changed(); }
     function renderItems() {
       var el = document.getElementById('items');
-      document.getElementById('itemCount').textContent = S.items.length;
+      var tot = {}; S.items.forEach(function (it) { tot[it.unit] = (tot[it.unit] || 0) + (num(it.qty) || 1); });
+      document.getElementById('itemCount').textContent = S.items.length + '件' + (S.items.length ? '・計' + UNITS.filter(function (u) { return tot[u]; }).map(function (u) { return tot[u] + u; }).join('・') : '');
       if (!S.items.length) { el.innerHTML = '<div class="empty">「＋ 金物を追加」から入れてください。</div>'; return; }
       el.innerHTML = S.items.map(function (it, i) {
         var bad = itemErrors(it).length;
