@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>フード注文</title>
-  <!-- Ver.20261104-04 -->
+  <!-- Ver.20261104-05 -->
   <style>
     /* 厨房フードの注文書。注文用図面（箱型・山型・二重）の寸法表を画面で入力し、数字入りの図を1台1ページで出す。フードはメーカー共通なので本体にメーカーは出さない。
        仕組みは金物注文（添付）kana.html と同じ（保存・提出・版・PDF）。2026-11-02 作成
@@ -912,7 +912,11 @@
     function edHangStd() { var it = S.items[ED]; if (!it) return; var L = num(it.L), W = num(it.W); if (!L || !W) { toast('先に L・W を入れてください'); return; } it.stdHole = true; it.holes = stdHoles(it, (holesOf(it)[0] || {}).d); renderEdit(); changed(); }
     // 標準の吊り穴のあいだは、分割・L・W を変えると入れ直す（手で直したらやめる。ユーザー指示 2026-11-03）
     function stdRefresh(it) { if (!it.stdHole || !num(it.L) || !num(it.W)) return; it.holes = stdHoles(it, (holesOf(it)[0] || {}).d); var el = document.getElementById('edHoles'); if (el) el.innerHTML = holesHtml(it); }
-    function edIn(k, v) { var it = S.items[ED]; if (!it) return; it[k] = v; if (k === 'sp' || k === 'L' || k === 'W') stdRefresh(it); if (HOST) { SRV.dirty = true; setSaveState('未保存'); hostSchedule(3000); } else { clearTimeout(saveTimer); saveTimer = setTimeout(function () { saveSlip(false); }, 1500); } edCalc(); }
+    /* ありえない数字は入れさせない（ユーザー指示 2026-11-04：金物注文と同じ）。数字の欄は数字と小数点だけ（－などは消える）。L・W・H の 0、吊り穴の位置の 0 やフードの外は前の数字に戻して理由を出す */
+    var NUM_KEYS = { L: 1, W: 1, H: 1, h: 1, sk: 1, E1: 1, E2: 1, F1: 1, F2: 1, hkl: 1, qty: 1 };
+    function cleanNum(v) { var s = String(v == null ? '' : v).replace(/[^\d.]/g, ''), i = s.indexOf('.'); return i < 0 ? s : s.slice(0, i + 1) + s.slice(i + 1).replace(/\./g, ''); }
+    function showVal(v) { var el = document.activeElement; if (el && el.tagName === 'INPUT' && el.value !== v) el.value = v; }
+    function edIn(k, v) { var it = S.items[ED]; if (!it) return; if (NUM_KEYS[k]) { v = cleanNum(v); if (/^[LWH]$/.test(k) && v !== '' && num(v) <= 0) { showVal(it[k] == null ? '' : String(it[k])); toast(k + ' に 0 は入れられません'); return; } showVal(v); } it[k] = v; if (k === 'sp' || k === 'L' || k === 'W') stdRefresh(it); if (HOST) { SRV.dirty = true; setSaveState('未保存'); hostSchedule(3000); } else { clearTimeout(saveTimer); saveTimer = setTimeout(function () { saveSlip(false); }, 1500); } edCalc(); }
     function edQty(k, dv) { var it = S.items[ED]; if (!it) return; it[k] = Math.max(1, (num(it[k]) || 0) + dv); renderEdit(); changed(); }
     function edCalc() {   // 数字を打つたびに計算の結果だけ書き直す（画面全体は描き直さない）
       var it = S.items[ED]; if (!it) return; var d = dims(it), set = function (id, v) { var el = document.getElementById(id); if (el) el.textContent = v; };
@@ -993,7 +997,12 @@
         return '<div class="open-row"><div><span class="lbl">' + (it.shape === 'HY' ? '金物' : '吊り穴') + (i + 1) + ' φ</span><select onchange="edHoleIn(' + i + ',\'d\',this.value)">' + HOLE_D.map(function (v) { return '<option value="' + v + '"' + (h.d === v ? ' selected' : '') + '>φ' + v + '</option>'; }).join('') + '</select></div><div><span class="lbl">右端から芯</span>' + inp('x') + '</div><div><span class="lbl">奥から芯</span>' + inp('y') + '</div><div><button type="button" class="open-del" onclick="delHole(' + i + ')">✕</button></div></div>';
       }).join('');
     }
-    function edHoleIn(i, k, v) { var it = S.items[ED]; if (!it || !it.holes[i]) return; it.holes[i][k] = v; if (k !== 'd') it.stdHole = false; if (HOST) { SRV.dirty = true; setSaveState('未保存'); hostSchedule(3000); } else { clearTimeout(saveTimer); saveTimer = setTimeout(function () { saveSlip(false); }, 1500); } edCalc(); }
+    function edHoleIn(i, k, v) { var it = S.items[ED]; if (!it || !it.holes[i]) return; var hh = it.holes[i];
+      if (k === 'x' || k === 'y') { v = cleanNum(v); var mx = hh.face ? hangFaceW(it, hh.face) : num(k === 'x' ? it.L : it.W), old = hh[k] == null ? '' : String(hh[k]);
+        if (v !== '' && num(v) <= 0) { showVal(old); toast('吊り穴の位置に 0 は入れられません（端に穴はあけられません）'); return; }
+        if (v !== '' && mx && num(v) >= mx) { showVal(old); toast('吊り穴の位置がフードの外になります（' + fmtN(mx) + ' より小さく）'); return; }
+        showVal(v); }
+      it.holes[i][k] = v; if (k !== 'd') it.stdHole = false; if (HOST) { SRV.dirty = true; setSaveState('未保存'); hostSchedule(3000); } else { clearTimeout(saveTimer); saveTimer = setTimeout(function () { saveSlip(false); }, 1500); } edCalc(); }
     function addHole(ang) { var it = S.items[ED]; if (!it) return; var h = holesOf(it), last = h[h.length - 1], lastAng = h.filter(function (q) { return q.face; }).pop(); it.holes.push(newHole('', '', last && last.d, angOnly(it) || ang ? (lastAng && lastAng.face) || '正面' : '')); it.stdHole = false; renderEdit(); changed(); }
     function clearHoles() { var it = S.items[ED]; if (!it || !holesOf(it).length) return; askYes('吊り穴を ' + holesOf(it).length + ' 個とも消しますか？').then(function (ok) { if (!ok) return; it.holes = []; it.stdHole = false; renderEdit(); changed(); }); }
     function delHole(i) { var it = S.items[ED]; if (!it) return; it.holes.splice(i, 1); it.stdHole = false; renderEdit(); changed(); }
