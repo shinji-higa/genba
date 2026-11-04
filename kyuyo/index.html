@@ -82,8 +82,8 @@
 <script type="module">
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
-import { getFirestore, collection, doc, getDoc, getDocs, setDoc, writeBatch, query, where } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
-const APP_VER = 'Ver.20261104-09';
+import { getFirestore, collection, doc, getDoc, getDocs, setDoc, deleteDoc, writeBatch, query, where } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
+const APP_VER = 'Ver.20261104-10';
 const API = 'https://script.google.com/macros/s/AKfycbyW2hFHqIQuu-TsflPk_0zv7gquhoepspuvRG9-bMStPDSWSc2blcDFBtWs7MisP3f_/exec';
 const app = initializeApp({ apiKey: 'AIzaSyDVR4p4DO4s9h70uPlXUVlhNcMP9-YkQ5Q', authDomain: 'genba-portal-9077b.firebaseapp.com', projectId: 'genba-portal-9077b' });
 const auth = getAuth(app);
@@ -156,6 +156,12 @@ function attend(days, ym, close) {   // 時間外は1日ごとには丸めず、
   });
   return KY.roundAtt(a);
 }
+/* 速くする（ユーザー決定 2026-11-04）：確定した金額と勤怠の集計は、Firestore の写し（payrollMonths / payrollBonus）から読む。
+   写しは「確定した年の翌年3月末」に消える（expireAt）。正しい記録は一人ずつの給与DB（スプレッドシート）で、写しはサーバーが同じ処理で両方に書く。
+   写しが消えた古い月だけ、スプレッドシートを読む。日報シートは「更新」を押したときに読む（開いたときは写しで表示し、更新日時と警告を出す） */
+const expireOf = ym => new Date((Number(String(ym).slice(0, 4)) + 1) + '-03-31T23:59:59+09:00').getTime();
+const live = ym => Date.now() <= expireOf(ym);
+const fmtAt = t => t ? new Date(t).toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }) : '';
 const FAST_ACT = {
   async boot() {
     const u = (await getDoc(doc(db, 'users', auth.currentUser.uid))).data() || {};
@@ -167,44 +173,68 @@ const FAST_ACT = {
       const b = writeBatch(db); b.set(doc(db, 'payrollCfg', 'main'), plain(cfg)); emps.forEach(x => b.set(doc(db, 'payrollEmps', x.id), plain(x))); await b.commit();
     }
     await portalEmps(emps).catch(e => { window.kyLastError = e && e.code; });
+    expireCopies().catch(() => {});   // 期限が過ぎた写しを消す（待たない）
     return { me: { name: u.name || auth.currentUser.uid, uid: auth.currentUser.uid }, cfg: cfg || {}, emps };
   },
   async saveCfg(d) { await setDoc(doc(db, 'payrollCfg', 'main'), plain(d), { merge: true }); mirror('saveCfg', d); return {}; },
   async saveEmp(d) { const id = d.id || doc(col('payrollEmps')).id, x = { ...d, id }; await setDoc(doc(db, 'payrollEmps', id), plain(x)); mirror('saveEmp', x); return { id }; },
   async month(d) {
-    const saved = {}, att = {};
+    const saved = {}, att = {}, info = {};
     (await getDocs(query(col('payrollMonths'), where('ym', '==', d.ym)))).docs.forEach(x => { const v = x.data(); saved[v.id] = v; });
     await Promise.all((d.emps || []).map(async e => {
       const s = saved[e.id];
       if (s && s.status === '確定' && s.result && s.result.att) { att[e.id] = s.result.att; return; }
-      att[e.id] = e.uid ? attend((await getDocs(collection(db, 'daily', e.uid, 'days'))).docs.map(x => x.data()), d.ym, d.close) : attend([], d.ym, d.close);
+      const days = e.uid ? (await getDocs(collection(db, 'daily', e.uid, 'days'))).docs.map(x => x.data()) : [];
+      const cp = s && s.attCopy && s.attCopy.att ? s.attCopy : null, p = KY.period(d.ym, d.close), from = dKey(p.from), to = dKey(p.to);
+      const last = Math.max(0, ...days.filter(x => String(x.date) >= from && String(x.date) <= to).map(x => Number(x.at) || 0));   // ポータルで日報を最後に保存した日時
+      att[e.id] = cp ? KY.roundAtt(cp.att) : attend(days, d.ym, d.close);
+      info[e.id] = { at: cp ? Number(cp.at) || 0 : 0, changed: !!(cp && last > (Number(cp.at) || 0)) };
     }));
-    return { saved, att };
+    return { saved, att, info };
   },
   async saveAdj(d) {
     const r = doc(db, 'payrollMonths', mid(d.ym, d.id)), c = await getDoc(r);
     if (c.exists() && c.data().status === '確定') throw new Error('確定した月は直せません。先に確定を解除してください。');
-    await setDoc(r, plain({ ym: d.ym, year: d.ym.slice(0, 4), id: d.id, name: d.name, status: '入力中', adj: d.adj || {} }));
+    await setDoc(r, plain({ ym: d.ym, year: d.ym.slice(0, 4), id: d.id, name: d.name, status: '入力中', adj: d.adj || {}, expireAt: expireOf(d.ym) }), { mergeFields: ['ym', 'year', 'id', 'name', 'status', 'adj', 'expireAt'] });   // 勤怠の写し（attCopy）や送信日時は残す
     mirror('logAdj', { ym: d.ym, name: d.name, keys: Object.keys(d.adj || {}).map(k => (ADJ.find(a => a[0] === k) || [k, k])[1]) }); return {};
   },
-  // 確定・確定解除・提出データはサーバーが一人ずつの給与DBで行う
+  // 確定・確定解除はサーバーが一人ずつの給与DBと Firestore の写しの両方に書く
   async confirm(d) { await mirrorQ; return gas('confirm', d); },
   async unconfirm(d) { await mirrorQ; return gas('unconfirm', d); },
   async unconfirmBonus(d) { await mirrorQ; return gas('unconfirmBonus', d); },
-  async year(d) { return gas('year', d); },
+  async year(d) {
+    if (!live(d.year + '-12')) return gas('year', d);   // 写しが消えた年はスプレッドシートから
+    const ids = new Set((d.emps || []).map(e => e.id)), pick = s => s.docs.map(x => x.data()).filter(x => x.status === '確定' && x.result && ids.has(x.id)).map(x => ({ ym: x.ym, id: x.id, name: x.name, status: x.status, result: x.result }));
+    const [m, b] = await Promise.all([getDocs(query(col('payrollMonths'), where('year', '==', String(d.year)))), getDocs(query(col('payrollBonus'), where('year', '==', String(d.year))))]);
+    return { months: pick(m), bonus: pick(b) };
+  },
   async saveBonus(d) {
     if (d.done) { await mirrorQ; return gas('confirmBonus', d); }
     const b = writeBatch(db);
-    d.list.forEach(x => b.set(doc(db, 'payrollBonus', mid(d.ym, x.id)), plain({ ym: d.ym, year: d.ym.slice(0, 4), id: x.id, name: x.name, status: '入力中', amount: x.amount, result: x.result })));
+    d.list.forEach(x => b.set(doc(db, 'payrollBonus', mid(d.ym, x.id)), plain({ ym: d.ym, year: d.ym.slice(0, 4), id: x.id, name: x.name, status: '入力中', amount: x.amount, result: x.result, expireAt: expireOf(d.ym) }), { mergeFields: ['ym', 'year', 'id', 'name', 'status', 'amount', 'result', 'expireAt'] }));
     await b.commit();
     mirror('logAdj', { ym: d.ym, name: '賞与', keys: d.list.map(x => x.name + ' ' + yen(x.amount) + '円' + (x.result && x.result.taxManual ? '（所得税 手入力）' : '')) }); return {};   // 賞与の保存も操作記録に残す
   },
   async bonus(d) {
-    const [l, s] = await Promise.all([getDocs(query(col('payrollBonus'), where('ym', '==', d.ym))), gas('bonusRead', d)]);
-    const list = l.docs.map(x => x.data()).filter(x => !s.list.some(y => y.id === x.id)).concat(s.list);   // 確定した人は給与DBの値
-    return { list, prev: s.prev, sent: s.sent || {} };
+    if (!live(d.ym) || !live(d.prev)) {   // 写しが消えた月はスプレッドシートから
+      const [l, s] = await Promise.all([getDocs(query(col('payrollBonus'), where('ym', '==', d.ym))), gas('bonusRead', d)]);
+      const list = l.docs.map(x => x.data()).filter(x => !s.list.some(y => y.id === x.id)).concat(s.list);
+      return { list, prev: s.prev, sent: s.sent || {} };
+    }
+    const [l, p] = await Promise.all([getDocs(query(col('payrollBonus'), where('ym', '==', d.ym))), getDocs(query(col('payrollMonths'), where('ym', '==', d.prev)))]);
+    const list = l.docs.map(x => x.data()), sent = {};
+    list.forEach(x => { if (x.sentAt) sent[x.id] = { at: x.sentAt, n: x.sentN || 1 }; });
+    return { list, prev: p.docs.map(x => x.data()).filter(x => x.status === '確定' && x.result).map(x => ({ id: x.id, result: x.result })), sent };
   }
 };
+const dKey = d => d.getFullYear() + '/' + pad(d.getMonth() + 1) + '/' + pad(d.getDate());
+/** 期限（確定した年の翌年3月末）が過ぎた写しを消す。正しい記録は一人ずつの給与DBに残る */
+async function expireCopies() {
+  for (const c of ['payrollMonths', 'payrollBonus']) {
+    const s = await getDocs(query(col(c), where('expireAt', '<', Date.now())));
+    for (const x of s.docs) await deleteDoc(x.ref);
+  }
+}
 /* ポータルで「日報」にチェックがある人を従業員として自動で足す（テスト用の @example.com は除く）。ユーザー指示 2026-11-02 */
 const sortEmps = l => l.sort((a, b) => String(a.code || '').localeCompare(String(b.code || ''), 'ja', { numeric: true }));
 async function portalEmps(emps) {
@@ -274,42 +304,54 @@ const fail = e => { M.innerHTML = '<div class="card msg">' + esc((e && e.message
 let MON = null;
 async function drawMonth() {
   ST.ym = ST.ym || defaultYm(); const ym = ST.ym, c = cfgOf(ym);
-  busy('日報を集計しています…');
+  busy('読んでいます…');
   try {
     await portalEmps(ST.emps).catch(() => {});
     const r = await pay('month', { ym, close: c.close, emps: ST.emps.map(empRef) });
     if (ST.tab !== 'month' || ST.ym !== ym) return;
-    MON = { ym, saved: r.saved, att: r.att, res: {}, sheet: 'wait', view: 'list' };
+    const sent = {}; Object.values(r.saved).forEach(s => { if (s.sentAt) sent[s.id] = { at: s.sentAt, n: s.sentN || 1 }; });
+    MON = { ym, saved: r.saved, att: r.att, info: r.info || {}, sent, res: {}, view: 'list' };
+    Object.values(MON.saved).forEach(s => { if (s.status === '確定' && s.result) s.result.hourly = c.monthHours > 0 ? s.result.pay.base / c.monthHours : 0; });
+    MON.sheet = live(ym) ? sheetState(MON) : 'wait';
     ST.emps.filter(e => !e.left).forEach(e => { calcOne(e); });
     renderMonth();
-    // 日報のスプレッドシートが正。開いたら毎回読み、届いたら画面の数字を入れ替える（過去の月もここから）
-    sheetRead(MON);
+    if (!live(ym)) sheetRead(MON);   // 写しの期限が過ぎた古い月だけ、開いたときにスプレッドシートを読む
   } catch (e) { fail(e); }
 }
-/* スプレッドシートを読む。月を開いたときと、給与アプリの画面に戻ったときに読み直す（ユーザー指示 2026-11-02） */
+/* 日報シートを読み直す必要があるか（ユーザー決定 2026-11-04）：写しがない・締め日より前に読んだ・読んだあとにポータルで日報が直された */
+function sheetState(mon) {
+  const c = cfgOf(mon.ym), p = KY.period(mon.ym, c.close), closeEnd = new Date(p.to.getFullYear(), p.to.getMonth(), p.to.getDate() + 1).getTime();
+  const open = ST.emps.filter(e => !e.left && (mon.saved[e.id] || {}).status !== '確定'), why = [];
+  const none = open.filter(e => !(mon.info[e.id] || {}).at), early = open.filter(e => (mon.info[e.id] || {}).at && mon.info[e.id].at < closeEnd), chg = open.filter(e => (mon.info[e.id] || {}).changed);
+  if (none.length) why.push('まだ日報シートを読んでいない人がいます（' + none.map(e => e.name).join('、') + '）');
+  if (early.length) why.push('締め日（' + dLabel(p.to) + '）より前に読んだ集計です（' + early.map(e => e.name).join('、') + '）');
+  if (chg.length) why.push('読んだあとに、ポータルで日報が入力・修正された人がいます（' + chg.map(e => e.name).join('、') + '）');
+  mon.why = why;
+  return why.length ? 'need' : 'ok';
+}
+/* 日報シートを読む（「更新」を押したとき）。サーバーは集計の写しを Firestore にも書く */
 function sheetRead(mon) {
-  const c = cfgOf(mon.ym);
-  mon.reading = true; mon.readAt = Date.now();
-  return gas('attend', { ym: mon.ym, close: c.close, emps: ST.emps.map(empRef) }).then(x => {   // サーバーは1日ごとに丸めずに足すだけ。丸めはここ（KY.roundAtt）
+  const c = cfgOf(mon.ym), old = !live(mon.ym);
+  mon.reading = true; mon.sheet = 'wait'; if (ST.tab === 'month' && mon.view === 'list' && MON === mon) renderMonth();
+  return gas('attend', { ym: mon.ym, close: c.close, light: !old, emps: ST.emps.map(empRef) }).then(x => {   // サーバーは1日ごとに丸めずに足すだけ。丸めはここ（KY.roundAtt）
     mon.reading = false;
     if (MON !== mon) return;
-    mon.sent = x.sent || {};   // 明細メールを送った日時と回数（給与一覧から）
-    // 確定した人は一人ずつの給与DBの金額を使う（時間単価は保存していないので、基本給とその年の月平均所定時間から出す）
-    Object.keys(x.saved || {}).forEach(id => { const s = x.saved[id]; if (s.status !== '確定') return; s.result.hourly = c.monthHours > 0 ? s.result.pay.base / c.monthHours : 0; mon.saved[id] = s; mon.att[id] = s.result.att || {}; });
-    Object.keys(x.att).forEach(id => { const s = mon.saved[id]; if (!(s && s.status === '確定') && !x.att[id].error) mon.att[id] = KY.roundAtt(x.att[id]); });
-    mon.sheet = Object.values(x.att).some(a => a.error) ? 'ng' : 'ok';
+    if (old) {   // 古い月：確定した金額と送信日時もスプレッドシートから
+      mon.sent = x.sent || {};
+      Object.keys(x.saved || {}).forEach(id => { const s = x.saved[id]; if (s.status !== '確定') return; s.result.hourly = c.monthHours > 0 ? s.result.pay.base / c.monthHours : 0; mon.saved[id] = s; mon.att[id] = s.result.att || {}; });
+    }
+    Object.keys(x.att).forEach(id => { const s = mon.saved[id]; if (!(s && s.status === '確定') && !x.att[id].error) { mon.att[id] = KY.roundAtt(x.att[id]); mon.info[id] = { at: x.at || Date.now(), changed: false }; } });
+    mon.sheet = Object.values(x.att).some(a => a.error) ? 'ng' : old ? 'ok' : sheetState(mon);
     ST.emps.filter(e => !e.left).forEach(e => { calcOne(e); });
     if (ST.tab === 'month' && mon.view === 'list') renderMonth();
   }).catch(() => { mon.reading = false; if (MON === mon) { mon.sheet = 'ng'; if (ST.tab === 'month' && mon.view === 'list') renderMonth(); } });
 }
-function sheetBack() {
-  const m = MON;
-  if (document.hidden || !m || ST.tab !== 'month' || m.reading || Date.now() - (m.readAt || 0) < 10000) return;
-  if (ST.emps.filter(e => !e.left).every(e => (m.saved[e.id] || {}).status === '確定')) return;
-  sheetRead(m);
+/** 日報シートから読んだ日時（確定していない人のうち一番古いもの） */
+function readAtText(mon) {
+  const t = ST.emps.filter(e => !e.left && (mon.saved[e.id] || {}).status !== '確定').map(e => (mon.info[e.id] || {}).at || 0);
+  if (!t.length) return '';
+  return t.some(x => !x) ? 'まだ読んでいない人がいます' : fmtAt(Math.min(...t));
 }
-document.addEventListener('visibilitychange', sheetBack);
-window.addEventListener('focus', sheetBack);
 function calcOne(e) {
   const s = MON.saved[e.id] || {}, adj = s.adj || {};
   if (s.status === '確定' && s.result && s.result.payTotal != null) { MON.res[e.id] = s.result; return; }
@@ -323,7 +365,7 @@ function renderMonth() {
   const sum = k => list.reduce((n, e) => n + (Number((MON.res[e.id] || {})[k]) || 0), 0);
   M.innerHTML = '<div class="card"><div class="row"><label class="f">給与の月<br><input type="month" id="ym" value="' + ym + '"></label>' +
     '<div class="note">対象 ' + dLabel(p.from) + '〜' + dLabel(p.to) + '<br>支給日 ' + dLabel(pd) + '</div><span class="sp"></span><button class="b" id="reload">更新</button>' +
-    (done ? '<span class="tag ok">確定済み</span><button class="b dark" id="ma">明細をメールで送る</button><button class="b danger" id="un">確定を解除</button>' : '<button class="b dark" id="ok"' + (warn || MON.sheet !== 'ok' ? ' disabled' : '') + '>この月を確定</button>') + '</div>' + (done ? '' : MON.sheet === 'wait' ? '<div class="note">日報のスプレッドシートを読んでいます…（読み終わると確定できます）</div>' : MON.sheet === 'ng' ? '<div class="msg">日報のスプレッドシートを読めませんでした。開き直してください。</div>' : '<div class="note">日報のスプレッドシートの最新です。</div>') +
+    (done ? '<span class="tag ok">確定済み</span><button class="b dark" id="ma">明細をメールで送る</button><button class="b danger" id="un">確定を解除</button>' : '<button class="b dark" id="ok"' + (warn || MON.sheet !== 'ok' ? ' disabled' : '') + '>この月を確定</button>') + '</div>' + '<div class="note">日報シートから読んだ日時：<b>' + esc(readAtText(MON) || '（全員確定済み）') + '</b>' + (done ? '　確定日時：' + esc(Object.values(MON.saved).map(s => s.at || '').sort().pop() || '') : '') + '</div>' + (done ? '' : MON.sheet === 'wait' ? '<div class="note">日報シートを読んでいます…（読み終わると確定できます）</div>' : MON.sheet === 'ng' ? '<div class="msg">日報シートを読めませんでした。もう一度「更新」を押してください。</div>' : MON.sheet === 'need' ? '<div class="msg">「更新」を押して、日報シートを読み直してください。読み直すと確定できます。<br>' + MON.why.map(esc).join('<br>') + '</div>' : '') +
     (warn ? '<div class="msg">確認が必要な所が ' + warn + ' 件あります。直すと確定できます。</div>' : '') + '</div>' +
     '<div class="card wrapx"><table class="t"><tr><th>氏名</th><th>状態</th><th class="n">出勤</th><th class="n">時間外</th><th class="n">支給合計</th><th class="n">控除合計</th><th class="n">差引支給額</th></tr>' +
     list.map(e => { const r = MON.res[e.id] || {}, a = MON.att[e.id] || {}, st = (MON.saved[e.id] || {}).status, w = (r.warns || []).length;
@@ -331,7 +373,7 @@ function renderMonth() {
     '<tr><td colspan="4"><b>合計</b></td><td class="n"><b>' + yen(sum('payTotal')) + '</b></td><td class="n"><b>' + yen(sum('dedTotal')) + '</b></td><td class="n"><b>' + yen(sum('net')) + '</b></td></tr></table>' +
     (list.length ? '' : '<div class="note" style="margin-top:8px;">従業員のタブから人を追加してください。</div>') + '</div>';
   $('ym').onchange = e => { ST.ym = e.target.value; drawMonth(); };
-  $('reload').onclick = () => drawMonth();   // 今すぐスプレッドシートから読み直す
+  $('reload').onclick = () => { if (!MON.reading) sheetRead(MON); };   // 日報シートを読み直し、集計の写しを更新する
   M.querySelectorAll('tr.link').forEach(t => { t.onclick = () => drawPerson(t.dataset.id); });
   if ($('ok')) $('ok').onclick = async () => {
     if (!confirm(ymLabel(ym) + 'の給与を確定しますか？\n確定すると金額が固定されます。')) return;
