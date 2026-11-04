@@ -83,7 +83,7 @@
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
 import { getFirestore, collection, doc, getDoc, getDocs, setDoc, deleteDoc, writeBatch, query, where } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
-const APP_VER = 'Ver.20261104-27';
+const APP_VER = 'Ver.20261104-28';
 const API = 'https://script.google.com/macros/s/AKfycbyW2hFHqIQuu-TsflPk_0zv7gquhoepspuvRG9-bMStPDSWSc2blcDFBtWs7MisP3f_/exec';
 const app = initializeApp({ apiKey: 'AIzaSyDVR4p4DO4s9h70uPlXUVlhNcMP9-YkQ5Q', authDomain: 'genba-portal-9077b.firebaseapp.com', projectId: 'genba-portal-9077b' });
 const auth = getAuth(app);
@@ -657,7 +657,7 @@ function editEmp(e0) {
   const histHtml = '<div class="card"><h2>昇給・変更の履歴</h2><div class="note">基本給・交通費・扶養・16歳未満の家族は「適用する給与の月」、標準報酬月額は「保険の月」（翌月の給与から引きます）で入れます。確定済みの月にかかったときは差額を出して、次の未確定の月に入れます（基本給は遡及分、標準報酬はその他の控除）。交通費・扶養を遡ったときの差額は、その月の手入力で入れてください。</div>' +
     (rows.length ? '<div class="wrapx"><table class="t" style="margin-top:8px;"><tr><th>項目</th><th>適用月</th><th class="n">値</th><th>理由</th><th>入れた人</th><th>入れた日時</th><th>確定済みの月の差額</th><th></th></tr>' + rows.map(r => '<tr><td>' + esc(KY.HIST[r.k][0]) + '</td><td>' + esc(r.x.from) + '</td><td class="n">' + esc(Number(r.x.v).toLocaleString('ja-JP')) + '</td><td>' + esc(r.x.why || '') + '</td><td>' + esc(r.x.by || '') + '</td><td>' + esc(r.x.at || '') + '</td><td>' + (r.x.retro && r.x.retro.amount ? Number(r.x.retro.amount).toLocaleString('ja-JP') + '円 → ' + esc(ymLabel(r.x.retro.ym)) + 'の' + (r.x.retro.kind === 'pay' ? '遡及分' : 'その他の控除') : '') + '</td><td><button class="b" data-hd="' + r.k + ':' + r.i + '">取り消す</button></td></tr>').join('') + '</table></div>' : '<div class="note" style="margin-top:6px;">まだありません。</div>') +
     '<div class="row" style="margin-top:10px;align-items:flex-end;"><label class="f">項目<br><select id="hk">' + Object.keys(KY.HIST).map(k => '<option value="' + k + '">' + KY.HIST[k][0] + '</option>').join('') + '</select></label><label class="f"><span id="hfl">適用する給与の月</span><br><input type="month" id="hf" value="' + cur + '"></label><label class="f">新しい値<br><input type="number" id="hv" style="width:130px;"></label><label class="f">理由<br><input type="text" id="hw" style="width:220px;text-align:left;" placeholder="例：定期昇給"></label><button class="b dark" id="ha">履歴に足す</button></div><div class="msg" id="hm"></div></div>';
-  M.innerHTML = '<div class="row" style="margin-bottom:10px;"><button class="b" id="bk">← 一覧へ</button><b>' + esc(e.name || '新しい人') + '</b><span class="sp"></span><button class="b dark" id="sv">保存</button></div><div class="card">' + EMP_F.map(inp).join('') + '</div>' + (e.id ? histHtml : '') + '<div class="card"><h2>住民税（月ごと）</h2><div class="note">市区町村の通知書の額を入れます。その月の給与から引きます。6月から翌年5月までの額を入れ替えます。</div><div class="row" style="margin-top:8px;">' + ['06', '07', '08', '09', '10', '11', '12', '01', '02', '03', '04', '05'].map(m => '<label class="f">' + Number(m) + '月<br><input type="number" data-r="' + m + '" value="' + esc(e.resident[m] == null ? '' : e.resident[m]) + '" style="width:92px;"></label>').join('') + '</div></div><div class="msg" id="em"></div>';
+  M.innerHTML = '<div class="row" style="margin-bottom:10px;"><button class="b" id="bk">← 一覧へ</button><b>' + esc(e.name || '新しい人') + '</b><span class="sp"></span>' + (e.id ? '<button class="b danger" id="dl">この人を消す（間違えて足したとき）</button>' : '') + '<button class="b dark" id="sv">保存</button></div><div class="card">' + EMP_F.map(inp).join('') + '</div>' + (e.id ? histHtml : '') + '<div class="card"><h2>住民税（月ごと）</h2><div class="note">市区町村の通知書の額を入れます。その月の給与から引きます。6月から翌年5月までの額を入れ替えます。</div><div class="row" style="margin-top:8px;">' + ['06', '07', '08', '09', '10', '11', '12', '01', '02', '03', '04', '05'].map(m => '<label class="f">' + Number(m) + '月<br><input type="number" data-r="' + m + '" value="' + esc(e.resident[m] == null ? '' : e.resident[m]) + '" style="width:92px;"></label>').join('') + '</div></div><div class="msg" id="em"></div>';
   const collect = () => {
     M.querySelectorAll('[data-e]').forEach(i => { if (i.disabled) return; const k = i.dataset.e; if (i.type === 'checkbox') e[k] = i.checked; else if (i.type === 'number') e[k] = i.value === '' ? '' : Number(i.value); else e[k] = i.value.trim(); });
     M.querySelectorAll('[data-r]').forEach(i => { e.resident[i.dataset.r] = i.value === '' ? '' : Number(i.value); });
@@ -673,6 +673,22 @@ function editEmp(e0) {
     try { await save(); drawEmp(); } catch (x) { $('em').textContent = x.message; }
   };
   if (!e.id) return;
+  // 間違えて足した人を消す（ユーザー指示 2026-11-04）。確定したことがある人はサーバーが断る（その人は「退職」で外す）。
+  // ポータルで「日報」にチェックが入ったままだと、開き直したときにまた自動で足されるので、先に外してもらう
+  $('dl').onclick = async () => {
+    const msg = t => { $('em').textContent = t; $('em').scrollIntoView({ block: 'center' }); };
+    try {
+      const u = e.uid ? (await getDoc(doc(db, 'users', e.uid))).data() : null;
+      if (u && u.canDaily) { msg('ポータルでこの人の「日報」にチェックが入っています。先にポータルでチェックを外してください（外さないと、また自動で足されます）。'); return; }
+      if (!confirm(e.name + ' を給与アプリから消しますか？\n\n間違えて足した人だけに使います。給与・賞与を確定したことがある人は消せません（「退職」で外します）。\n消した人の設定は、控えを削除フォルダに残します。')) return;
+      $('dl').disabled = true; $('dl').textContent = '消しています…';
+      await mirrorQ;   // 保存の控えが書き終わってから消す（あとから行が戻らないように）
+      await gas('deleteEmp', { id: e.id, name: e.name });
+      await deleteDoc(doc(db, 'payrollEmps', e.id));
+      for (const c of ['payrollMonths', 'payrollBonus']) for (const x of (await getDocs(query(col(c), where('id', '==', e.id)))).docs) await deleteDoc(x.ref);   // 日報の集計の写しなども消す
+      ST.emps = ST.emps.filter(x => x.id !== e.id); drawEmp();
+    } catch (x) { msg(x.message); if ($('dl')) { $('dl').disabled = false; $('dl').textContent = 'この人を消す（間違えて足したとき）'; } }
+  };
   $('hk').onchange = () => { $('hfl').textContent = KY.HIST[$('hk').value][1] === 'ins' ? '保険の月' : '適用する給与の月'; };
   $('ha').onclick = async () => {
     const k = $('hk').value, from = $('hf').value, v = $('hv').value, why = $('hw').value.trim();
