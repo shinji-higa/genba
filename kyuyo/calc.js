@@ -94,11 +94,13 @@
     o.commute = Number(emp.commute) || 0;
     o.trip = yen(cfg.tripNight * n('tripNights'));
     o.absent = -yen(daily * n('absentDays'));
+    const pro = proDays(emp, ym, cfg);   // 入社・退職の月の日割り：在籍していない所定労働日を、欠勤と同じ日額で引く（手当は引かない。ユーザー決定 2026-11-04）
+    o.prorate = -yen(daily * pro);
     o.early = -yen(hourly * n('earlyH'));
     o.retro = a('retro');
     o.leave = a('leave');
     o.other = a('other');
-    const payTotal = o.base + o.ot + o.ot60 + o.shoDay + o.shoOt + o.houDay + o.houOt + o.night + o.family + o.commute + o.trip + o.absent + o.early + o.retro + o.leave + o.other;
+    const payTotal = o.base + o.ot + o.ot60 + o.shoDay + o.shoOt + o.houDay + o.houOt + o.night + o.family + o.commute + o.trip + o.absent + o.prorate + o.early + o.retro + o.leave + o.other;
     const insPay = payTotal - o.trip;   // 雇用保険の対象（出張手当は外す）
     const insYm = ymAdd(ym, -1), r = rateAt(cfg.rates, insYm), ins = emp.insure !== false, emp2 = emp.empIns !== false;
     const std = Number(emp.std) || 0, stdP = Number(emp.stdPen) || std;
@@ -121,7 +123,8 @@
     if (ins && !std) warns.push('標準報酬月額が入っていません');
     // notes は知らせるだけ（warns と違って確定は止めない）
     const notes = over60 > 0 ? ['時間外が月60時間を超えています（' + h60 + '時間、超えた分 ' + over60 + '時間）。超えた平日の ' + w60 + '時間に割増を足しました。'] : [];
-    return { hourly, daily, pay: o, payTotal, ded: d, dedTotal, net: payTotal - dedTotal, taxable, taxAuto: t.tax, taxManual: manual, warns, notes, h60, over60 };
+    if (pro > 0) notes.push('入社か退職の月なので、在籍していない所定労働日 ' + pro + '日分を日割りで引きました（日額 ' + yen(daily) + '円）。');
+    return { hourly, daily, pay: o, payTotal, ded: d, dedTotal, net: payTotal - dedTotal, taxable, taxAuto: t.tax, taxManual: manual, warns, notes, h60, over60, proDays: pro };
   }
 
   /** 賞与 */
@@ -166,9 +169,22 @@
     const s = Number(start); let e = Number(end); if (!isFinite(s) || !isFinite(e)) return 0; if (e <= s) e += 24;
     return [[-2, 5], [22, 29], [46, 53]].reduce((n, [a, b]) => n + Math.max(0, Math.min(e, b) - Math.max(s, a)), 0);
   }
+  /** 日割りで引く日数：締めの期間の所定労働日（平日−祝日−会社休日 cfg.offDays）のうち、入社日より前と退職日より後の日 */
+  function proDays(emp, ym, cfg) {
+    const j = emp.joined || '', l = emp.leftDate || '';
+    if (!j && !l) return 0;
+    const p = period(ym, cfg.close), key = d => d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2) + '-' + ('0' + d.getDate()).slice(-2), hol = {};
+    let n = 0;
+    for (const d = new Date(p.from); d <= p.to; d.setDate(d.getDate() + 1)) {
+      const k = key(d), y = d.getFullYear(); hol[y] = hol[y] || jpHolidays(y);
+      if (d.getDay() === 0 || d.getDay() === 6 || hol[y][k] || (cfg.offDays || []).includes(k)) continue;
+      if ((j && k < j) || (l && k > l)) n++;
+    }
+    return n;
+  }
   /** 家族手当：（扶養親族等の数＋16歳未満の家族）×1人の額、上限あり */
   const familyPay = (emp, cfg) => emp.noFamily ? 0 : Math.min(Number(cfg.familyMax != null ? cfg.familyMax : 30000), ((Number(emp.deps) || 0) + (Number(emp.kids16) || 0)) * Number(cfg.familyPer != null ? cfg.familyPer : 10000));
 
-  const api = { jpHolidays, workYear, calcMonth, calcBonus, monthlyTax, bonusRate, careTarget, payDay, period, rateAt, half, ymAdd, roundH, roundAtt, familyPay, lateH };
+  const api = { jpHolidays, workYear, calcMonth, calcBonus, monthlyTax, bonusRate, careTarget, payDay, period, rateAt, half, ymAdd, roundH, roundAtt, familyPay, lateH, proDays };
   if (typeof module !== 'undefined') module.exports = api; else root.KY = api;
 })(typeof window !== 'undefined' ? window : globalThis);
