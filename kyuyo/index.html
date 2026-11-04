@@ -83,7 +83,7 @@
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
 import { getFirestore, collection, doc, getDoc, getDocs, setDoc, writeBatch, query, where } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
-const APP_VER = 'Ver.20261104-08';
+const APP_VER = 'Ver.20261104-09';
 const API = 'https://script.google.com/macros/s/AKfycbyW2hFHqIQuu-TsflPk_0zv7gquhoepspuvRG9-bMStPDSWSc2blcDFBtWs7MisP3f_/exec';
 const app = initializeApp({ apiKey: 'AIzaSyDVR4p4DO4s9h70uPlXUVlhNcMP9-YkQ5Q', authDomain: 'genba-portal-9077b.firebaseapp.com', projectId: 'genba-portal-9077b' });
 const auth = getAuth(app);
@@ -454,7 +454,7 @@ async function drawBonus() {
       if (!confirm(ymLabel(ym) + 'の賞与明細を送ります。\n\n' + ok.map(e => e.name + '　' + e.email).join('\n') + (no.length ? '\n\n送らない人（メールか承諾日が空欄）：\n' + no.map(e => e.name).join('\n') : '') + sentNote(r.sent, ok) + '\n\nよろしいですか？')) return;
       sendBonusSlips(ok, ym, conf);
     };
-    // 確定した人だけを「入力中」に戻す（賞与額は戻る。所得税を手で入れていた人は入れ直す）
+    // 確定した人だけを「入力中」に戻す（賞与額と、手で入れた所得税が入力欄に戻る。2026-11-04）
     if ($('bu')) $('bu').onclick = async () => {
       const why = await ask(ymLabel(ym) + 'の賞与の確定を解除する理由を書いてください（記録に残ります）', '確定を解除'); if (!why) return;
       busy('一人ずつの給与DBを「入力中」に戻しています…');
