@@ -83,7 +83,7 @@
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
 import { getFirestore, collection, doc, getDoc, getDocs, setDoc, deleteDoc, writeBatch, query, where } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
-const APP_VER = 'Ver.20261104-18';
+const APP_VER = 'Ver.20261104-19';
 const API = 'https://script.google.com/macros/s/AKfycbyW2hFHqIQuu-TsflPk_0zv7gquhoepspuvRG9-bMStPDSWSc2blcDFBtWs7MisP3f_/exec';
 const app = initializeApp({ apiKey: 'AIzaSyDVR4p4DO4s9h70uPlXUVlhNcMP9-YkQ5Q', authDomain: 'genba-portal-9077b.firebaseapp.com', projectId: 'genba-portal-9077b' });
 const auth = getAuth(app);
@@ -251,7 +251,7 @@ async function pay(action, data) { return FAST_ACT[action] ? FAST_ACT[action](da
 
 /* ---------- 初期値。設定画面で変えられる（説明は CFG_DEF の横の文）---------- */
 const DEF = {
-  stdH: 8, close: 20, ot: 1.25, holSho: 1.6, holHou: 1.6, otSho: 2, otHou: 2, night: 1.6, tripNight: 3500, familyPer: 10000, familyMax: 30000, ot60: 1.5, noSat60: false,
+  stdH: 8, close: 20, ot: 1.25, holSho: 1.6, holHou: 1.6, otSho: 2, otHou: 2, night: 1.6, tripNight: 3500, familyPer: 10000, familyMax: 30000, ot60: 1.5, noSat60: false, submitMemo: '',
   rates: [
     { from: '2026-03', health: 10.12, care: 1.62, child: 0, pension: 18.3, emp: 0.65 },
     { from: '2026-04', health: 10.12, care: 1.62, child: 0.23, pension: 18.3, emp: 0.6 }
@@ -276,6 +276,9 @@ const CFG_DEF = [
     ['tripNight', '出張手当（1泊）', '円', '泊数に掛けます。明細に載せて振込に足します。税金と社会保険の計算には入れません。'],
     ['familyPer', '家族手当（1人）', '円', '従業員の「扶養親族等の数」と「16歳未満の家族」を足した人数に掛けます。'],
     ['familyMax', '家族手当の上限', '円', '人数が多くても、この額までにします。']
+  ]],
+  ['提出のメモ', [   // 税理士さん・社労士さんへの渡し方と時期は決まっていないので、メモで残せるようにする（ユーザー指示 2026-11-04）
+    ['submitMemo', '税理士さん・社労士さんへの渡し方と時期', 'memo', '渡すもの・渡し方（メール・紙など）・時期を書いておきます。「提出データ」の画面にも出ます。計算には使いません。']
   ]]
 ];
 const EMP_KIND = ['社員', '役員', 'その他'];
@@ -409,6 +412,20 @@ function slipHtml(e, r, ym, att) {
     '<div class="att"><span>出勤 ' + (a.workDays || 0) + '日</span><span>有給 ' + (a.paidDays || 0) + '日</span><span>欠勤 ' + (a.absentDays || 0) + '日</span><span>時間外 ' + (a.otH || 0) + 'h</span><span>所定休日 ' + (a.shoDays || 0) + '日</span><span>法定休日 ' + (a.houDays || 0) + '日</span><span>夜間作業 ' + ((a.nightDays || 0) + (a.nightShoDays || 0) + (a.nightHouDays || 0)) + '日</span><span>早退 ' + (a.earlyH || 0) + 'h</span></div>' +
     '<div class="ft">時間単価 ' + yen(Math.round(r.hourly || 0)) + '円（基本給 ÷ 月平均 ' + (Math.round(c.monthHours * 10) / 10) + '時間）</div></div>';
 }
+/* 紙で渡す明細（月を選んで出すPDF）：承諾書と同じ作り。上に宛名・題名、右下にダクトの絵とロゴ・会社の情報（ユーザー指示 2026-11-04）。
+   1ページ = A4縦1枚（756×1069px）。中の明細は画面の明細から上の帯（会社名・題名・宛名）を外して使う */
+const PAPER_SERIF = "font-family:'Yu Mincho','YuMincho','Hiragino Mincho ProN','Noto Serif JP',serif;";
+function paperHtml(title, e, ym, slip, sub) {
+  const body = slip.replace(/<div class="top">[\s\S]*?<\/h3><\/div><div style="text-align:right;">[\s\S]*?<\/div><\/div>/, '');
+  return '<div style="position:relative;width:756px;height:1069px;background:#fff;overflow:hidden;">' +
+    '<div style="position:absolute;right:0;bottom:0;width:470px;height:410px;background:url(paper_duct.png) right bottom/contain no-repeat;"></div>' +
+    '<div style="position:relative;padding:60px 60px 0;">' +
+    '<div style="display:flex;justify-content:space-between;align-items:flex-end;' + PAPER_SERIF + 'font-size:15px;"><span><b style="font-size:17px;">' + esc(e.name) + '</b>　様</span><span>' + ymLabel(ym) + '分' + (sub ? '　' + sub : '') + '</span></div>' +
+    '<div style="text-align:center;' + PAPER_SERIF + 'font-size:27px;font-weight:700;letter-spacing:.25em;margin:30px 0 30px;">' + title + '</div>' + body + '</div>' +
+    '<div style="position:absolute;right:60px;bottom:56px;text-align:right;' + PAPER_SERIF + 'font-size:12px;line-height:1.7;color:#222;"><img src="paper_logo.png" style="width:200px;display:block;margin:0 0 8px auto;"><b style="font-size:13.5px;">エクスケアダクト株式会社</b><br>代表取締役　比嘉 伸治<br>〒661-0961　兵庫県尼崎市戸ノ内町5丁目10-16<br>TEL (06)6420-4045　FAX (06)6420-4046</div></div>';
+}
+const paperSlip = (e, r, ym, att) => paperHtml('給与支払明細書', e, ym, slipHtml(e, r, ym, att), '支給日 ' + dLabel(payDayOf(ym)));
+const paperBonus = (e, r, ym) => paperHtml('賞与支払明細書', e, ym, bonusSlipHtml(e, r, ym));
 /* 明細のメール：データは付けず文章だけ（ユーザー指示 2026-11-02） */
 /* メールの最後の会社情報（承諾書のひな形のフッターと同じ。送り元が人事なので代表者の行の代わりに「人事」。2026-11-04） */
 const MAIL_SIGN = '――――――――――――――――――――\nエクスケアダクト株式会社　人事\n〒661-0961　兵庫県尼崎市戸ノ内町5丁目10-16\nTEL (06)6420-4045　FAX (06)6420-4046\n';
@@ -495,7 +512,7 @@ async function drawBonus() {
     // 賞与明細：確定した人だけ。メールは給与と同じく、メールと承諾日がある人だけに送る
     const cl = list.filter(e => conf[e.id]);
     if ($('bv')) $('bv').onclick = () => { let w = $('bvw'); if (!w) { w = document.createElement('div'); w.id = 'bvw'; M.appendChild(w); } w.innerHTML = cl.map(e => '<div style="margin-bottom:14px;">' + bonusSlipHtml(e, conf[e.id], ym) + '</div>').join(''); w.scrollIntoView(); };
-    if ($('bp')) $('bp').onclick = () => { $('bp').textContent = 'PDFを作っています…'; pdfOf(cl.map(e => bonusSlipHtml(e, conf[e.id], ym)), '賞与明細_' + ym + '.pdf').then(() => { $('bp').textContent = '明細（PDF）'; }, x => { $('bp').textContent = '明細（PDF）'; alert(x.message); }); };
+    if ($('bp')) $('bp').onclick = () => { $('bp').textContent = 'PDFを作っています…'; pdfOf(cl.map(e => paperBonus(e, conf[e.id], ym)), '賞与明細_' + ym + '.pdf').then(() => { $('bp').textContent = '明細（PDF）'; }, x => { $('bp').textContent = '明細（PDF）'; alert(x.message); }); };
     if ($('bm')) $('bm').onclick = () => {
       const ok = cl.filter(e => e.email && e.consent), no = cl.filter(e => !(e.email && e.consent));
       if (!ok.length) { alert('送れる人がいません。従業員のタブでメールと承諾日を入れてください。'); return; }
@@ -528,6 +545,7 @@ async function pdfOf(htmls, name, wide) {
   for (let i = 0; i < pages.length; i++) {
     const wd = pages[i].wide, W = wd ? 297 : 210;
     box.style.width = (wd ? 1120 : 780) + 'px'; box.innerHTML = pages[i].h;
+    await Promise.all([...box.querySelectorAll('img')].map(im => im.complete ? 0 : new Promise(r => { im.onload = im.onerror = r; })));   // ロゴが読み終わってから写す
     const cv = await window.html2canvas(box, { scale: 2, backgroundColor: '#fff', logging: false });
     if (i) pdf.addPage('a4', wd ? 'landscape' : 'portrait');
     const H = (wd ? 210 : 297) - 12; let w = W - 12, h = w * cv.height / cv.width; if (h > H) { h = H; w = h * cv.width / cv.height; }   // 用紙から切れないように縮める
@@ -567,7 +585,7 @@ async function drawYear() {
     if (ST.tab !== 'year' || ST.yr !== y) return;
     data.months.forEach(x => { const c = cfgOf(x.ym); x.result.hourly = c.monthHours > 0 ? x.result.pay.base / c.monthHours : 0; });
     const yms = [...new Set(data.months.map(x => x.ym))].sort(), bms = [...new Set(data.bonus.map(x => x.ym))].sort();
-    M.innerHTML = '<div class="card"><div class="row"><label class="f">年<br><input type="number" id="yr" value="' + y + '" style="width:100px;"></label><span class="sp"></span><button class="b dark" id="l">全員の賃金台帳（PDF）</button><button class="b" id="c">賃金台帳（Googleスプレッドシート）</button></div><div class="note">確定した月だけが載ります。税理士さん・社労士さんへの提出用です。</div>' +
+    M.innerHTML = '<div class="card"><div class="row"><label class="f">年<br><input type="number" id="yr" value="' + y + '" style="width:100px;"></label><span class="sp"></span><button class="b dark" id="l">全員の賃金台帳（PDF）</button><button class="b" id="c">賃金台帳（Googleスプレッドシート）</button></div><div class="note">確定した月だけが載ります。税理士さん・社労士さんへの提出用です。</div>' + (ST.cfg.submitMemo ? '<div class="msg" style="white-space:pre-wrap;color:var(--ink);background:#f1f4f8;border-color:var(--line);margin-top:8px;"><b>提出のメモ</b>（設定で直せます）\n' + esc(ST.cfg.submitMemo) + '</div>' : '') +
       '<div class="row" style="margin-top:8px;"><select id="lp">' + list.map(e => '<option value="' + esc(e.id) + '">' + esc(e.name) + '</option>').join('') + '</select><button class="b" id="lv">賃金台帳を画面で見る</button><button class="b" id="lpp">この人のPDF（台帳と明細）</button></div><div class="note">選んだ人の、その年の賃金台帳と、確定した給与明細・賞与明細を1つのPDFにします（個人別の提出用）。</div></div><div class="card wrapx" id="lw" style="display:none;"></div>' +
       '<div class="card"><h2>月ごとの給与明細（PDF）</h2>' + (yms.length ? '<div class="row">' + yms.map(m => '<button class="b" data-m="' + m + '">' + ymLabel(m) + '</button>').join('') + '</div>' : '<div class="note">確定した月がありません。</div>') + '</div>' +
       '<div class="card"><h2>賞与明細（PDF）</h2>' + (bms.length ? '<div class="row">' + bms.map(m => '<button class="b" data-bm="' + m + '">' + ymLabel(m) + '</button>').join('') + '</div>' : '<div class="note">確定した賞与がありません。</div>') + '</div><div class="note" id="ym2"></div>';
@@ -597,8 +615,8 @@ async function drawYear() {
       catch (x) { $('ym2').textContent = x.message; }
       $('c').disabled = false;
     };
-    M.querySelectorAll('[data-m]').forEach(b => { b.onclick = () => { $('ym2').textContent = 'PDFを作っています…'; const m = b.dataset.m; pdfOf(data.months.filter(x => x.ym === m).map(x => slipHtml(list.find(e => e.id === x.id) || { name: x.name }, x.result, m, x.result.att || {})), '給与明細_' + m + '.pdf').then(() => { $('ym2').textContent = ''; }, x => { $('ym2').textContent = x.message; }); }; });
-    M.querySelectorAll('[data-bm]').forEach(b => { b.onclick = () => { $('ym2').textContent = 'PDFを作っています…'; const m = b.dataset.bm; pdfOf(data.bonus.filter(x => x.ym === m).map(x => bonusSlipHtml(list.find(e => e.id === x.id) || { name: x.name }, x.result, m)), '賞与明細_' + m + '.pdf').then(() => { $('ym2').textContent = ''; }, x => { $('ym2').textContent = x.message; }); }; });
+    M.querySelectorAll('[data-m]').forEach(b => { b.onclick = () => { $('ym2').textContent = 'PDFを作っています…'; const m = b.dataset.m; pdfOf(data.months.filter(x => x.ym === m).map(x => paperSlip(list.find(e => e.id === x.id) || { name: x.name }, x.result, m, x.result.att || {})), '給与明細_' + m + '.pdf').then(() => { $('ym2').textContent = ''; }, x => { $('ym2').textContent = x.message; }); }; });
+    M.querySelectorAll('[data-bm]').forEach(b => { b.onclick = () => { $('ym2').textContent = 'PDFを作っています…'; const m = b.dataset.bm; pdfOf(data.bonus.filter(x => x.ym === m).map(x => paperBonus(list.find(e => e.id === x.id) || { name: x.name }, x.result, m)), '賞与明細_' + m + '.pdf').then(() => { $('ym2').textContent = ''; }, x => { $('ym2').textContent = x.message; }); }; });
   } catch (e) { fail(e); }
 }
 
@@ -683,7 +701,7 @@ function editEmp(e0) {
 function drawSet() {
   const c = ST.cfg, y0 = yearOf(), w = { ...KY.workYear(y0, 0), year: y0 }, mh = Math.round(cfgOf().monthHours * 10) / 10;
   M.innerHTML = '<div class="card"><h2>アプリの版</h2><div>今の版：<b>' + APP_VER + '</b></div><div style="margin-top:8px;"><button class="b dark" id="ver">最新の版にする</button></div><div class="note">新しい版が出ているときは、押すと入れ替わります。</div></div>' +
-    CFG_DEF.map(([h, fs]) => '<div class="card"><h2>' + h + '</h2>' + fs.map(f => f[2] === 'check' ? '<div class="set"><div class="k">' + f[1] + '</div><div><input type="checkbox" data-c="' + f[0] + '"' + (c[f[0]] ? ' checked' : '') + ' style="width:22px;height:22px;"></div><div class="d">' + f[3] + '</div></div>' : '<div class="set"><div class="k">' + f[1] + '</div><div class="row" style="flex-wrap:nowrap;gap:6px;"><input type="number" min="0" step="' + (f[2] === '倍' ? '0.01' : 'any') + '" data-c="' + f[0] + '"' + (f[2] === '倍' ? ' data-rate="1"' : '') + ' value="' + esc(f[2] === '倍' ? Number(c[f[0]]).toFixed(2) : c[f[0]]) + '"><span>' + f[2] + '</span></div><div class="d">' + f[3] + '</div></div>').join('') + (h === '基本の時間' ? '<div class="note" style="margin-top:8px;">' + w.year + '年の所定労働日数：平日 ' + w.weekdays + '日 − 祝日 ' + w.holidays + '日 ＝ <b>' + w.days + '日</b><br>月平均所定時間：<b>' + mh + '時間</b>（' + w.days + '日 × ' + c.stdH + '時間 ÷ 12）。時間単価＝基本給 ÷ この時間です。<br>時間外は1か月の合計で丸めます（平日・所定休日・法定休日ごと）。30分未満は切り捨て、30分以上は1時間に切り上げます。</div>' : '') + '</div>').join('') +
+    CFG_DEF.map(([h, fs]) => '<div class="card"><h2>' + h + '</h2>' + fs.map(f => f[2] === 'memo' ? '<div class="set"><div class="k">' + f[1] + '</div><div><textarea data-c="' + f[0] + '" rows="5" style="width:100%;min-width:260px;font:inherit;padding:8px;border:1px solid var(--line);border-radius:6px;">' + esc(c[f[0]] || '') + '</textarea></div><div class="d">' + f[3] + '</div></div>' : f[2] === 'check' ? '<div class="set"><div class="k">' + f[1] + '</div><div><input type="checkbox" data-c="' + f[0] + '"' + (c[f[0]] ? ' checked' : '') + ' style="width:22px;height:22px;"></div><div class="d">' + f[3] + '</div></div>' : '<div class="set"><div class="k">' + f[1] + '</div><div class="row" style="flex-wrap:nowrap;gap:6px;"><input type="number" min="0" step="' + (f[2] === '倍' ? '0.01' : 'any') + '" data-c="' + f[0] + '"' + (f[2] === '倍' ? ' data-rate="1"' : '') + ' value="' + esc(f[2] === '倍' ? Number(c[f[0]]).toFixed(2) : c[f[0]]) + '"><span>' + f[2] + '</span></div><div class="d">' + f[3] + '</div></div>').join('') + (h === '基本の時間' ? '<div class="note" style="margin-top:8px;">' + w.year + '年の所定労働日数：平日 ' + w.weekdays + '日 − 祝日 ' + w.holidays + '日 ＝ <b>' + w.days + '日</b><br>月平均所定時間：<b>' + mh + '時間</b>（' + w.days + '日 × ' + c.stdH + '時間 ÷ 12）。時間単価＝基本給 ÷ この時間です。<br>時間外は1か月の合計で丸めます（平日・所定休日・法定休日ごと）。30分未満は切り捨て、30分以上は1時間に切り上げます。</div>' : '') + '</div>').join('') +
     '<div class="card"><h2>保険料率（適用月ごと）</h2><div class="note">変わるときは行を足します。健康保険・介護保険・支援金・厚生年金は「保険の月」、雇用保険は「給与の月」で使います。社会保険は前月分を今月の給与から引くので、3月分の率は4月の給与から効きます。</div><div class="wrapx"><table class="t" id="rt"></table></div><button class="b" id="ra" style="margin-top:8px;">＋ 行を足す</button>' +
     '<div class="set" style="border:0;"><div class="k">健康保険</div><div></div><div class="d">協会けんぽ兵庫の率（全体）です。本人はこの半分です。毎年3月分から変わります。</div><div class="k">介護保険</div><div></div><div class="d">40〜64歳の人だけにかかります（全体の率）。全国共通です。</div><div class="k">支援金</div><div></div><div class="d">子ども・子育て支援金です（全体の率）。明細では健康保険料に含めます。</div><div class="k">厚生年金</div><div></div><div class="d">全体の率です。本人はこの半分です。</div><div class="k">雇用保険</div><div></div><div class="d">本人負担の率です（建設の事業）。毎年4月に変わります。</div></div></div>' +
     '<div class="card"><div class="row"><button class="b dark" id="sv">設定を保存</button><span id="sm" class="note"></span></div></div>';
@@ -696,7 +714,7 @@ function drawSet() {
   $('ver').onclick = () => { $('ver').textContent = '入れ替えています…'; refreshApp(); };
   $('ra').onclick = () => { rates.push({ ...(rates[rates.length - 1] || {}), from: '' }); drawR(); };
   $('sv').onclick = async () => {
-    const d = { rates }; M.querySelectorAll('[data-c]').forEach(i => { d[i.dataset.c] = i.type === 'checkbox' ? i.checked : i.dataset.rate ? Math.round(Number(i.value) * 100) / 100 : Number(i.value); });   // 掛率は小数点第2位まで
+    const d = { rates }; M.querySelectorAll('[data-c]').forEach(i => { d[i.dataset.c] = i.tagName === 'TEXTAREA' ? i.value : i.type === 'checkbox' ? i.checked : i.dataset.rate ? Math.round(Number(i.value) * 100) / 100 : Number(i.value); });   // 掛率は小数点第2位まで
     try { await pay('saveCfg', d); Object.assign(ST.cfg, d); drawSet(); $('sm').textContent = '保存しました'; } catch (x) { $('sm').textContent = x.message; }
   };
 }
