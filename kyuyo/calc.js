@@ -159,9 +159,16 @@
     const raw = a.raw || { otH: a.otH, shoOtH: a.shoOtH, houOtH: a.houOtH };
     return { ...a, raw, otH: roundH(raw.otH), shoOtH: roundH(raw.shoOtH), houOtH: roundH(raw.houOtH) };
   }
+  /** 深夜（22時〜翌5時）に入る時間。日報の時刻は 20 や 5.5 の数。終わりが始まり以下なら翌日。
+      夜間作業の日だけ数える。夜勤に休憩はない（ユーザー指示 2026-10-29）ので引かない */
+  function lateH(start, end) {
+    if (start === '' || start == null || end === '' || end == null) return 0;
+    const s = Number(start); let e = Number(end); if (!isFinite(s) || !isFinite(e)) return 0; if (e <= s) e += 24;
+    return [[-2, 5], [22, 29], [46, 53]].reduce((n, [a, b]) => n + Math.max(0, Math.min(e, b) - Math.max(s, a)), 0);
+  }
   /** 家族手当：（扶養親族等の数＋16歳未満の家族）×1人の額、上限あり */
   const familyPay = (emp, cfg) => emp.noFamily ? 0 : Math.min(Number(cfg.familyMax != null ? cfg.familyMax : 30000), ((Number(emp.deps) || 0) + (Number(emp.kids16) || 0)) * Number(cfg.familyPer != null ? cfg.familyPer : 10000));
 
-  const api = { jpHolidays, workYear, calcMonth, calcBonus, monthlyTax, bonusRate, careTarget, payDay, period, rateAt, half, ymAdd, roundH, roundAtt, familyPay };
+  const api = { jpHolidays, workYear, calcMonth, calcBonus, monthlyTax, bonusRate, careTarget, payDay, period, rateAt, half, ymAdd, roundH, roundAtt, familyPay, lateH };
   if (typeof module !== 'undefined') module.exports = api; else root.KY = api;
 })(typeof window !== 'undefined' ? window : globalThis);

@@ -78,12 +78,12 @@
 <main id="m"></main>
 
 <script src="tax.js?v=7"></script>
-<script src="calc.js?v=15"></script>
+<script src="calc.js?v=16"></script>
 <script type="module">
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
 import { getFirestore, collection, doc, getDoc, getDocs, setDoc, writeBatch, query, where } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
-const APP_VER = 'Ver.20261104-04';
+const APP_VER = 'Ver.20261104-05';
 const API = 'https://script.google.com/macros/s/AKfycbyW2hFHqIQuu-TsflPk_0zv7gquhoepspuvRG9-bMStPDSWSc2blcDFBtWs7MisP3f_/exec';
 const app = initializeApp({ apiKey: 'AIzaSyDVR4p4DO4s9h70uPlXUVlhNcMP9-YkQ5Q', authDomain: 'genba-portal-9077b.firebaseapp.com', projectId: 'genba-portal-9077b' });
 const auth = getAuth(app);
@@ -141,7 +141,7 @@ let mirrorQ = Promise.resolve();   // 控えは押した順に1つずつ書く�
 const mirror = (action, data) => { mirrorQ = mirrorQ.then(() => gas(action, data)).catch(e => alert('ドライブの給与管理DBへ書けませんでした：' + e.message + '\n画面の保存はできています。')); return mirrorQ; };
 function attend(days, ym, close) {   // 時間外は1日ごとには丸めず、月の合計を KY.roundAtt で丸める
   const p = KY.period(ym, close), s = d => d.getFullYear() + '/' + pad(d.getMonth() + 1) + '/' + pad(d.getDate()), from = s(p.from), to = s(p.to);
-  const a = { totalH: 0, workDays: 0, absentDays: 0, paidDays: 0, otH: 0, earlyH: 0, shoDays: 0, shoOtH: 0, shoH: 0, houDays: 0, houOtH: 0, houH: 0, nightDays: 0, nightShoDays: 0, nightHouDays: 0, rows: 0 };   // shoH・houH は休日に働いた時間（賃金台帳の休日労働時間数）
+  const a = { totalH: 0, workDays: 0, absentDays: 0, paidDays: 0, otH: 0, earlyH: 0, shoDays: 0, shoOtH: 0, shoH: 0, houDays: 0, houOtH: 0, houH: 0, nightDays: 0, nightShoDays: 0, nightHouDays: 0, lateH: 0, rows: 0 };   // shoH・houH は休日に働いた時間、lateH は夜間作業の日の22時〜5時の時間（賃金台帳用）
   days.forEach(d => {
     if (d.deleted || String(d.date) < from || String(d.date) > to) return;
     a.rows++;
@@ -149,7 +149,7 @@ function attend(days, ym, close) {   // 時間外は1日ごとには丸めず、
     if (d.kubun === '有給') { a.paidDays++; return; }
     if (d.kubun !== '出勤') return;
     const ot = Number(d.ot) || 0, night = !!d.night;
-    const h = Number(d.hours) || 0; a.totalH += h;
+    const h = Number(d.hours) || 0; a.totalH += h; if (night) a.lateH += KY.lateH(d.start, d.end);
     if (d.type === '所定休日') { a.shoDays++; a.shoOtH += ot; a.shoH += h; if (night) a.nightShoDays++; }
     else if (d.type === '法定休日') { a.houDays++; a.houOtH += ot; a.houH += h; if (night) a.nightHouDays++; }
     else { a.workDays++; a.otH += ot; a.earlyH += Number(d.early) || 0; if (night) a.nightDays++; }
@@ -455,7 +455,7 @@ const attOf = r => r.att || {};
 const P_ = k => r => r.pay && r.pay[k], D_ = k => r => r.ded && r.ded[k], A_ = f => r => f(attOf(r));
 const YR_ROWS = [['勤務', null], ['賃金計算期間', (r, ym) => { if (!r.pay) return ''; const p = KY.period(ym, ST.cfg.close); return (p.from.getMonth() + 1) + '/' + p.from.getDate() + '〜' + (p.to.getMonth() + 1) + '/' + p.to.getDate(); }, 't'],
   ['労働日数', A_(a => (a.workDays || 0) + (a.shoDays || 0) + (a.houDays || 0)), 'h'], ['労働時間数', A_(a => a.totalH), 'h'],
-  ['時間外労働時間数（平日）', A_(a => a.otH), 'h'], ['時間外労働時間数（所定休日）', A_(a => a.shoOtH), 'h'], ['休日労働時間数（法定休日）', A_(a => a.houH), 'h'],
+  ['時間外労働時間数（平日）', A_(a => a.otH), 'h'], ['時間外労働時間数（所定休日）', A_(a => a.shoOtH), 'h'], ['休日労働時間数（法定休日）', A_(a => a.houH), 'h'], ['深夜労働時間数（22時〜5時）', A_(a => a.lateH), 'h'],
   ['所定休日の出勤日数', A_(a => a.shoDays), 'h'], ['法定休日の出勤日数', A_(a => a.houDays), 'h'], ['夜間作業の日数', A_(a => (a.nightDays || 0) + (a.nightShoDays || 0) + (a.nightHouDays || 0)), 'h'],
   ['有給の日数', A_(a => a.paidDays), 'h'], ['欠勤の日数', A_(a => a.absentDays), 'h'], ['遅刻・早退の時間数', A_(a => a.earlyH), 'h'],
   ['支給', null], ['基本給', P_('base')], ['時間外手当', P_('ot')], ['月60時間超の割増', P_('ot60')], ['所定休日出勤手当', P_('shoDay')], ['所定休日時間外手当', P_('shoOt')], ['法定休日出勤手当', P_('houDay')], ['法定休日時間外手当', P_('houOt')], ['夜間作業手当', P_('night')], ['家族手当', P_('family')], ['交通費', P_('commute')], ['出張手当', P_('trip')], ['欠勤の減額', P_('absent')], ['遅刻・早退の減額', P_('early')], ['遡及分', P_('retro')], ['休業手当・自宅待機', P_('leave')], ['その他の支給', P_('other')], ['支給合計', r => r.payTotal],
