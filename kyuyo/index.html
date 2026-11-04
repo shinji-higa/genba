@@ -83,7 +83,7 @@
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
 import { getFirestore, collection, doc, getDoc, getDocs, setDoc, deleteDoc, writeBatch, query, where } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
-const APP_VER = 'Ver.20261104-11';
+const APP_VER = 'Ver.20261104-12';
 const API = 'https://script.google.com/macros/s/AKfycbyW2hFHqIQuu-TsflPk_0zv7gquhoepspuvRG9-bMStPDSWSc2blcDFBtWs7MisP3f_/exec';
 const app = initializeApp({ apiKey: 'AIzaSyDVR4p4DO4s9h70uPlXUVlhNcMP9-YkQ5Q', authDomain: 'genba-portal-9077b.firebaseapp.com', projectId: 'genba-portal-9077b' });
 const auth = getAuth(app);
@@ -392,7 +392,11 @@ function renderMonth() {
     if (!confirm(ymLabel(ym) + 'の明細を送ります。\n\n' + ok.map(e => e.name + '　' + e.email).join('\n') + (no.length ? '\n\n送らない人（メールか承諾日が空欄）：\n' + no.map(e => e.name).join('\n') : '') + sentNote(MON.sent, ok) + '\n\nよろしいですか？')) return;
     sendSlips(ok, ym);
   };
-  if ($('un')) $('un').onclick = async () => { const why = await ask(ymLabel(ym) + 'の給与の確定を解除する理由を書いてください（記録に残ります）', '確定を解除'); if (!why) return; busy('一人ずつの給与DBを「入力中」に戻しています…'); try { await pay('unconfirm', { ym, why, emps: list.map(empRef) }); } catch (x) { alert(x.message); } drawMonth(); };
+  if ($('un')) $('un').onclick = async () => {
+    // 昇給・変更の履歴の差額に含めた月を確定し直すと、新しい額で払った上に差額も払って二重になる。先に履歴を取り消してもらう（2026-11-04）
+    const dup = list.filter(e => Object.keys(e.hist || {}).some(k => (e.hist[k] || []).some(x => x.retro && x.retro.amount && (x.retro.months || []).includes(ym))));
+    if (dup.length) { alert(ymLabel(ym) + 'は、次の人の昇給・変更の差額の計算に含まれています。\n' + dup.map(e => e.name).join('、') + '\n\nこのまま確定し直すと差額が二重になります。先に従業員の画面で、その履歴を取り消してから解除してください（確定し直したあとで、もう一度履歴を足すと差額を出し直します）。'); return; }
+    const why = await ask(ymLabel(ym) + 'の給与の確定を解除する理由を書いてください（記録に残ります）', '確定を解除'); if (!why) return; busy('一人ずつの給与DBを「入力中」に戻しています…'); try { await pay('unconfirm', { ym, why, emps: list.map(empRef) }); } catch (x) { alert(x.message); } drawMonth(); };
 }
 const ADJ = [['taxManual', '所得税（手入力）', '空欄なら税額表で自動計算します'], ['tripNights', '出張（泊）', '泊数を入れると手当になります'], ['retro', '遡及分', '過去の差額を足す額'], ['leave', '休業手当・自宅待機', '金額で入れます'], ['other', 'その他の支給', '金額で入れます'], ['yearEnd', '年末調整', '還付はマイナスで入れます'], ['otherDed', 'その他の控除', '金額で入れます']];
 function slipHtml(e, r, ym, att) {
