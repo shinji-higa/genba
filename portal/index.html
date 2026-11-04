@@ -141,7 +141,7 @@ storage.maxUploadRetryTime = 60000;   // 電波が切れたら1分で一度あ�
 const auth = getAuth(app);
 auth.languageCode = 'ja';   // パスワード再設定のメールと画面を日本語にする
 const db = initializeFirestore(app, { localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }) });
-const APP_VER = 'Ver.20261104-06';
+const APP_VER = 'Ver.20261104-07';
 
 /* ---------- 電波なしでも使う（今の現場管理と同じ考え方） ----------
    ・保存は押した瞬間に完了の形。電波が戻ったら自動で送る（データは Firestore が端末に貯める）
@@ -1576,7 +1576,7 @@ const O_KIND = {
   cons: { host: 'consHost', src: 'cons.html?v=22', title: '消耗品注文', word: '注文書', log: '消耗品', fn: 'Cons' },
   kana: { host: 'kanaHost', src: 'kana.html?v=7', title: '金物注文（添付）', word: '注文書', log: '金物（添付）', fn: 'Kana' },
   hood: { host: 'hoodHost', src: 'hood.html?v=31', title: 'フード注文', word: '注文書', log: 'フード', fn: 'Hood' },   // 厨房フード（箱型・山型・二重。数字入りの図の注文書。2026-11-03）
-  kanagu: { host: 'kanaguHost', src: 'kanagu.html?v=6', title: '金物注文', word: '注文書', log: '金物', fn: 'Kanagu' }   // 鋼材テンプレート（三角ブラケット・穴あきアングル。図面と立体図の注文書。2026-11-04）
+  kanagu: { host: 'kanaguHost', src: 'kanagu.html?v=7', title: '金物注文', word: '注文書', log: '金物', fn: 'Kanagu' }   // 鋼材テンプレート（三角ブラケット・穴あきアングル。図面と立体図の注文書。2026-11-04）
 };
 function oOpen(s) {
   const btn = (k, ic, t, sub) => '<button type="button" class="order-btn' + (k ? ' on' : '') + '"' + (k ? ' data-o="' + k + '"' : ' disabled') + '><span class="order-ic">' + ic + '</span><span class="order-t">' + t + '</span><span class="order-s">' + sub + '</span></button>';
