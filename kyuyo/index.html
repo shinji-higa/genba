@@ -83,7 +83,7 @@
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
 import { getFirestore, collection, doc, getDoc, getDocs, setDoc, deleteDoc, writeBatch, query, where } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
-const APP_VER = 'Ver.20261104-14';
+const APP_VER = 'Ver.20261104-15';
 const API = 'https://script.google.com/macros/s/AKfycbyW2hFHqIQuu-TsflPk_0zv7gquhoepspuvRG9-bMStPDSWSc2blcDFBtWs7MisP3f_/exec';
 const app = initializeApp({ apiKey: 'AIzaSyDVR4p4DO4s9h70uPlXUVlhNcMP9-YkQ5Q', authDomain: 'genba-portal-9077b.firebaseapp.com', projectId: 'genba-portal-9077b' });
 const auth = getAuth(app);
@@ -616,6 +616,9 @@ function editEmp(e0) {
   $('sv').onclick = async () => {
     collect();
     if (!e.name) { $('em').textContent = '氏名を入れてください'; return; }
+    // 形のおかしいメールは保存させない（保存できてしまい、送るときに初めて失敗していた。2026-11-04）
+    e.email = String(e.email || '').trim();
+    if (e.email && !/^[A-Za-z0-9._%+\-]+@[A-Za-z0-9\-]+(\.[A-Za-z0-9\-]+)+$/.test(e.email)) { $('em').textContent = '明細を送るメールの形が正しくありません（' + e.email + '）。全角の文字・空白・記号が入っていないか確かめてください。'; $('em').scrollIntoView({ block: 'center' }); return; }
     try { await save(); drawEmp(); } catch (x) { $('em').textContent = x.message; }
   };
   if (!e.id) return;
