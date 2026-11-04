@@ -83,7 +83,7 @@
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
 import { getFirestore, collection, doc, getDoc, getDocs, setDoc, deleteDoc, writeBatch, query, where } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
-const APP_VER = 'Ver.20261104-19';
+const APP_VER = 'Ver.20261104-20';
 const API = 'https://script.google.com/macros/s/AKfycbyW2hFHqIQuu-TsflPk_0zv7gquhoepspuvRG9-bMStPDSWSc2blcDFBtWs7MisP3f_/exec';
 const app = initializeApp({ apiKey: 'AIzaSyDVR4p4DO4s9h70uPlXUVlhNcMP9-YkQ5Q', authDomain: 'genba-portal-9077b.firebaseapp.com', projectId: 'genba-portal-9077b' });
 const auth = getAuth(app);
@@ -422,7 +422,7 @@ function paperHtml(title, e, ym, slip, sub) {
     '<div style="position:relative;padding:60px 60px 0;">' +
     '<div style="display:flex;justify-content:space-between;align-items:flex-end;' + PAPER_SERIF + 'font-size:15px;"><span><b style="font-size:17px;">' + esc(e.name) + '</b>　様</span><span>' + ymLabel(ym) + '分' + (sub ? '　' + sub : '') + '</span></div>' +
     '<div style="text-align:center;' + PAPER_SERIF + 'font-size:27px;font-weight:700;letter-spacing:.25em;margin:30px 0 30px;">' + title + '</div>' + body + '</div>' +
-    '<div style="position:absolute;right:60px;bottom:56px;text-align:right;' + PAPER_SERIF + 'font-size:12px;line-height:1.7;color:#222;"><img src="paper_logo.png" style="width:200px;display:block;margin:0 0 8px auto;"><b style="font-size:13.5px;">エクスケアダクト株式会社</b><br>代表取締役　比嘉 伸治<br>〒661-0961　兵庫県尼崎市戸ノ内町5丁目10-16<br>TEL (06)6420-4045　FAX (06)6420-4046</div></div>';
+    '<div style="position:absolute;right:60px;bottom:56px;text-align:right;' + PAPER_SERIF + 'font-size:12px;line-height:1.7;color:#222;text-shadow:0 0 3px #fff,0 0 3px #fff,0 0 2px #fff;"><img src="paper_logo.png" style="width:200px;display:block;margin:0 0 8px auto;"><b style="font-size:13.5px;">エクスケアダクト株式会社</b><br>代表取締役　比嘉 伸治<br>〒661-0961　兵庫県尼崎市戸ノ内町5丁目10-16<br>TEL (06)6420-4045　FAX (06)6420-4046</div></div>';
 }
 const paperSlip = (e, r, ym, att) => paperHtml('給与支払明細書', e, ym, slipHtml(e, r, ym, att), '支給日 ' + dLabel(payDayOf(ym)));
 const paperBonus = (e, r, ym) => paperHtml('賞与支払明細書', e, ym, bonusSlipHtml(e, r, ym));
