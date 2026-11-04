@@ -83,7 +83,7 @@
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
 import { getFirestore, collection, doc, getDoc, getDocs, setDoc, deleteDoc, writeBatch, query, where } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
-const APP_VER = 'Ver.20261104-16';
+const APP_VER = 'Ver.20261104-17';
 const API = 'https://script.google.com/macros/s/AKfycbyW2hFHqIQuu-TsflPk_0zv7gquhoepspuvRG9-bMStPDSWSc2blcDFBtWs7MisP3f_/exec';
 const app = initializeApp({ apiKey: 'AIzaSyDVR4p4DO4s9h70uPlXUVlhNcMP9-YkQ5Q', authDomain: 'genba-portal-9077b.firebaseapp.com', projectId: 'genba-portal-9077b' });
 const auth = getAuth(app);
@@ -567,27 +567,35 @@ async function drawYear() {
     if (ST.tab !== 'year' || ST.yr !== y) return;
     data.months.forEach(x => { const c = cfgOf(x.ym); x.result.hourly = c.monthHours > 0 ? x.result.pay.base / c.monthHours : 0; });
     const yms = [...new Set(data.months.map(x => x.ym))].sort(), bms = [...new Set(data.bonus.map(x => x.ym))].sort();
-    M.innerHTML = '<div class="card"><div class="row"><label class="f">年<br><input type="number" id="yr" value="' + y + '" style="width:100px;"></label><span class="sp"></span><button class="b dark" id="l">全員の賃金台帳（PDF）</button><button class="b" id="c">賃金台帳（Excel用CSV）</button></div><div class="note">確定した月だけが載ります。税理士さん・社労士さんへの提出用です。</div>' +
+    M.innerHTML = '<div class="card"><div class="row"><label class="f">年<br><input type="number" id="yr" value="' + y + '" style="width:100px;"></label><span class="sp"></span><button class="b dark" id="l">全員の賃金台帳（PDF）</button><button class="b" id="c">賃金台帳（Googleスプレッドシート）</button></div><div class="note">確定した月だけが載ります。税理士さん・社労士さんへの提出用です。</div>' +
       '<div class="row" style="margin-top:8px;"><select id="lp">' + list.map(e => '<option value="' + esc(e.id) + '">' + esc(e.name) + '</option>').join('') + '</select><button class="b" id="lv">賃金台帳を画面で見る</button><button class="b" id="lpp">この人のPDF（台帳と明細）</button></div><div class="note">選んだ人の、その年の賃金台帳と、確定した給与明細・賞与明細を1つのPDFにします（個人別の提出用）。</div></div><div class="card wrapx" id="lw" style="display:none;"></div>' +
       '<div class="card"><h2>月ごとの給与明細（PDF）</h2>' + (yms.length ? '<div class="row">' + yms.map(m => '<button class="b" data-m="' + m + '">' + ymLabel(m) + '</button>').join('') + '</div>' : '<div class="note">確定した月がありません。</div>') + '</div>' +
       '<div class="card"><h2>賞与明細（PDF）</h2>' + (bms.length ? '<div class="row">' + bms.map(m => '<button class="b" data-bm="' + m + '">' + ymLabel(m) + '</button>').join('') + '</div>' : '<div class="note">確定した賞与がありません。</div>') + '</div><div class="note" id="ym2"></div>';
     $('yr').onchange = e => { ST.yr = e.target.value; drawYear(); };
     $('lv').onclick = () => { const e = list.find(x => x.id === $('lp').value); $('lw').style.display = ''; $('lw').innerHTML = ledgerHtml(e, y, data); };   // PDFを作る前に画面で確かめる
-    // 個人別：台帳2ページ（横）のあとに、その人の給与明細・賞与明細を月の順に（縦）。同じ月は給与の次に賞与（ユーザー決定 2026-11-04 案A）
+    // 個人別：台帳2ページ（横）のあとに、その人の給与明細・賞与明細を月の順に（縦）。同じ月は給与の次に賞与（ユーザー決定 2026-11-04 案A）。
+    // 明細は1ページに2つずつ。2つで用紙に入らないときは pdfOf が縮めるので見切れない（ユーザー指示 2026-11-04）
     $('lpp').onclick = () => {
       const e = list.find(x => x.id === $('lp').value), byYm = (a, b) => a.ym < b.ym ? -1 : a.ym > b.ym ? 1 : 0;
       const sl = data.months.filter(x => x.id === e.id).map(x => ({ ym: x.ym, k: 0, h: slipHtml(e, x.result, x.ym, x.result.att || {}) }))
         .concat(data.bonus.filter(x => x.id === e.id).map(x => ({ ym: x.ym, k: 1, h: bonusSlipHtml(e, x.result, x.ym) }))).sort((a, b) => byYm(a, b) || a.k - b.k);
       $('ym2').textContent = 'PDFを作っています…';
-      pdfOf([{ h: ledgerHtml(e, y, data, 1), wide: true }, { h: ledgerHtml(e, y, data, 2), wide: true }].concat(sl.map(x => ({ h: x.h, wide: false }))), y + '年_' + String(e.name).replace(/\s+/g, '') + '_賃金台帳と明細.pdf')
+      pdfOf([{ h: ledgerHtml(e, y, data, 1), wide: true }, { h: ledgerHtml(e, y, data, 2), wide: true }].concat(sl.filter((_, i) => i % 2 === 0).map((x, i) => ({ h: '<div style="display:flex;flex-direction:column;gap:28px;">' + x.h + (sl[i * 2 + 1] ? sl[i * 2 + 1].h : '') + '</div>', wide: false }))), y + '年_' + String(e.name).replace(/\s+/g, '') + '_賃金台帳と明細.pdf')
         .then(() => { $('ym2').textContent = ''; }, x => { $('ym2').textContent = x.message; });
     };
     $('l').onclick = () => { $('ym2').textContent = 'PDFを作っています…'; pdfOf(list.flatMap(e => [ledgerHtml(e, y, data, 1), ledgerHtml(e, y, data, 2)]), '賃金台帳_' + y + '.pdf', true).then(() => { $('ym2').textContent = ''; }, x => { $('ym2').textContent = x.message; }); };
-    $('c').onclick = () => {
-      const months = Array.from({ length: 12 }, (_, i) => y + '-' + pad(i + 1)), out = [['氏名', '性別', '項目'].concat(months.map(m => Number(m.slice(5)) + '月'))];
-      list.forEach(e => YR_ROWS.filter(r => r[1]).forEach(([k, f, ty]) => out.push([e.name, e.gender || '', k].concat(months.map(m => { const v = f((data.months.find(x => x.ym === m && x.id === e.id) || {}).result || {}, m); return ty === 't' ? v || '' : Number(v) || 0; })))));
-      list.forEach(e => { if (!data.bonus.some(b => b.id === e.id)) return; BN_ROWS.filter(r => r[1]).forEach(([k, f]) => out.push([e.name, e.gender || '', k].concat(months.map(m => Number(f((data.bonus.find(x => x.ym === m && x.id === e.id) || {}).result || {})) || 0)))); });   // 賞与の行（賞与がある人だけ）
-      const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob(['﻿' + out.map(r => r.map(v => '"' + String(v).replace(/"/g, '""') + '"').join(',')).join('\r\n')], { type: 'text/csv' })); a.download = '賃金台帳_' + y + '.csv'; a.click();
+    // 賃金台帳を Google スプレッドシートへ（CSV の代わり。1人1シート。ユーザー決定 2026-11-04）。表は PDF の台帳と同じ行・同じ合計
+    $('c').onclick = async () => {
+      const months = Array.from({ length: 12 }, (_, i) => y + '-' + pad(i + 1)), head = ['項目'].concat(months.map(m => Number(m.slice(5)) + '月'), ['合計']);
+      const block = (rows, get) => rows.map(([k, f, ty]) => { if (!f) return [k]; const v = months.map(m => { const x = f(get(m), m); return ty === 't' ? x || '' : Number(x) || 0; }); return [k].concat(v, [ty === 't' ? '' : ty === 'h' ? Number(hNum(v.reduce((a, b) => a + b, 0))) : v.reduce((a, b) => a + b, 0)]); });
+      const sheets = list.map(e => {
+        const row = m => (data.months.find(x => x.ym === m && x.id === e.id) || {}).result || {}, bon = data.bonus.filter(x => x.id === e.id), brow = m => (bon.find(x => x.ym === m) || {}).result || {};
+        return { name: e.name, rows: [['氏名', e.name], ['性別', e.gender || '未入力'], ['賃金台帳', y + '年（確定した月だけ）'], head].concat(block(YR_ROWS, row), bon.length ? block(BN_ROWS, brow) : []) };
+      });
+      $('c').disabled = true; $('ym2').textContent = 'Googleスプレッドシートに書いています…';
+      try { const r = await pay('ledgerSheet', { year: y, sheets }); $('ym2').innerHTML = esc(r.name) + 'に ' + r.n + '人分を書きました（1人1シート）。<a href="' + esc(r.url) + '" target="_blank" rel="noopener">開く</a>'; window.open(r.url, '_blank', 'noopener'); }
+      catch (x) { $('ym2').textContent = x.message; }
+      $('c').disabled = false;
     };
     M.querySelectorAll('[data-m]').forEach(b => { b.onclick = () => { $('ym2').textContent = 'PDFを作っています…'; const m = b.dataset.m; pdfOf(data.months.filter(x => x.ym === m).map(x => slipHtml(list.find(e => e.id === x.id) || { name: x.name }, x.result, m, x.result.att || {})), '給与明細_' + m + '.pdf').then(() => { $('ym2').textContent = ''; }, x => { $('ym2').textContent = x.message; }); }; });
     M.querySelectorAll('[data-bm]').forEach(b => { b.onclick = () => { $('ym2').textContent = 'PDFを作っています…'; const m = b.dataset.bm; pdfOf(data.bonus.filter(x => x.ym === m).map(x => bonusSlipHtml(list.find(e => e.id === x.id) || { name: x.name }, x.result, m)), '賞与明細_' + m + '.pdf').then(() => { $('ym2').textContent = ''; }, x => { $('ym2').textContent = x.message; }); }; });
