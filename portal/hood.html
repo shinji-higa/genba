@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>フード注文</title>
-  <!-- Ver.20261104-02 -->
+  <!-- Ver.20261104-03 -->
   <style>
     /* 厨房フードの注文書。注文用図面（箱型・山型・二重）の寸法表を画面で入力し、数字入りの図を1台1ページで出す。フードはメーカー共通なので本体にメーカーは出さない。
        仕組みは金物注文（添付）kana.html と同じ（保存・提出・版・PDF）。2026-11-02 作成
@@ -137,7 +137,14 @@
     .dp-red { color: #d40000 !important; font-weight: 700; }
     .dp tr.red td { color: #d40000; font-weight: 700; }
     .dp .dp-chgt td { color: #d40000; text-align: left !important; font-family: "Yu Gothic", Meiryo, sans-serif; font-size: 9pt; padding-left: 2mm; }
-    .toast { position: fixed; left: 50%; bottom: 80px; transform: translateX(-50%); background: #111; color: #fff; padding: 10px 16px; border-radius: 6px; font-size: 0.9rem; z-index: 99; opacity: 0; transition: opacity .2s; pointer-events: none; }
+    /* 部材を選ぶ画面（角ダクトの製作伝票と同じ。ユーザー指示 2026-11-04） */
+    .pick-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 10px; }
+    .pick { border: 1.5px solid #8d9298; border-radius: 6px; padding: 8px; cursor: pointer; text-align: center; background: #fff; }
+    .pick:hover { border-color: var(--primary); }
+    .pick svg { width: 100%; height: 84px; }
+    .pick-n { font-weight: 700; font-size: 0.9rem; margin-top: 4px; }
+    .pick-d { font-size: 0.75rem; color: var(--muted); }
+    #pickerBg .sheet-b { background: #eceef1; }    .toast { position: fixed; left: 50%; bottom: 80px; transform: translateX(-50%); background: #111; color: #fff; padding: 10px 16px; border-radius: 6px; font-size: 0.9rem; z-index: 99; opacity: 0; transition: opacity .2s; pointer-events: none; }
     .toast.show { opacity: 1; }
 
     /* ===== 注文書（A4）===== 製作伝票と同じ書式 */
@@ -261,6 +268,14 @@
       <div class="sheet-h"><span class="ttl" id="edTitle">フード</span><button type="button" class="btn btn-sub btn-danger" id="edDel" onclick="deleteItem()">削除</button><button type="button" class="btn btn-sub" onclick="closeEdit()">閉じる</button></div>
       <div class="sheet-b"><div class="ed" id="edBody"></div></div>
       <div class="sheet-f"><button type="button" class="btn btn-sub" onclick="dupItem()">同じものを複製</button><button type="button" class="btn btn-dark" onclick="decideEdit()">決定</button></div>
+    </div>
+  </div>
+
+  <!-- フードの形を選ぶ -->
+  <div class="sheet-bg" id="pickerBg" onclick="if(event.target===this)closeSheet('pickerBg')">
+    <div class="sheet">
+      <div class="sheet-h"><span class="ttl">フードの形を選ぶ</span><button type="button" class="btn btn-sub" onclick="closeSheet('pickerBg')">閉じる</button></div>
+      <div class="sheet-b"><div class="pick-grid" id="pickGrid"></div></div>
     </div>
   </div>
 
@@ -851,7 +866,14 @@
 
     /* ===== フード1台の入力 ===== */
     var ED = -1;
-    function addItem() { if (revLocked()) { lockedToast(); return; } var it = blankItem(); var last = S.items[S.items.length - 1]; if (last) { it.mat = last.mat; it.fin = last.fin; it.shape = last.shape; } S.items.push(it); changed(); openEdit(S.items.length - 1); }
+    // 追加は「フードの形を選ぶ」画面から（角ダクトの製作伝票と同じ。ユーザー指示 2026-11-04）。入力画面では形を変えない
+    function addItem() { openPicker(); }
+    function openPicker() {
+      if (revLocked()) { lockedToast(); return; }
+      document.getElementById('pickGrid').innerHTML = Object.keys(SHAPES).map(function (k) { var p = blankItem(); p.shape = k; p.L = '2000'; p.W = '900'; p.H = '600'; return '<div class="pick" onclick="pickType(\'' + k + '\')">' + hoodSvg(p, 'thumb') + '<div class="pick-n">' + esc(SHAPES[k]) + '</div><div class="pick-d">' + esc(SHAPE_LONG[k] || '') + '</div></div>'; }).join('');
+      openSheet('pickerBg');
+    }
+    function pickType(k) { closeSheet('pickerBg'); var it = blankItem(), last = S.items[S.items.length - 1]; it.shape = k; if (last) { it.mat = last.mat; it.fin = last.fin; } S.items.push(it); changed(); openEdit(S.items.length - 1); }
     function openEdit(i) { if (revLocked()) { lockedToast(); return; } ED = i; renderEdit(); openSheet('edBg'); }
     function decideEdit() { var it = S.items[ED]; var m = it && tenOver(it); if (m) { toast(m); var eb = document.getElementById('edErr'); if (eb) eb.scrollIntoView({ block: 'nearest' }); return; } closeEdit(); }   // 天板のおまかせがはみ出すときは決定できない（ユーザー指示 2026-11-03）
     /* フードを上から見て右へ90°回す。平面の点（左から x・手前から y）は（y, L−x）へ。L と W、E と F、開口・吊り穴の位置、面の向きもいっしょに回す。分割は向きが変わるので消す */
@@ -932,7 +954,6 @@
         '<div class="ed-fig"><div id="edFigSvg" onclick="figZoom()" title="押すと拡大">' + hoodSvg(it, 'val') + '</div><div class="ed-calc" id="edCalc"></div><button type="button" class="btn btn-sub" style="margin-top:6px;" onclick="edRot()">90°回す（L と W を入れ替え）</button></div>' +
         '<div class="ed-form"><div class="errbox" id="edErr" style="display:none;margin:0 0 10px;"></div>' +
         '<div class="edbox"><div class="fg"><label>台数</label><div class="qty"><button type="button" onclick="edQty(\'qty\',-1)">−</button><input type="number" inputmode="numeric" min="1" value="' + esc(it.qty) + '" oninput="edIn(\'qty\',this.value)"><button type="button" onclick="edQty(\'qty\',1)">＋</button></div></div>' +
-        '<div class="spec-row"><span class="lbl">形</span>' + chipsHtml('shape', SHAPES, it.shape) + '</div>' +
         (isDouble(it) ? '<div class="note" style="margin:-4px 0 8px;">外装の箱付き。分割はできません</div><div class="spec-row"><span class="lbl">外装</span>' + chipsArr('men', MEN, menOf(it)) + '</div><div class="note" style="margin:-4px 0 8px;">5面体＝山型の天端がフードの天端と同じ高さ。開口ごとに「山形」（山形と外装の天板に同じ位置であける。入力1か所）か「外装」（外装だけ。5面）を選ぶ。開口・短管が重なると注意。吊りは吊り穴・吊り金物・無しから1つ。4面体＝外装の上の板（平面図に見える面）なし、h を入れる。開口は山形だけ。吊り金物だけ</div>' : '') +
         '<div class="spec-row"><span class="lbl">材質</span>' + chipsArr('mat', MATS, it.mat) + '</div>' + '<div class="spec-row"><span class="lbl">仕上</span>' + chipsArr('fin', finsOf(it), it.fin) + '</div>' + '</div>' +
         '<div class="edbox"><div class="edbox-h">寸法（mm）</div><div class="dims">' + dim('L', 'L 長さ') + dim('W', 'W 奥行') + dim('H', 'H 高さ') + (it.shape === 'HW' && menOf(it) === '4面体' ? dim('h', 'h 斜め部') : '') + (it.shape === 'HY' ? dim('sk', 'たれ（100以上）', '150') : '') + '</div>' +

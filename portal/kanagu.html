@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>金物注文</title>
-  <!-- Ver.20261104-09 -->
+  <!-- Ver.20261104-10 -->
   <style>
     /* 金物注文（鋼材テンプレート）。三角ブラケット・穴あきアングルの図面の寸法を画面で入力し、数字入りの図面を1件1ページで出す（立体図はやめた 2026-11-04）。
        仕組みはフード注文 hood.html と同じ（保存・提出・版・PDF）。2026-11-04 作成
@@ -139,7 +139,14 @@
     .dp-red { color: #d40000 !important; font-weight: 700; }
     .dp tr.red td { color: #d40000; font-weight: 700; }
     .dp .dp-chgt td { color: #d40000; text-align: left !important; font-family: "Yu Gothic", Meiryo, sans-serif; font-size: 9pt; padding-left: 2mm; }
-    .toast { position: fixed; left: 50%; bottom: 80px; transform: translateX(-50%); background: #111; color: #fff; padding: 10px 16px; border-radius: 6px; font-size: 0.9rem; z-index: 99; opacity: 0; transition: opacity .2s; pointer-events: none; }
+    /* 部材を選ぶ画面（角ダクトの製作伝票と同じ。ユーザー指示 2026-11-04） */
+    .pick-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 10px; }
+    .pick { border: 1.5px solid #8d9298; border-radius: 6px; padding: 8px; cursor: pointer; text-align: center; background: #fff; }
+    .pick:hover { border-color: var(--primary); }
+    .pick svg { width: 100%; height: 84px; }
+    .pick-n { font-weight: 700; font-size: 0.9rem; margin-top: 4px; }
+    .pick-d { font-size: 0.75rem; color: var(--muted); }
+    #pickerBg .sheet-b { background: #eceef1; }    .toast { position: fixed; left: 50%; bottom: 80px; transform: translateX(-50%); background: #111; color: #fff; padding: 10px 16px; border-radius: 6px; font-size: 0.9rem; z-index: 99; opacity: 0; transition: opacity .2s; pointer-events: none; }
     .toast.show { opacity: 1; }
 
     /* ===== 注文書（A4）===== 製作伝票と同じ書式 */
@@ -266,6 +273,14 @@
     </div>
   </div>
 
+  <!-- 部材を選ぶ -->
+  <div class="sheet-bg" id="pickerBg" onclick="if(event.target===this)closeSheet('pickerBg')">
+    <div class="sheet">
+      <div class="sheet-h"><span class="ttl">部材を選ぶ</span><button type="button" class="btn btn-sub" onclick="closeSheet('pickerBg')">閉じる</button></div>
+      <div class="sheet-b"><div class="pick-grid" id="pickGrid"></div></div>
+    </div>
+  </div>
+
   <!-- 注文書一覧 -->
   <div class="sheet-bg" id="slipsBg" onclick="if(event.target===this)closeSheet('slipsBg')">
     <div class="sheet">
@@ -369,7 +384,7 @@
     // 選べるもの（ユーザー指示 2026-11-04）
     var STEELS = ['L25×3', 'L30×3', 'L40×3', 'L40×5', 'L50×4', 'L50×6', 'L65×6', 'L75×6', 'L100×7', 'その他'], ST0 = 'L50×6';   // 等辺山形鋼だけなので L辺×厚さ で書く（ユーザー指示 2026-11-04）
     var FINS = ['錆止塗装（ライトグレー）', '溶融亜鉛めっき（溶接面ローバル仕上）', '溶融亜鉛めっき（どぶ付け）', '公共仕様', '無し'], FIN0 = FINS[2];
-    var HOLE_D = ['10', '12', '14', '16', '18'], HD0 = '12';
+    var HOLE_D = ['6', '8', '10', '12', '14', '16', '18'], HD0 = '12';   // φ6・φ8 を追加（ユーザー指示 2026-11-04）
     var UNITS = ['台', 'セット'];
     function stOf(it) { return it.st === 'その他' ? (it.sto || '') : (it.st || ST0); }
     function finOf(it) { return it.fin || FIN0; }
@@ -422,7 +437,7 @@
     function drawPos(it, r) { var p = 0, s = drawSegs(it, r); return s.slice(0, -1).map(function (v) { p += v; return p; }); }
     function segLabels(it, r) { var L = lettersOf(it)[r.k], sg = segsOf(it, r); return sg.v.map(function (x, i) { return x != null ? fmtC(x) : L + (i + 1); }); }
     function totLabel(it, on) { var x = totOf(it, on); return x ? fmtC(x) : lettersOf(it)[on]; }
-    function sizeText(it) { var L = totOf(it, 'L'), H = totOf(it, 'H'); return it.shape === 'TB' ? (L ? fmtN(L) : 'A') + '×' + (H ? fmtN(H) : 'B') : 'L' + (L ? fmtN(L) : 'A'); }
+    function sizeText(it) { var L = totOf(it, 'L'), H = totOf(it, 'H'); return it.shape === 'TB' ? (L ? fmtN(L) : 'A') + '×' + (H ? fmtN(H) : 'B') : (L ? 'L' + fmtN(L) : '長さA'); }
     function qtyText(it) { return (num(it.qty) || 1) + it.unit; }
     function dirText(it) { return isSet(it) ? '左右1組' : it.flip ? '反転' : '図のとおり'; }
     function fmtN(n) { return n ? String(Math.round(n * 10) / 10).replace(/\.0$/, '') : ''; }
@@ -678,7 +693,15 @@
 
     /* ===== 金物1件の入力（寸法・穴・仕様のタブ。ユーザー指示 2026-11-04）===== */
     var ED = -1;
-    function addItem() { if (revLocked()) { lockedToast(); return; } var last = S.items[S.items.length - 1], it = blankItem(last && last.shape); if (last) { it.st = last.st; it.sto = last.sto; it.fin = last.fin; it.unit = last.unit; } S.items.push(it); changed(); openEdit(S.items.length - 1); }
+    // 追加は「部材を選ぶ」画面から（角ダクトの製作伝票と同じ。ユーザー指示 2026-11-04）。入力画面では品名を変えない
+    var PICK_DESC = { TB: '横材・縦材・斜材（L形鋼）', AN: 'L形鋼1本・穴あき' };
+    function addItem() { openPicker(); }
+    function openPicker() {
+      if (revLocked()) { lockedToast(); return; }
+      document.getElementById('pickGrid').innerHTML = Object.keys(SHAPES).map(function (k) { var p = blankItem(k); return '<div class="pick" onclick="pickType(\'' + k + '\')">' + bracketSvg(p, 'thumb') + '<div class="pick-n">' + esc(SHAPES[k]) + '</div><div class="pick-d">' + esc(PICK_DESC[k] || '') + '</div></div>'; }).join('');
+      openSheet('pickerBg');
+    }
+    function pickType(k) { closeSheet('pickerBg'); var last = S.items[S.items.length - 1], it = blankItem(k); if (last) { it.st = last.st; it.sto = last.sto; it.fin = last.fin; it.unit = last.unit; } S.items.push(it); changed(); openEdit(S.items.length - 1); }
     function openEdit(i) { if (revLocked()) { lockedToast(); return; } ED = i; renderEdit(); openSheet('edBg'); }
     function decideEdit() { closeEdit(); }
     function closeEdit() { closeSheet('edBg'); ED = -1; changed(); }
@@ -739,8 +762,7 @@
         (isSet(it) ? '<div class="note" style="margin-top:6px;">セット＝図のものと左右反対のもの、各1台で1組</div>' : '<button type="button" class="btn btn-sub" style="margin-top:6px;" onclick="edFlip()">' + (it.flip ? '反転をやめる（図のとおりに戻す）' : '反転（左右反対にする）') + '</button>' + (it.flip ? '<span class="note" style="margin-left:8px;">反転中</span>' : '')) + '</div>' +
         '<div class="ed-form"><div class="errbox" id="edErr" style="display:none;margin:0 0 10px;"></div><div class="note" id="edMiss" style="display:none;margin:0 0 8px;color:#c62828;font-weight:700;"></div>' +
         '<div class="edbox"><div class="fg"><label>数量</label><div class="qty"><button type="button" onclick="edQty(\'qty\',-1)">−</button><input type="number" inputmode="numeric" min="1" value="' + esc(it.qty) + '" oninput="edIn(\'qty\',this.value)"><button type="button" onclick="edQty(\'qty\',1)">＋</button></div></div>' +
-        '<div class="spec-row"><span class="lbl">単位</span>' + chipsArr('unit', UNITS, it.unit) + '</div><div class="note" style="margin:-4px 0 8px;">台＝図のとおり1台（左右反対がほしいときは図の下の「反転」）。セット＝左右対称の2台で1組</div>' +
-        '<div class="spec-row" style="margin-bottom:0;"><span class="lbl">品名</span>' + chipsHtml('shape', SHAPES, it.shape) + '</div></div>' +
+        '<div class="spec-row"><span class="lbl">単位</span>' + chipsArr('unit', UNITS, it.unit) + '</div><div class="note" style="margin:-4px 0 0;">台＝図のとおり1台（左右反対がほしいときは図の下の「反転」）。セット＝左右対称の2台で1組</div></div>' +
         '<div class="edbox"><div class="edbox-h">仕様</div><div class="spec-row"><span class="lbl">鋼材</span>' + chipsArr('st', STEELS, it.st) + '</div>' + (it.st === 'その他' ? '<div class="fg"><input type="text" value="' + esc(it.sto) + '" placeholder="鋼材の大きさ（例：L75×9）" oninput="edIn(\'sto\',this.value)"></div>' : '') +
         '<div class="spec-row" style="margin-bottom:0;"><span class="lbl">仕上げ</span>' + chipsArr('fin', FINS, finOf(it)) + '</div></div>' +
         '<div class="edbox"><div class="edbox-h">寸法（mm）</div><div class="dims">' + sh.lens.map(function (x) { return '<div><label>' + LT[x[0]] + '　' + esc(x[1]) + '</label>' + numIn('len_' + x[0], it[x[0]], 'edIn(\'' + x[0] + '\',this.value)') + '</div>'; }).join('') + '</div>' +
