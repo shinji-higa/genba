@@ -73,7 +73,9 @@
     .chips { display: flex; flex-wrap: wrap; gap: 6px; }
     .chip { padding: 6px 11px; border-radius: 16px; border: 1.5px solid #6e6e6e; background: #fff; font-size: 0.8rem; font-weight: 600; color: #222; cursor: pointer; user-select: none; }   /* 枠は現場管理のボタンくらいの太さ、色は少し濃いグレー */
     .chip.on { background: var(--primary); border-color: var(--primary); color: #fff; }
-    .spec-row { display: grid; grid-template-columns: 64px 1fr; gap: 8px; align-items: center; margin-bottom: 8px; }
+    .spec-row { display: grid; grid-template-columns: 64px 1fr; gap: 8px; align-items: start; margin-bottom: 8px; }
+    .spec-row > .lbl { padding-top: 7px; }   /* 項目名はボタンの1段目にそろえる。項目の間に区切り線（ユーザー指示 2026-11-04：鋼材と仕上げの境目が分かりにくい） */
+    .spec-row + .spec-row, .note + .spec-row { border-top: 1.5px solid #b9bdc3; padding-top: 8px; }
     .spec-row .lbl { margin: 0; }
     .spec-note { font-size: 0.75rem; color: var(--muted); background: #eceef0; border-radius: 4px; padding: 8px 10px; line-height: 1.6; }
     .spec-note b { color: #333; }

@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>金物注文</title>
-  <!-- Ver.20261104-08 -->
+  <!-- Ver.20261104-09 -->
   <style>
     /* 金物注文（鋼材テンプレート）。三角ブラケット・穴あきアングルの図面の寸法を画面で入力し、数字入りの図面を1件1ページで出す（立体図はやめた 2026-11-04）。
        仕組みはフード注文 hood.html と同じ（保存・提出・版・PDF）。2026-11-04 作成
@@ -87,7 +87,9 @@
     #figZoom svg { width: 100%; height: 100%; display: block; }
     #figZoom .zc { position: absolute; top: 10px; right: 14px; font-size: 0.85rem; color: #444; }
     .dims { display: grid; grid-template-columns: repeat(auto-fill, minmax(92px, 1fr)); gap: 8px; }
-    .spec-row { display: grid; grid-template-columns: 64px 1fr; gap: 8px; align-items: center; margin-bottom: 8px; }
+    .spec-row { display: grid; grid-template-columns: 64px 1fr; gap: 8px; align-items: start; margin-bottom: 8px; }
+    .spec-row > .lbl { padding-top: 7px; }   /* 項目名はボタンの1段目にそろえる。項目の間に区切り線（ユーザー指示 2026-11-04：鋼材と仕上げの境目が分かりにくい） */
+    .spec-row + .spec-row, .note + .spec-row { border-top: 1.5px solid #b9bdc3; padding-top: 8px; }
     .spec-row .lbl { margin: 0; }
     .open-card { border: 1.5px solid #9e9e9e; border-radius: 6px; padding: 8px; margin-bottom: 8px; background: #fff; }
     .open-head { display: flex; gap: 6px; align-items: center; margin-bottom: 6px; }
@@ -365,7 +367,7 @@
         order: ['r1', 'r2'] }
     };
     // 選べるもの（ユーザー指示 2026-11-04）
-    var STEELS = ['L25×25×3', 'L30×30×3', 'L40×40×3', 'L40×40×5', 'L50×50×4', 'L50×50×6', 'L65×65×6', 'L75×75×6', 'L100×100×7', 'その他'], ST0 = 'L50×50×6';
+    var STEELS = ['L25×3', 'L30×3', 'L40×3', 'L40×5', 'L50×4', 'L50×6', 'L65×6', 'L75×6', 'L100×7', 'その他'], ST0 = 'L50×6';   // 等辺山形鋼だけなので L辺×厚さ で書く（ユーザー指示 2026-11-04）
     var FINS = ['錆止塗装（ライトグレー）', '溶融亜鉛めっき（溶接面ローバル仕上）', '溶融亜鉛めっき（どぶ付け）', '公共仕様', '無し'], FIN0 = FINS[2];
     var HOLE_D = ['10', '12', '14', '16', '18'], HD0 = '12';
     var UNITS = ['台', 'セット'];
@@ -446,7 +448,7 @@
     var OLD_FIN = { '錆止め塗装': FINS[0], '仕上げなし': FINS[4], 'その他': FIN0 };
     function normItems(a) {
       (a || []).forEach(function (it) {
-        if (!SHP[it.shape]) it.shape = 'TB'; if (UNITS.indexOf(it.unit) < 0) it.unit = '台';
+        if (!SHP[it.shape]) it.shape = 'TB'; if (it.st) it.st = String(it.st).replace(/^L(\d+)×\1×(\d+(\.\d+)?)$/, 'L$1×$2'); /* 前の版の L50×50×6 → L50×6 */ if (UNITS.indexOf(it.unit) < 0) it.unit = '台';
         if (OLD_FIN[it.fin]) it.fin = OLD_FIN[it.fin]; if (FINS.indexOf(it.fin) < 0) it.fin = FIN0; delete it.fino;
         if (!it.h) {
           it.h = {};
@@ -739,7 +741,7 @@
         '<div class="edbox"><div class="fg"><label>数量</label><div class="qty"><button type="button" onclick="edQty(\'qty\',-1)">−</button><input type="number" inputmode="numeric" min="1" value="' + esc(it.qty) + '" oninput="edIn(\'qty\',this.value)"><button type="button" onclick="edQty(\'qty\',1)">＋</button></div></div>' +
         '<div class="spec-row"><span class="lbl">単位</span>' + chipsArr('unit', UNITS, it.unit) + '</div><div class="note" style="margin:-4px 0 8px;">台＝図のとおり1台（左右反対がほしいときは図の下の「反転」）。セット＝左右対称の2台で1組</div>' +
         '<div class="spec-row" style="margin-bottom:0;"><span class="lbl">品名</span>' + chipsHtml('shape', SHAPES, it.shape) + '</div></div>' +
-        '<div class="edbox"><div class="edbox-h">仕様</div><div class="spec-row"><span class="lbl">鋼材</span>' + chipsArr('st', STEELS, it.st) + '</div>' + (it.st === 'その他' ? '<div class="fg"><input type="text" value="' + esc(it.sto) + '" placeholder="鋼材の大きさ（例：L75×75×9）" oninput="edIn(\'sto\',this.value)"></div>' : '') +
+        '<div class="edbox"><div class="edbox-h">仕様</div><div class="spec-row"><span class="lbl">鋼材</span>' + chipsArr('st', STEELS, it.st) + '</div>' + (it.st === 'その他' ? '<div class="fg"><input type="text" value="' + esc(it.sto) + '" placeholder="鋼材の大きさ（例：L75×9）" oninput="edIn(\'sto\',this.value)"></div>' : '') +
         '<div class="spec-row" style="margin-bottom:0;"><span class="lbl">仕上げ</span>' + chipsArr('fin', FINS, finOf(it)) + '</div></div>' +
         '<div class="edbox"><div class="edbox-h">寸法（mm）</div><div class="dims">' + sh.lens.map(function (x) { return '<div><label>' + LT[x[0]] + '　' + esc(x[1]) + '</label>' + numIn('len_' + x[0], it[x[0]], 'edIn(\'' + x[0] + '\',this.value)') + '</div>'; }).join('') + '</div>' +
         '<div class="note" style="margin-top:4px;">空欄なら、穴の寸法を全部入れたときに自動で入ります。入れていない寸法は図に赤い記号（A・C1・G など）で出ます。</div></div>' +

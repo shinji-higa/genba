@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>フード注文</title>
-  <!-- Ver.20261104-01 -->
+  <!-- Ver.20261104-02 -->
   <style>
     /* 厨房フードの注文書。注文用図面（箱型・山型・二重）の寸法表を画面で入力し、数字入りの図を1台1ページで出す。フードはメーカー共通なので本体にメーカーは出さない。
        仕組みは金物注文（添付）kana.html と同じ（保存・提出・版・PDF）。2026-11-02 作成
@@ -87,7 +87,9 @@
     #figZoom svg { width: 100%; height: 100%; display: block; }
     #figZoom .zc { position: absolute; top: 10px; right: 14px; font-size: 0.85rem; color: #444; }
     .dims { display: grid; grid-template-columns: repeat(auto-fill, minmax(92px, 1fr)); gap: 8px; }
-    .spec-row { display: grid; grid-template-columns: 64px 1fr; gap: 8px; align-items: center; margin-bottom: 8px; }
+    .spec-row { display: grid; grid-template-columns: 64px 1fr; gap: 8px; align-items: start; margin-bottom: 8px; }
+    .spec-row > .lbl { padding-top: 7px; }   /* 項目名はボタンの1段目にそろえる。項目の間に区切り線（ユーザー指示 2026-11-04：鋼材と仕上げの境目が分かりにくい） */
+    .spec-row + .spec-row, .note + .spec-row { border-top: 1.5px solid #b9bdc3; padding-top: 8px; }
     .spec-row .lbl { margin: 0; }
     .open-card { border: 1.5px solid #9e9e9e; border-radius: 6px; padding: 8px; margin-bottom: 8px; background: #fff; }
     .open-head { display: flex; gap: 6px; align-items: center; margin-bottom: 6px; }
