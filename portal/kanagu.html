@@ -4,9 +4,9 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>金物注文</title>
-  <!-- Ver.20261104-02 -->
+  <!-- Ver.20261104-03 -->
   <style>
-    /* 金物注文（鋼材テンプレート）。三角ブラケット・穴あきアングルの図面の寸法を画面で入力し、数字入りの図面と立体図を1件1ページで出す。
+    /* 金物注文（鋼材テンプレート）。三角ブラケット・穴あきアングルの図面の寸法を画面で入力し、数字入りの図面を1件1ページで出す（立体図はやめた 2026-11-04）。
        仕組みはフード注文 hood.html と同じ（保存・提出・版・PDF）。2026-11-04 作成
        見た目は角ダクトの製作伝票にそろえる（白黒を基調に、薄い灰色は使わない） */
     :root { --bg: #e8eaed; --text: #111; --muted: #3d3d3d; --border: #9e9e9e; --primary: #111; --err: #b3261e; }
@@ -260,7 +260,7 @@
     <div class="sheet">
       <div class="sheet-h"><span class="ttl" id="edTitle">金物</span><button type="button" class="btn btn-sub btn-danger" id="edDel" onclick="deleteItem()">削除</button><button type="button" class="btn btn-sub" onclick="closeEdit()">閉じる</button></div>
       <div class="sheet-b"><div class="ed" id="edBody"></div></div>
-      <div class="sheet-f"><button type="button" class="btn btn-sub" onclick="dupItem()">同じものをもう1件</button><button type="button" class="btn btn-dark" onclick="decideEdit()">決定</button></div>
+      <div class="sheet-f"><button type="button" class="btn btn-sub" onclick="dupItem()">同じものを複製</button><button type="button" class="btn btn-dark" onclick="decideEdit()">決定</button></div>
     </div>
   </div>
 
@@ -343,44 +343,80 @@
 
 
     /* ===== 金物（鋼材テンプレート）=====
-       元の図面：2_注文・製作の資料/鋼材テンプレート（鋼材画像.pdf・鋼材画像.dxf・鋼材画像3D.dxf）。2026-11-04 作成
-       形は2種類（ユーザー指示 2026-11-04）：三角ブラケット・穴あきアングル。図面で寸法線の入っている所はすべて入力する。
-       穴の並びは端から順に区間の寸法を入れ、最後の区間は長さから計算して見せる（合計が長さと合うように）。
-       穴の線（ゲージ）は角（2枚の板が合わさる外側）から。反対側は辺の長さから計算。
-       数量は「台」か「セット」（左右対称の2台で1組）。台のときは「反転」で図を左右反対にして注文できる（ユーザー指示 2026-11-04） */
+       元の図面：2_注文・製作の資料/鋼材テンプレート（鋼材画像.pdf・鋼材画像.dxf）。2026-11-04 作成
+       形は2種類（ユーザー指示 2026-11-04）：三角ブラケット・穴あきアングル。
+       寸法（ユーザー指示 2026-11-04）：入れる前は図に記号（A・B・C1…）を出し、入力欄も同じ記号の名前。全体の長さは穴の寸法から自動で出し、手でも入れられる。
+       穴は面ごとに数と大きさ（1つずつ）を指定する（穴のタブ）。鋼材・仕上げは仕様のタブ。立体図は出さない。
+       数量は「台」か「セット」（左右対称の2台で1組）。台のときは「反転」で図を左右反対にして注文できる */
     var SHAPES = { TB: '三角ブラケット', AN: '穴あきアングル' };
+    // 面（穴の並び）。on＝どの長さの上に並ぶか、leg＝face 正面（図で丸）／top 上の面・wall 壁側（図で短い線）、n＝図面の穴の数（新しく入れるときの数）
     var SHP = {
-      TB: { lens: [['L', '横材の長さ', '1000'], ['H', '縦材の長さ', '500']],
+      TB: { lens: [['L', '横材の長さ', 1000], ['H', '縦材の長さ', 500]],
         rows: [
-          { k: 'r1', n: [1, 2, 3], on: 'L', leg: 'top', def: ['50', '315', '315'], lb: '横材の上の面（左端から）' },
-          { k: 'r2', n: [7, 8, 9], on: 'L', leg: 'face', def: ['100', '427', '320'], lb: '横材の正面（左端から）' },
-          { k: 'r3', n: [4, 5, 6], on: 'H', leg: 'wall', def: ['50', '200', '200'], lb: '縦材の壁側の面（上端から）' },
-          { k: 'r4', n: [10, 11], on: 'H', leg: 'face', def: ['50', '321'], lb: '縦材の正面（上端から）' }],
-        gs: [['g1', '横材の正面の穴の線（上の角から）', '28'], ['g3', '横材の上の面の穴の線（角から）', '28'], ['g2', '縦材の正面の穴の線（外の角から）', '28'], ['g4', '縦材の壁側の穴の線（角から）', '28']] },
-      AN: { lens: [['L', '長さ', '1000']],
+          { k: 'r1', on: 'L', leg: 'top', n: 3, lb: '横材の上の面', from: '左端から' },
+          { k: 'r2', on: 'L', leg: 'face', n: 3, lb: '横材の正面', from: '左端から' },
+          { k: 'r3', on: 'H', leg: 'wall', n: 3, lb: '縦材の壁側の面', from: '上端から' },
+          { k: 'r4', on: 'H', leg: 'face', n: 2, lb: '縦材の正面', from: '上端から' }],
+        order: ['r1', 'r3', 'r2', 'r4'] },   // 穴の番号の順（図面と同じ：①②③上の面、④⑤⑥壁側、⑦⑧⑨横材の正面、⑩⑪縦材の正面）
+      AN: { lens: [['L', '長さ', 1000]],
         rows: [
-          { k: 'r1', n: [1, 2, 3], on: 'L', leg: 'face', def: ['50', '315', '315'], lb: '正面（左端から）' },
-          { k: 'r2', n: [4, 5, 6], on: 'L', leg: 'top', def: ['304', '315', '315'], lb: '上の面（左端から）' }],
-        gs: [['g1', '正面の穴の線（上の角から）', '28'], ['g3', '上の面の穴の線（角から）', '28']] }
+          { k: 'r1', on: 'L', leg: 'face', n: 3, lb: '正面', from: '左端から' },
+          { k: 'r2', on: 'L', leg: 'top', n: 3, lb: '上の面', from: '左端から' }],
+        order: ['r1', 'r2'] }
     };
-    // 選べるもの（ユーザー指示 2026-11-04：選べるようにする。中身は仮。正式な一覧はユーザーから）
-    var STEELS = ['L40×40×3', 'L40×40×5', 'L50×50×4', 'L50×50×6', 'L65×65×6', 'その他'], ST0 = 'L50×50×6';
-    var FINS = ['溶融亜鉛めっき（どぶ付け）', '錆止め塗装', '仕上げなし', 'その他'];
+    // 選べるもの（ユーザー指示 2026-11-04）
+    var STEELS = ['L40×40×3', 'L40×40×5', 'L50×50×4', 'L50×50×6', 'L65×65×6', 'L75×75×6', 'L100×100×7', 'その他'], ST0 = 'L50×50×6';
+    var FINS = ['錆止塗装（ライトグレー）', '溶融亜鉛めっき（溶接面ローバル仕上）', '溶融亜鉛めっき（どぶ付け）', '公共仕様', '無し'], FIN0 = FINS[2];
     var HOLE_D = ['10', '12', '14', '16', '18'], HD0 = '12';
     var UNITS = ['台', 'セット'];
     function stOf(it) { return it.st === 'その他' ? (it.sto || '') : (it.st || ST0); }
-    function finOf(it) { return it.fin === 'その他' ? (it.fino || '') : (it.fin || FINS[0]); }
+    function finOf(it) { return it.fin || FIN0; }
     function legOf(it) { var m = String(stOf(it)).match(/\d+(\.\d+)?/g) || [], a = +m[0] || 50, t = m.length >= 2 ? +m[m.length - 1] : 6; return { a: a, t: Math.min(t || 6, a / 3) }; }
     function isSet(it) { return it.unit === 'セット'; }
     function isFlip(it) { return !isSet(it) && !!it.flip; }
     function rowsOf(it) { return SHP[it.shape].rows; }
-    function rowTot(it, r) { return num(it[r.on]); }
-    function rowVals(it, r) { return (it[r.k] || []).map(num); }
-    function rowRest(it, r) { return rowTot(it, r) - rowVals(it, r).reduce(function (a, b) { return a + b; }, 0); }
-    function rowPos(it, r) { var p = 0; return rowVals(it, r).map(function (v) { p += v; return p; }); }   // 端からの穴の位置
-    function rowNames(r) { return r.n.map(circled).join(''); }
-    function holeCount(it) { return rowsOf(it).reduce(function (a, r) { return a + r.n.length; }, 0); }
-    function sizeText(it) { return it.shape === 'TB' ? fmtN(num(it.L)) + '×' + fmtN(num(it.H)) : 'L' + fmtN(num(it.L)); }
+    function rowDef(it, k) { return rowsOf(it).filter(function (r) { return r.k === k; })[0]; }
+    function rowOf(it, r) { var h = it.h || (it.h = {}); return h[r.k] || (h[r.k] = { s: [], d: [], g: '' }); }   // s＝区間の寸法（穴の数＋1）、d＝穴ごとの φ、g＝穴の線
+    function holesN(it, r) { return rowOf(it, r).d.length; }
+    function lettersOf(it) {   // 寸法の記号：A・B＝長さ、C〜＝穴の並び（C1・C2…）、G1〜＝穴の線
+      var sh = SHP[it.shape], m = {}, c = 0, AB = 'ABCDEFGHIJ';
+      sh.lens.forEach(function (x) { m[x[0]] = AB[c++]; });
+      sh.rows.forEach(function (r, i) { m[r.k] = AB[c++]; m['g_' + r.k] = 'G' + (i + 1); });
+      return m;
+    }
+    function holeNums(it) { var m = {}, n = 0; SHP[it.shape].order.forEach(function (k) { m[k] = rowOf(it, rowDef(it, k)).d.map(function () { return ++n; }); }); return m; }
+    function holeCount(it) { return rowsOf(it).reduce(function (a, r) { return a + holesN(it, r); }, 0); }
+    function holeSum(it) { var c = {}; rowsOf(it).forEach(function (r) { rowOf(it, r).d.forEach(function (d) { c[d] = (c[d] || 0) + 1; }); }); return Object.keys(c).sort(function (a, b) { return a - b; }).map(function (d) { return 'φ' + d + '×' + c[d]; }).join('・') || '穴なし'; }
+    function holeList(it) {   // φ ごとの穴の番号（注文書の図の下）
+      var nums = holeNums(it), c = {};
+      SHP[it.shape].order.forEach(function (k) { rowOf(it, rowDef(it, k)).d.forEach(function (d, i) { (c[d] = c[d] || []).push(circled(nums[k][i])); }); });
+      return Object.keys(c).sort(function (a, b) { return a - b; }).map(function (d) { return 'φ' + d + '：' + c[d].join(''); }).join('　');
+    }
+    /* 長さと区間：全体（A・B）は入れたものを使う。空欄なら、区間を全部入れた並びの合計（自動）。
+       区間が1つだけ空欄で全体が決まっていれば、その区間は全体から計算（自動） */
+    function totIn(it, on) { return num(it[on]); }
+    function rowFull(it, r) { var o = rowOf(it, r); return o.d.length > 0 && o.s.every(function (v) { return num(v) > 0; }); }
+    function rowSum(it, r) { return rowOf(it, r).s.reduce(function (a, v) { return a + num(v); }, 0); }
+    function totAuto(it, on) { var rs = rowsOf(it).filter(function (r) { return r.on === on && rowFull(it, r); }); return rs.length ? rowSum(it, rs[0]) : 0; }
+    function totOf(it, on) { return totIn(it, on) || totAuto(it, on); }
+    function segsOf(it, r) {   // v＝決まった区間（null＝未定）、auto＝計算で出したもの
+      var o = rowOf(it, r), v = o.s.map(num), T = totOf(it, r.on), blank = v.filter(function (x) { return !x; }).length, auto = v.map(function () { return false; });
+      if (blank === 1 && T) { var known = v.reduce(function (a, b) { return a + b; }, 0); v = v.map(function (x, i) { if (x) return x; auto[i] = true; return T - known; }); return { v: v, auto: auto }; }
+      return { v: v.map(function (x) { return x || null; }), auto: auto };
+    }
+    function drawTot(it, on) { var x = totOf(it, on); if (x > 0) return x; var d = SHP[it.shape].lens.filter(function (q) { return q[0] === on; })[0]; return d ? d[2] : 1000; }
+    function drawSegs(it, r) {   // 図を描くための区間（未定の区間は残りを等分。入れる前でも形が出るように）
+      var T = drawTot(it, r.on), v = segsOf(it, r).v, known = 0, nb = 0;
+      v.forEach(function (x) { if (x != null && x > 0) known += x; else nb++; });
+      if (!nb) return v;
+      var each = (T - known) / nb;
+      if (!(each > 0)) return v.map(function () { return T / v.length; });
+      return v.map(function (x) { return x != null && x > 0 ? x : each; });
+    }
+    function drawPos(it, r) { var p = 0, s = drawSegs(it, r); return s.slice(0, -1).map(function (v) { p += v; return p; }); }
+    function segLabels(it, r) { var L = lettersOf(it)[r.k], sg = segsOf(it, r); return sg.v.map(function (x, i) { return x != null ? fmtC(x) : L + (i + 1); }); }
+    function totLabel(it, on) { var x = totOf(it, on); return x ? fmtC(x) : lettersOf(it)[on]; }
+    function sizeText(it) { var L = totOf(it, 'L'), H = totOf(it, 'H'); return it.shape === 'TB' ? (L ? fmtN(L) : 'A') + '×' + (H ? fmtN(H) : 'B') : 'L' + (L ? fmtN(L) : 'A'); }
     function qtyText(it) { return (num(it.qty) || 1) + it.unit; }
     function dirText(it) { return isSet(it) ? '左右1組' : it.flip ? '反転' : '図のとおり'; }
     function fmtN(n) { return n ? String(Math.round(n * 10) / 10).replace(/\.0$/, '') : ''; }
@@ -391,9 +427,35 @@
     var STORE = 'kanaguOrders.v1';
     var S = null;
     function blank() { return { id: uid(), no: '', orderer: '', site: '', room: '', orderDate: today(), delivDate: '', dest: '現場', memo: '', items: [], updated: 0 }; }
-    function fillDef(it) { var d = SHP[it.shape]; d.lens.forEach(function (x) { it[x[0]] = x[2]; }); d.gs.forEach(function (x) { it[x[0]] = x[2]; }); d.rows.forEach(function (r) { it[r.k] = r.def.slice(); }); ['H', 'g2', 'g4', 'r3', 'r4'].forEach(function (k) { if (it.shape === 'AN') delete it[k]; }); }
-    function blankItem(shape) { var it = { id: uid(), shape: shape || 'TB', unit: '台', flip: false, st: ST0, sto: '', fin: FINS[0], fino: '', hd: HD0, qty: 1, memo: '' }; fillDef(it); return it; }
-    function normItems(a) { (a || []).forEach(function (it) { if (!SHP[it.shape]) it.shape = 'TB'; if (UNITS.indexOf(it.unit) < 0) it.unit = '台'; rowsOf(it).forEach(function (r) { if (!Array.isArray(it[r.k])) it[r.k] = r.def.slice(); }); SHP[it.shape].gs.forEach(function (x) { if (it[x[0]] == null) it[x[0]] = x[2]; }); }); }
+    function setCount(it, r, n) {   // 穴の数を変える（区間は穴の数＋1。今の数字は残す）
+      var o = rowOf(it, r), d0 = o.d[o.d.length - 1] || HD0;
+      n = Math.max(0, Math.min(20, Math.round(n) || 0));
+      while (o.d.length < n) o.d.push(d0); o.d.length = n;
+      if (!n) { o.s = []; return; }
+      if (!o.s.length) o.s = [''];
+      while (o.s.length < n + 1) o.s.splice(o.s.length - 1, 0, ''); o.s.length = n + 1;
+    }
+    function fillDef(it) { it.L = ''; it.H = ''; it.h = {}; rowsOf(it).forEach(function (r) { setCount(it, r, r.n); }); if (it.shape === 'AN') delete it.H; }
+    function blankItem(shape) { var it = { id: uid(), shape: shape || 'TB', unit: '台', flip: false, st: ST0, sto: '', fin: FIN0, qty: 1, memo: '' }; fillDef(it); return it; }
+    // 前の版（Ver.20261104-01〜02）の読み替え：r1〜r4＝区間の並び（最後は計算）、g1〜g4＝穴の線、hd＝穴の大きさ（全部同じ）
+    var OLD_G = { TB: { r1: 'g3', r2: 'g1', r3: 'g4', r4: 'g2' }, AN: { r1: 'g1', r2: 'g3' } };
+    var OLD_FIN = { '錆止め塗装': FINS[0], '仕上げなし': FINS[4], 'その他': FIN0 };
+    function normItems(a) {
+      (a || []).forEach(function (it) {
+        if (!SHP[it.shape]) it.shape = 'TB'; if (UNITS.indexOf(it.unit) < 0) it.unit = '台';
+        if (OLD_FIN[it.fin]) it.fin = OLD_FIN[it.fin]; if (FINS.indexOf(it.fin) < 0) it.fin = FIN0; delete it.fino;
+        if (!it.h) {
+          it.h = {};
+          rowsOf(it).forEach(function (r) {
+            var old = Array.isArray(it[r.k]) ? it[r.k] : null, o = rowOf(it, r);
+            if (!old) { setCount(it, r, r.n); return; }
+            var vals = old.map(String), T = num(it[r.on]), rest = T - old.reduce(function (s, v) { return s + num(v); }, 0);
+            o.s = vals.concat([rest > 0 ? String(rest) : '']); o.d = old.map(function () { return it.hd || HD0; }); o.g = String(it[(OLD_G[it.shape] || {})[r.k]] || '');
+          });
+        }
+        ['r1', 'r2', 'r3', 'r4', 'g1', 'g2', 'g3', 'g4', 'hd'].forEach(function (k) { delete it[k]; });
+      });
+    }
     function normSlip(s) { s.items = s.items || []; s.items.forEach(function (it) { if (!it.id) it.id = uid(); }); normItems(s.items); if (s.base) normItems(s.base.items); if (s.subSnap) normItems(s.subSnap.items); return s; }
     function loadStore() { try { return JSON.parse(localStorage.getItem(STORE) || '[]'); } catch (e) { return []; } }
     function writeStore(a) { try { localStorage.setItem(STORE, JSON.stringify(a)); } catch (e) { toast('この端末に保存できませんでした'); } }
@@ -415,182 +477,128 @@
 
     /* 確認（提出は止めない。一覧に赤い印） */
     function itemErrors(it) {
-      var e = [], sh = SHP[it.shape], lg = legOf(it);
+      var e = [], sh = SHP[it.shape], lg = legOf(it), LT = lettersOf(it);
       if (it.st === 'その他' && blankStr(it.sto)) e.push('鋼材の大きさを入れてください');
-      if (it.fin === 'その他' && blankStr(it.fino)) e.push('仕上げを入れてください');
-      sh.lens.forEach(function (x) { if (!num(it[x[0]])) e.push(x[1] + 'を入れてください'); });
-      sh.gs.forEach(function (x) { var g = num(it[x[0]]); if (!g) e.push(x[1] + 'を入れてください'); else if (g <= lg.t || g >= lg.a) e.push(x[1] + 'は ' + fmtN(lg.t) + ' より大きく ' + fmtN(lg.a) + ' より小さくしてください'); });
+      sh.lens.forEach(function (x) { if (!totOf(it, x[0])) e.push(LT[x[0]] + '（' + x[1] + '）を入れてください'); });
       sh.rows.forEach(function (r) {
-        if (rowVals(it, r).some(function (v) { return !v; })) e.push(rowNames(r) + ' の寸法を入れてください');
-        else if (rowTot(it, r) && rowRest(it, r) <= 0) e.push(rowNames(r) + ' の合計が' + (r.on === 'H' ? '縦材の長さ' : '長さ') + 'を超えています');
+        var o = rowOf(it, r); if (!o.d.length) return;
+        var nm = LT[r.k] + '（' + r.lb + '）', v = o.s.map(num), blank = v.filter(function (x) { return !x; }).length, T = totOf(it, r.on), sum = rowSum(it, r);
+        if (blank > 1 || (blank === 1 && !T)) e.push(nm + ' の寸法を入れてください');
+        else if (blank === 1 && T - sum <= 0) e.push(nm + ' の合計が' + LT[r.on] + 'を超えています');
+        else if (!blank && totIn(it, r.on) && Math.abs(sum - totIn(it, r.on)) > 0.01) e.push(nm + ' の合計 ' + fmtN(sum) + ' が ' + LT[r.on] + '（' + fmtN(totIn(it, r.on)) + '）と合いません');
+        var g = num(o.g); if (!g) e.push(LT['g_' + r.k] + '（' + r.lb + 'の穴の線）を入れてください'); else if (g <= lg.t || g >= lg.a) e.push(LT['g_' + r.k] + ' は ' + fmtN(lg.t) + ' より大きく ' + fmtN(lg.a) + ' より小さくしてください');
       });
-      if (it.shape === 'TB' && num(it.L) && num(it.H)) {
-        var L = num(it.L), H = num(it.H);
+      if (it.shape === 'TB' && totOf(it, 'L') && totOf(it, 'H')) {
+        var L = totOf(it, 'L'), H = totOf(it, 'H'), nums = holeNums(it), r2 = rowDef(it, 'r2'), r4 = rowDef(it, 'r4');
         if (L <= lg.a * 2 || H <= lg.a * 2) e.push('長さが短すぎます');
-        rowPos(it, sh.rows[1]).forEach(function (x, i) { if (x > L - lg.a) e.push(circled(sh.rows[1].n[i]) + ' が縦材と重なります'); });
-        rowPos(it, sh.rows[3]).forEach(function (z, i) { if (z < lg.a) e.push(circled(sh.rows[3].n[i]) + ' が横材と重なります'); });
+        drawPos(it, r2).forEach(function (x, i) { if (segsOf(it, r2).v[i] != null && x > L - lg.a) e.push(circled(nums.r2[i]) + ' が縦材と重なります'); });
+        drawPos(it, r4).forEach(function (z, i) { if (segsOf(it, r4).v[i] != null && z < lg.a) e.push(circled(nums.r4[i]) + ' が横材と重なります'); });
       }
       return e;
     }
 
     /* ===== 図面（鋼材画像.pdf と同じ並び：上に穴の寸法、右に縦材の寸法と横から見た図、左と下に穴の線）=====
-       入れた数字の縮尺で描く。反転は図全体を左右反対に（文字は読める向きのまま） */
+       入れた数字の縮尺で描く。入れていない寸法は記号（A・C1・G1 など）で出す。反転は図全体を左右反対に（文字は読める向きのまま） */
     var FS = 10;
     function bracketSvg(it, mode) {
-      var thumb = mode === 'thumb', lg = legOf(it), a = lg.a, t = lg.t, tb = it.shape === 'TB', rows = rowsOf(it), flip = isFlip(it);
-      var L = num(it.L) || 1000, H = tb ? (num(it.H) || 500) : a, g1 = num(it.g1) || 28, g2 = num(it.g2) || 28, g3 = num(it.g3) || 28, g4 = num(it.g4) || 28;
+      var thumb = mode === 'thumb', lg = legOf(it), a = lg.a, t = lg.t, tb = it.shape === 'TB', flip = isFlip(it), LT = lettersOf(it), nums = holeNums(it);
+      var L = drawTot(it, 'L'), H = tb ? drawTot(it, 'H') : a, R = function (k) { return rowDef(it, k); };
+      var gOf = function (r) { var g = num(rowOf(it, r).g); return g > 0 && g < a ? g : a * 0.56; };
+      var lr = rowsOf(it).filter(function (r) { return r.on === 'L'; }), up = (tb ? lr : [lr[0]]).filter(function (r) { return holesN(it, r); }), down = tb ? [] : [lr[1]].filter(function (r) { return holesN(it, r); });
       var k = thumb ? (tb ? Math.min(58 / L, 42 / H) : 60 / L) : (tb ? Math.min(300 / L, 230 / H) : 330 / L);
-      var aw = Math.max(thumb ? 2 : 5, a * k), th = Math.max(thumb ? 0.6 : 1.2, t * k), hr = thumb ? 0.8 : Math.max(1.6, num(it.hd) / 2 * k);
-      var lm = thumb ? 3 : 50, tm = thumb ? 3 : (tb ? 100 : 66), x0 = lm, y0 = tm, xR = x0 + L * k, ah = tb ? a * k : Math.max(5, a * k), yB = y0 + (tb ? H * k : ah);
-      var svX = xR + 130, rm = thumb ? 3 : (tb ? 130 + aw + 34 : 18), bm = thumb ? 3 : (tb ? 54 : 66);
+      var aw = Math.max(thumb ? 2 : 5, a * k), th = Math.max(thumb ? 0.6 : 1.2, t * k);
+      var lm = thumb ? 3 : 54, tm = thumb ? 3 : 32 + up.length * 34, x0 = lm, y0 = tm, xR = x0 + L * k, ah = tb ? a * k : Math.max(5, a * k), yB = y0 + (tb ? H * k : ah);
+      var svX = xR + 130, rm = thumb ? 3 : (tb ? 130 + aw + 34 : 18), bm = thumb ? 3 : (tb ? 54 : (down.length ? 66 : 30));
       var VW = xR + rm, VH = yB + bm;
       var MX = function (x) { return flip ? VW - x : x; }, f = function (v) { return v.toFixed(1); };
       var ln = function (x1, y1, x2, y2, w, col) { return '<line x1="' + f(MX(x1)) + '" y1="' + f(y1) + '" x2="' + f(MX(x2)) + '" y2="' + f(y2) + '" stroke="' + (col || '#000') + '" stroke-width="' + (w || 0.5) + '"/>'; };
       var pg = function (pts) { return '<polygon points="' + pts.map(function (p) { return f(MX(p[0])) + ',' + f(p[1]); }).join(' ') + '" fill="#eef4fb" stroke="#1d4f91" stroke-width="' + (thumb ? 0.7 : 0.9) + '"/>'; };
-      var ci = function (x, y) { return '<circle cx="' + f(MX(x)) + '" cy="' + f(y) + '" r="' + f(hr) + '" fill="#fff" stroke="#000" stroke-width="' + (thumb ? 0.4 : 0.6) + '"/>'; };
+      var ci = function (x, y, d) { return '<circle cx="' + f(MX(x)) + '" cy="' + f(y) + '" r="' + f(thumb ? 0.8 : Math.max(1.6, (num(d) || 12) / 2 * k)) + '" fill="#fff" stroke="#000" stroke-width="' + (thumb ? 0.4 : 0.6) + '"/>'; };
       var dot = function (x, y) { return '<circle cx="' + f(MX(x)) + '" cy="' + f(y) + '" r="1.3" fill="#000"/>'; };
-      var tx = function (x, y, s, sz) { return '<text x="' + f(MX(x)) + '" y="' + f(y) + '" font-size="' + (sz || FS) + '" text-anchor="middle">' + esc(s) + '</text>'; };
-      var vt = function (lx, y, s, side) { var left = (side === 'L') !== flip, X = MX(lx) + (left ? -3 : 3 + FS * 0.85); return '<text x="' + f(X) + '" y="' + f(y) + '" font-size="' + FS + '" text-anchor="middle" transform="rotate(-90 ' + f(X) + ' ' + f(y) + ')">' + esc(s) + '</text>'; };
+      var isLet = function (s) { return /^[A-Z]/.test(s); };   // 記号は赤で（入れていない寸法）
+      var tx = function (x, y, s, sz) { return '<text x="' + f(MX(x)) + '" y="' + f(y) + '" font-size="' + (sz || FS) + '" text-anchor="middle"' + (isLet(s) ? ' fill="#c62828" font-weight="700"' : '') + '>' + esc(s) + '</text>'; };
+      var vt = function (lx, y, s, side) { var left = (side === 'L') !== flip, X = MX(lx) + (left ? -3 : 3 + FS * 0.85); return '<text x="' + f(X) + '" y="' + f(y) + '" font-size="' + FS + '" text-anchor="middle"' + (isLet(s) ? ' fill="#c62828" font-weight="700"' : '') + ' transform="rotate(-90 ' + f(X) + ' ' + f(y) + ')">' + esc(s) + '</text>'; };
       var X = function (x) { return x0 + x * k; }, Y = function (zTop) { return y0 + zTop * k; };   // zTop＝上端からの寸法
-      // 寸法の並び（横）：ps＝左端からの位置（両端を含む）。nums＝[位置, 番号]。below＝番号を線の下に
-      var chainH = function (ps, y, nums, extTo, below) {
+      // 寸法の並び（横）：ps＝左端からの位置（両端を含む）、lb＝区間の文字。nums＝[位置, 番号]。below＝番号を線の下に
+      var chainH = function (ps, lb, y, nm, extTo, below) {
         var s = ln(X(ps[0]), y, X(ps[ps.length - 1]), y);
-        ps.forEach(function (p, i) { s += dot(X(p), y) + (extTo != null ? ln(X(p), y + (extTo > y ? -4 : 4), X(p), extTo, 0.35) : ''); if (i) s += tx((X(ps[i - 1]) + X(p)) / 2, below ? y + 11 : y - 3, fmtC(p - ps[i - 1])); });
-        (nums || []).forEach(function (q) { s += tx(X(q[0]), below ? y + 27 : y - 16, q[1], FS + 2); });
+        ps.forEach(function (p, i) { s += dot(X(p), y) + (extTo != null ? ln(X(p), y + (extTo > y ? -4 : 4), X(p), extTo, 0.35) : ''); if (i) s += tx((X(ps[i - 1]) + X(p)) / 2, below ? y + 11 : y - 3, lb[i - 1]); });
+        (nm || []).forEach(function (q) { s += tx(X(q[0]), below ? y + 27 : y - 16, q[1], FS + 2); });
         return s;
       };
-      // 寸法の並び（縦）：ps＝上端からの位置
-      var chainV = function (x, ps, nums, extFrom) {
+      var chainV = function (x, ps, lb, nm, extFrom) {   // 縦：ps＝上端からの位置
         var s = ln(x, Y(ps[0]), x, Y(ps[ps.length - 1]));
-        ps.forEach(function (p, i) { s += dot(x, Y(p)) + (extFrom != null ? ln(extFrom, Y(p), x + 4, Y(p), 0.35) : ''); if (i) s += vt(x, (Y(ps[i - 1]) + Y(p)) / 2, fmtC(p - ps[i - 1]), 'L'); });
-        (nums || []).forEach(function (q) { s += tx(x + 14, Y(q[0]) + 4, q[1], FS + 2); });
+        ps.forEach(function (p, i) { s += dot(x, Y(p)) + (extFrom != null ? ln(extFrom, Y(p), x + 4, Y(p), 0.35) : ''); if (i) s += vt(x, (Y(ps[i - 1]) + Y(p)) / 2, lb[i - 1], 'L'); });
+        (nm || []).forEach(function (q) { s += tx(x + 14, Y(q[0]) + 4, q[1], FS + 2); });
         return s;
       };
-      var withEnds = function (r) { return [0].concat(rowPos(it, r), [rowTot(it, r) || (r.on === 'H' ? H : L)]); };
-      var numsOf = function (r) { return rowPos(it, r).map(function (p, i) { return [p, circled(r.n[i])]; }); };
+      var ends = function (r) { return [0].concat(drawPos(it, r), [r.on === 'H' ? H : L]); };
+      var nmOf = function (r) { return drawPos(it, r).map(function (p, i) { return [p, circled(nums[r.k][i])]; }); };
+      var gl = function (r) { var g = num(rowOf(it, r).g); return g ? [fmtC(g), fmtC(a - g)] : [LT['g_' + r.k], '']; };
       var o = '';
       // 部材
       o += pg([[X(0), y0], [X(L), y0], [X(L), y0 + ah], [X(0), y0 + ah]]) + ln(X(0), y0 + th, X(L), y0 + th, 0.5, '#1d4f91');   // 横材（上の線＝上の面の厚み）
       if (tb) {
         o += pg([[X(L) - aw, y0 + ah], [X(L), y0 + ah], [X(L), yB], [X(L) - aw, yB]]) + ln(X(L) - th, y0 + ah, X(L) - th, yB, 0.5, '#1d4f91');   // 縦材
-        // 斜材：横材の左端の下から縦材の下へ。幅は辺の長さ
-        var dg = diagOf(L, H, a), P = function (q) { return [X(q[0]), Y(H - q[1])]; };   // 立体図と同じ計算（z＝下からの高さ）
+        var dg = diagOf(L, H, a), P = function (q) { return [X(q[0]), Y(H - q[1])]; };   // 斜材（z＝下からの高さ）
         o += pg([P(dg.A), P(dg.D), P(dg.C), P(dg.B)]);
         o += ln(P(dg.A)[0] + t * dg.n[0] * k, P(dg.A)[1] - t * dg.n[1] * k, P(dg.D)[0] + t * dg.n[0] * k, P(dg.D)[1] - t * dg.n[1] * k, 0.5, '#1d4f91');
       }
       // 穴：正面の穴は丸、もう一方の面の穴は短い線（図面と同じ）
-      rows.forEach(function (r) {
-        rowPos(it, r).forEach(function (p) {
-          if (r.on === 'L') { if (r.leg === 'face') o += ci(X(p), y0 + g1 * k); else o += ln(X(p), y0 - 5, X(p), y0 + th + 4, 0.7); }
-          else { if (r.leg === 'face') o += ci(X(L) - g2 * k, Y(p)); else o += ln(X(L) - th - 4, Y(p), X(L) + 5, Y(p), 0.7); }
+      rowsOf(it).forEach(function (r) {
+        var ds = rowOf(it, r).d;
+        drawPos(it, r).forEach(function (p, i) {
+          if (r.on === 'L') { if (r.leg === 'face') o += ci(X(p), y0 + gOf(r) * k, ds[i]); else o += ln(X(p), y0 - 5, X(p), y0 + th + 4, 0.7); }
+          else { if (r.leg === 'face') o += ci(X(L) - gOf(r) * k, Y(p), ds[i]); else o += ln(X(L) - th - 4, Y(p), X(L) + 5, Y(p), 0.7); }
         });
       });
       if (thumb) return '<svg viewBox="0 0 ' + f(VW) + ' ' + f(VH) + '" xmlns="http://www.w3.org/2000/svg" width="100%" height="100%" preserveAspectRatio="xMidYMid meet">' + o + '</svg>';
-      // 寸法：上（全体の長さ、穴の並び）
-      var lr = rows.filter(function (r) { return r.on === 'L'; }), up = tb ? lr : [lr[0]], down = tb ? [] : [lr[1]];
-      o += chainH([0, L], 14, null, null) + ln(X(0), 18, X(0), y0 - 2, 0.35) + ln(X(L), 18, X(L), y0 - 2, 0.35);
-      up.forEach(function (r, i) { o += chainH(withEnds(r), 48 + i * 34, numsOf(r), y0 - 2); });
-      down.forEach(function (r) { o += chainH(withEnds(r), yB + 18, numsOf(r), yB + 2, true); });
-      // 穴の線（左）：上の角から g1、反対側は辺の長さ − g1
-      var gx = x0 - 16;
-      o += ln(gx, y0, gx, y0 + ah) + dot(gx, y0) + dot(gx, y0 + g1 * k) + dot(gx, y0 + ah) + ln(gx - 4, y0, x0 - 2, y0, 0.35) + ln(gx - 4, y0 + g1 * k, x0 - 2, y0 + g1 * k, 0.35) + ln(gx - 4, y0 + ah, x0 - 2, y0 + ah, 0.35);
-      o += tx(gx - 14, y0 - 1, fmtC(g1), FS - 1) + tx(gx - 14, y0 + ah + 9, fmtC(a - g1), FS - 1);
+      // 寸法：上（全体の長さ A、穴の並び）
+      o += chainH([0, L], [totLabel(it, 'L')], 14, null, null) + ln(X(0), 18, X(0), y0 - 2, 0.35) + ln(X(L), 18, X(L), y0 - 2, 0.35);
+      up.forEach(function (r, i) { o += chainH(ends(r), segLabels(it, r), 48 + i * 34, nmOf(r), y0 - 2); });
+      down.forEach(function (r) { o += chainH(ends(r), segLabels(it, r), yB + 18, nmOf(r), yB + 2, true); });
+      // 穴の線（左）：横材の正面の穴（三角ブラケットは r2、穴あきアングルは r1）
+      var fr = tb ? R('r2') : R('r1'), gx = x0 - 16;
+      if (holesN(it, fr)) {
+        var g1 = gOf(fr), gt = gl(fr);
+        o += ln(gx, y0, gx, y0 + ah) + dot(gx, y0) + dot(gx, y0 + g1 * k) + dot(gx, y0 + ah) + ln(gx - 4, y0, x0 - 2, y0, 0.35) + ln(gx - 4, y0 + g1 * k, x0 - 2, y0 + g1 * k, 0.35) + ln(gx - 4, y0 + ah, x0 - 2, y0 + ah, 0.35);
+        o += tx(gx - 16, y0 - 1, gt[0], FS - 1) + (gt[1] ? tx(gx - 16, y0 + ah + 9, gt[1], FS - 1) : '');
+      }
+      var notes = [];
+      var tr = tb ? R('r1') : R('r2');   // 上の面の穴の線は正面から見えないので文字で
+      if (holesN(it, tr)) { var tg = gl(tr); notes.push('上の面の穴の線（' + LT['g_' + tr.k] + '）：角から ' + tg[0] + (tg[1] ? '（反対側 ' + tg[1] + '）' : '')); }
       if (tb) {
-        var r3 = rows[2], r4 = rows[3], cx1 = xR + 24, cx2 = xR + 66, cx3 = xR + 112;
-        o += chainV(cx1, withEnds(r4), numsOf(r4), xR + 2) + chainV(cx2, withEnds(r3), numsOf(r3), cx1 + 2) + chainV(cx3, [0, H], null, cx2 + 2);
+        var r3 = R('r3'), r4 = R('r4'), cx1 = xR + 24, cx2 = xR + 66, cx3 = xR + 112;
+        if (holesN(it, r4)) o += chainV(cx1, ends(r4), segLabels(it, r4), nmOf(r4), xR + 2);
+        if (holesN(it, r3)) o += chainV(cx2, ends(r3), segLabels(it, r3), nmOf(r3), cx1 + 2);
+        o += chainV(cx3, [0, H], [totLabel(it, 'H')], null, cx2 + 2);
         // 横から見た縦材（壁側の面の穴を丸で）
         o += pg([[svX, y0], [svX + aw, y0], [svX + aw, yB], [svX, yB]]);
-        rowPos(it, r3).forEach(function (p, i) { o += ci(svX + aw - g4 * k, Y(p)) + tx(svX + aw + 14, Y(p) + 4, circled(r3.n[i]), FS + 2); });
-        var sg = yB + 10, sxg = svX + aw - g4 * k;   // 壁側の穴の線（横から見た図の下）
-        o += ln(svX, sg, svX + aw, sg) + dot(svX, sg) + dot(sxg, sg) + dot(svX + aw, sg) + ln(svX, yB + 2, svX, sg + 4, 0.35) + ln(sxg, yB + 2, sxg, sg + 4, 0.35) + ln(svX + aw, yB + 2, svX + aw, sg + 4, 0.35);
-        o += tx(svX - 9, sg + 11, fmtC(a - g4), FS - 1) + tx(svX + aw + 9, sg + 11, fmtC(g4), FS - 1) + tx(svX + aw / 2, sg + 24, '横から', FS - 1);
-        // 縦材の穴の線（下）
-        var gy = yB + 14, xa = X(L) - aw, xg = X(L) - g2 * k;
-        o += ln(xa, gy, X(L), gy) + dot(xa, gy) + dot(xg, gy) + dot(X(L), gy) + ln(xa, yB + 2, xa, gy + 4, 0.35) + ln(xg, yB + 2, xg, gy + 4, 0.35) + ln(X(L), yB + 2, X(L), gy + 4, 0.35);
-        o += tx(xa - 10, gy + 12, fmtC(a - g2), FS - 1) + tx(X(L) + 10, gy + 12, fmtC(g2), FS - 1);
+        if (holesN(it, r3)) {
+          var g4 = gOf(r3), t4 = gl(r3), d3 = rowOf(it, r3).d;
+          drawPos(it, r3).forEach(function (p, i) { o += ci(svX + aw - g4 * k, Y(p), d3[i]) + tx(svX + aw + 14, Y(p) + 4, circled(nums.r3[i]), FS + 2); });
+          var sg = yB + 10, sxg = svX + aw - g4 * k;
+          o += ln(svX, sg, svX + aw, sg) + dot(svX, sg) + dot(sxg, sg) + dot(svX + aw, sg) + ln(svX, yB + 2, svX, sg + 4, 0.35) + ln(sxg, yB + 2, sxg, sg + 4, 0.35) + ln(svX + aw, yB + 2, svX + aw, sg + 4, 0.35);
+          o += (t4[1] ? tx(svX - 9, sg + 11, t4[1], FS - 1) : '') + tx(svX + aw + 10, sg + 11, t4[0], FS - 1);
+        }
+        o += tx(svX + aw / 2, yB + 34, '横から', FS - 1);
+        // 縦材の正面の穴の線（下）
+        if (holesN(it, r4)) {
+          var g2 = gOf(r4), t2 = gl(r4), gy = yB + 14, xa = X(L) - aw, xg = X(L) - g2 * k;
+          o += ln(xa, gy, X(L), gy) + dot(xa, gy) + dot(xg, gy) + dot(X(L), gy) + ln(xa, yB + 2, xa, gy + 4, 0.35) + ln(xg, yB + 2, xg, gy + 4, 0.35) + ln(X(L), yB + 2, X(L), gy + 4, 0.35);
+          o += (t2[1] ? tx(xa - 10, gy + 12, t2[1], FS - 1) : '') + tx(X(L) + 10, gy + 12, t2[0], FS - 1);
+        }
       }
-      o += '<text x="4" y="' + f(VH - 4) + '" font-size="' + (FS - 1) + '">上の面の穴の線：角から ' + esc(fmtC(g3)) + '（反対側 ' + esc(fmtC(a - g3)) + '）</text>';
+      if (notes.length) o += '<text x="4" y="' + f(VH - 4) + '" font-size="' + (FS - 1) + '">' + esc(notes.join('　')) + '</text>';
       return '<svg viewBox="0 0 ' + f(VW) + ' ' + f(VH) + '" xmlns="http://www.w3.org/2000/svg" font-family="Yu Gothic,Meiryo,sans-serif">' + o + '</svg>';
     }
-
-    /* ===== 立体図（参考。案1：入れた寸法で描き直す。ユーザー指示 2026-11-04）=====
-       L形の鋼材を2枚の板（角柱）で表し、遠い面から順に塗る。セットは左右反対のものを並べて描く。穴は図面で見る */
-    var VIEW = (function () { var p = 35 * Math.PI / 180, q = 26 * Math.PI / 180, V = [Math.sin(p) * Math.cos(q), -Math.cos(p) * Math.cos(q), Math.sin(q)], R = [Math.cos(p), Math.sin(p), 0]; return { V: V, R: R, U: [V[1] * R[2] - V[2] * R[1], V[2] * R[0] - V[0] * R[2], V[0] * R[1] - V[1] * R[0]] }; })();
-    function prism(poly, e) { var top = poly.map(function (p) { return [p[0] + e[0], p[1] + e[1], p[2] + e[2]]; }), fs = [poly.slice().reverse(), top]; for (var i = 0; i < poly.length; i++) { var j = (i + 1) % poly.length; fs.push([poly[i], poly[j], top[j], top[i]]); } return fs; }
-    function solidsOf(it) {   // x＝長さ（右へ）、y＝奥へ、z＝上へ。正面の板は y 0〜t
-      var lg = legOf(it), a = lg.a, t = lg.t, L = num(it.L) || 1000, out = [];
-      if (it.shape === 'AN') { out.push(prism([[0, 0, 0], [L, 0, 0], [L, 0, a], [0, 0, a]], [0, t, 0])); out.push(prism([[0, t, a - t], [L, t, a - t], [L, a, a - t], [0, a, a - t]], [0, 0, t])); return out; }
-      var H = num(it.H) || 500;
-      out.push(prism([[0, 0, H - a], [L, 0, H - a], [L, 0, H], [0, 0, H]], [0, t, 0]));   // 横材の正面
-      out.push(prism([[0, t, H - t], [L, t, H - t], [L, a, H - t], [0, a, H - t]], [0, 0, t]));   // 横材の上の面
-      out.push(prism([[L - a, 0, 0], [L, 0, 0], [L, 0, H - a], [L - a, 0, H - a]], [0, t, 0]));   // 縦材の正面
-      out.push(prism([[L - t, t, 0], [L - t, a, 0], [L - t, a, H - t], [L - t, t, H - t]], [t, 0, 0]));   // 縦材の壁側
-      var dg = diagOf(L, H, a), A = dg.A, D = dg.D, B = dg.B, C = dg.C, n = dg.n;
-      out.push(prism([[A[0], 0, A[1]], [D[0], 0, D[1]], [C[0], 0, C[1]], [B[0], 0, B[1]]], [0, t, 0]));
-      out.push(prism([[A[0], t, A[1]], [D[0], t, D[1]], [D[0] + t * n[0], t, D[1] + t * n[1]], [A[0] + t * n[0], t, A[1] + t * n[1]]], [0, a - t, 0]));
-      return out;
-    }
     // 斜材：横材の左端の下 A（0, H−a）から縦材の下 D（L−a, 0）。z＝下からの高さ。n＝斜材の上側へ向く向き。
-    // 正面の板は A・D の線から n の向きに幅 a（横材の下 B と縦材の左 C で切る）、もう一方の板は A・D の線に沿って奥へ
+    // 正面の板は A・D の線から n の向きに幅 a（横材の下 B と縦材の左 C で切る）
     function diagOf(L, H, a) {
       var A = [0, H - a], D = [L - a, 0], dx = D[0] - A[0], dz = D[1] - A[1], len = Math.hypot(dx, dz) || 1, n = [-dz / len, dx / len];
       if (n[1] < 0) n = [-n[0], -n[1]];
       var P0 = [A[0] + a * n[0], A[1] + a * n[1]], B = [P0[0] + (H - a - P0[1]) / dz * dx, H - a], C = [L - a, P0[1] + (L - a - P0[0]) / dx * dz];
       return { A: A, B: B, C: C, D: D, n: n };
-    }
-    // 立体図の穴（ユーザー指示 2026-11-04：立体図にも穴を出す）。板の両面に置き、見える面の上に描く。ax＝穴の向き（0＝x・1＝y・2＝z）
-    function holes3d(it) {
-      var lg = legOf(it), a = lg.a, t = lg.t, L = num(it.L) || 1000, r = (num(it.hd) || 12) / 2, g1 = num(it.g1) || 28, g2 = num(it.g2) || 28, g3 = num(it.g3) || 28, g4 = num(it.g4) || 28, out = [], rows = rowsOf(it);
-      var two = function (c, ax, d) { var c2 = c.slice(); c2[ax] -= d; out.push({ c: c, ax: ax, r: r }, { c: c2, ax: ax, r: r }); };
-      if (it.shape === 'AN') {
-        rowPos(it, rows[0]).forEach(function (x) { two([x, t, a - g1], 1, t); });   // 正面
-        rowPos(it, rows[1]).forEach(function (x) { two([x, g3, a], 2, t); });   // 上の面
-        return out;
-      }
-      var H = num(it.H) || 500;
-      rowPos(it, rows[0]).forEach(function (x) { two([x, g3, H], 2, t); });   // ①②③ 横材の上の面
-      rowPos(it, rows[1]).forEach(function (x) { two([x, t, H - g1], 1, t); });   // ⑦⑧⑨ 横材の正面
-      rowPos(it, rows[2]).forEach(function (z) { two([L, g4, H - z], 0, t); });   // ④⑤⑥ 縦材の壁側
-      rowPos(it, rows[3]).forEach(function (z) { two([L - g2, t, H - z], 1, t); });   // ⑩⑪ 縦材の正面
-      return out;
-    }
-    function mirrorH(hs, c) { return hs.map(function (h) { return { c: [c - h.c[0], h.c[1], h.c[2]], ax: h.ax, r: h.r }; }); }
-    function mirrorX(sol, c) { return sol.map(function (fs) { return fs.map(function (f) { return f.map(function (p) { return [c - p[0], p[1], p[2]]; }); }); }); }
-    function iso3d(it, maxH) {
-      var L = num(it.L) || 1000, sol = solidsOf(it), hs = holes3d(it);
-      if (isFlip(it)) { sol = mirrorX(sol, L); hs = mirrorH(hs, L); }
-      if (isSet(it)) { sol = mirrorX(sol, -L * 0.45).concat(sol); hs = mirrorH(hs, -L * 0.45).concat(hs); }   // 左に左右反対のもの
-      var V = VIEW.V, R = VIEW.R, U = VIEW.U, dt = function (a, b) { return a[0] * b[0] + a[1] * b[1] + a[2] * b[2]; };
-      var cen = function (ps) { var c = [0, 0, 0]; ps.forEach(function (p) { c[0] += p[0]; c[1] += p[1]; c[2] += p[2]; }); return [c[0] / ps.length, c[1] / ps.length, c[2] / ps.length]; };
-      var Lt = [0.35, -0.55, 0.76], faces = [];
-      sol.forEach(function (fs) {
-        var c = cen([].concat.apply([], fs));
-        fs.forEach(function (f) {
-          var fc = cen(f), e1 = [f[1][0] - f[0][0], f[1][1] - f[0][1], f[1][2] - f[0][2]], e2 = [f[2][0] - f[0][0], f[2][1] - f[0][1], f[2][2] - f[0][2]];
-          var n = [e1[1] * e2[2] - e1[2] * e2[1], e1[2] * e2[0] - e1[0] * e2[2], e1[0] * e2[1] - e1[1] * e2[0]], m = Math.hypot(n[0], n[1], n[2]);
-          if (m < 1e-9) return; n = [n[0] / m, n[1] / m, n[2] / m];
-          if (dt(n, [fc[0] - c[0], fc[1] - c[1], fc[2] - c[2]]) < 0) n = [-n[0], -n[1], -n[2]];
-          if (dt(n, V) <= 1e-6) return;
-          var ax = Math.abs(n[0]) > 0.99 ? 0 : Math.abs(n[1]) > 0.99 ? 1 : Math.abs(n[2]) > 0.99 ? 2 : -1, hp = [];
-          if (ax >= 0) {   // この面の上にある穴（同じ向き・同じ面・面の中）
-            var lo = [0, 1, 2].map(function (i) { return Math.min.apply(null, f.map(function (q) { return q[i]; })); }), hi = [0, 1, 2].map(function (i) { return Math.max.apply(null, f.map(function (q) { return q[i]; })); });
-            hs.forEach(function (h) {
-              if (h.ax !== ax || Math.abs(h.c[ax] - fc[ax]) > 0.01) return;
-              var u = (ax + 1) % 3, w = (ax + 2) % 3;
-              if (h.c[u] < lo[u] || h.c[u] > hi[u] || h.c[w] < lo[w] || h.c[w] > hi[w]) return;
-              var pts = []; for (var i = 0; i < 16; i++) { var q = h.c.slice(), an = i / 16 * Math.PI * 2; q[u] += h.r * Math.cos(an); q[w] += h.r * Math.sin(an); pts.push([dt(q, R), -dt(q, U)]); }
-              hp.push(pts);
-            });
-          }
-          faces.push({ p: f.map(function (q) { return [dt(q, R), -dt(q, U)]; }), d: dt(fc, V), b: 0.62 + 0.38 * Math.max(0, dt(n, Lt)), h: hp });
-        });
-      });
-      var xs = [], ys = []; faces.forEach(function (fc) { fc.p.forEach(function (q) { xs.push(q[0]); ys.push(q[1]); }); });
-      var mnx = Math.min.apply(null, xs), mxx = Math.max.apply(null, xs), mny = Math.min.apply(null, ys), mxy = Math.max.apply(null, ys);
-      var W = 400, sc = (W - 20) / Math.max(1, mxx - mnx), Hh = (mxy - mny) * sc + 20;
-      faces.sort(function (p, q) { return p.d - q.d; });
-      var o = faces.map(function (fc) { var r = Math.round(91 * fc.b), g = Math.round(143 * fc.b), b = Math.round(208 * fc.b); return '<polygon points="' + fc.p.map(function (q) { return ((q[0] - mnx) * sc + 10).toFixed(1) + ',' + ((q[1] - mny) * sc + 10).toFixed(1); }).join(' ') + '" fill="rgb(' + r + ',' + g + ',' + b + ')" stroke="#1d3557" stroke-width="0.5" stroke-linejoin="round"/>' + fc.h.map(function (pts) { return '<polygon points="' + pts.map(function (q) { return ((q[0] - mnx) * sc + 10).toFixed(1) + ',' + ((q[1] - mny) * sc + 10).toFixed(1); }).join(' ') + '" fill="#14233a"/>'; }).join(''); }).join('');
-      return '<svg viewBox="0 0 ' + W + ' ' + Hh.toFixed(1) + '" xmlns="http://www.w3.org/2000/svg"' + (maxH ? ' style="max-height:' + maxH + '"' : '') + '>' + o + '</svg>';
     }
 
     /* ===== 画面の表示 ===== */
@@ -620,7 +628,7 @@
       el.innerHTML = S.items.map(function (it, i) {
         var bad = itemErrors(it).length;
         return '<div class="item' + (bad ? ' bad' : '') + '" onclick="openEdit(' + i + ')"><div class="item-ic">' + bracketSvg(it, 'thumb') + '</div><div class="item-b"><div class="item-t">' + circled(i + 1) + ' ' + esc(SHAPES[it.shape]) + '　' + esc(sizeText(it)) + '</div>' +
-          '<div class="item-s">' + esc(stOf(it)) + '　' + esc(finOf(it)) + '<br>穴 φ' + esc(it.hd) + '×' + holeCount(it) + '　' + esc(dirText(it)) + (it.memo ? '<br>' + esc(it.memo) : '') + (bad ? '<br><span style="color:#b3261e;font-weight:700;">⚠ 確認が必要です</span>' : '') + '</div></div>' +
+          '<div class="item-s">' + esc(stOf(it)) + '　' + esc(finOf(it)) + '<br>穴 ' + esc(holeSum(it)) + '　' + esc(dirText(it)) + (it.memo ? '<br>' + esc(it.memo) : '') + (bad ? '<br><span style="color:#b3261e;font-weight:700;">⚠ 確認が必要です</span>' : '') + '</div></div>' +
           '<div class="item-q">' + esc(qtyText(it)) + '</div></div>';
       }).join('');
     }
@@ -634,64 +642,82 @@
       }
     });
 
-    /* ===== 金物1件の入力 ===== */
-    var ED = -1, FIGV = '2d';
-    function addItem() { if (revLocked()) { lockedToast(); return; } var last = S.items[S.items.length - 1], it = blankItem(last && last.shape); if (last) { it.st = last.st; it.sto = last.sto; it.fin = last.fin; it.fino = last.fino; it.hd = last.hd; it.unit = last.unit; } S.items.push(it); changed(); openEdit(S.items.length - 1); }
+    /* ===== 金物1件の入力（寸法・穴・仕様のタブ。ユーザー指示 2026-11-04）===== */
+    var ED = -1, EDTAB = 'dim';
+    function addItem() { if (revLocked()) { lockedToast(); return; } var last = S.items[S.items.length - 1], it = blankItem(last && last.shape); if (last) { it.st = last.st; it.sto = last.sto; it.fin = last.fin; it.unit = last.unit; } S.items.push(it); changed(); EDTAB = 'dim'; openEdit(S.items.length - 1); }
     function openEdit(i) { if (revLocked()) { lockedToast(); return; } ED = i; renderEdit(); openSheet('edBg'); }
     function decideEdit() { closeEdit(); }
     function closeEdit() { closeSheet('edBg'); ED = -1; changed(); }
     function deleteItem() { var it = S.items[ED]; if (!it) return; askYes(circled(ED + 1) + ' を削除しますか？').then(function (ok) { if (ok) { S.items.splice(ED, 1); closeSheet('edBg'); ED = -1; changed(); } }); }
-    function dupItem() { var it = S.items[ED]; if (!it) return; var c = JSON.parse(JSON.stringify(it)); c.id = uid(); S.items.splice(ED + 1, 0, c); ED = ED + 1; changed(); renderEdit(); toast('同じ金物をもう1件入れました'); }
+    function dupItem() { var it = S.items[ED]; if (!it) return; var c = JSON.parse(JSON.stringify(it)); c.id = uid(); S.items.splice(ED + 1, 0, c); ED = ED + 1; changed(); renderEdit(); toast('同じものを複製しました'); }
     function edSet(k, v) {
       var it = S.items[ED]; if (!it) return; var old = it[k]; it[k] = v;
-      if (k === 'shape' && v !== old) { fillDef(it); toast('図面の寸法を入れました'); }
+      if (k === 'shape' && v !== old) { fillDef(it); toast(SHAPES[v] + 'にしました（寸法は空欄から）'); }
       if (k === 'unit' && v === 'セット') it.flip = false;
       renderEdit(); changed();
     }
+    function edTab(v) { EDTAB = v; renderEdit(); }
     function edFlip() { var it = S.items[ED]; if (!it) return; it.flip = !it.flip; renderEdit(); changed(); toast(it.flip ? '左右反対にしました' : '図のとおりに戻しました'); }
-    function edFig(v) { FIGV = v; renderEdit(); }
     function edIn(k, v) { var it = S.items[ED]; if (!it) return; it[k] = v; touched(); edCalc(); }
-    function edRow(k, i, v) { var it = S.items[ED]; if (!it || !it[k]) return; it[k][i] = String(v).replace(/[^\d.]/g, ''); touched(); edCalc(); }
+    function edSeg(k, i, v) { var it = S.items[ED]; if (!it) return; rowOf(it, rowDef(it, k)).s[i] = String(v).replace(/[^\d.]/g, ''); touched(); edCalc(); }
+    function edGauge(k, v) { var it = S.items[ED]; if (!it) return; rowOf(it, rowDef(it, k)).g = String(v).replace(/[^\d.]/g, ''); touched(); edCalc(); }
+    function edCount(k, v) { var it = S.items[ED]; if (!it) return; setCount(it, rowDef(it, k), v); renderEdit(); changed(); }
+    function edDia(k, i, v) { var it = S.items[ED]; if (!it) return; var o = rowOf(it, rowDef(it, k)); if (i < 0) o.d = o.d.map(function () { return v; }); else o.d[i] = v; renderEdit(); changed(); }
     function edQty(k, dv) { var it = S.items[ED]; if (!it) return; it[k] = Math.max(1, (num(it[k]) || 0) + dv); renderEdit(); changed(); }
-    function restText(it, r) { var v = rowRest(it, r); return rowTot(it, r) ? fmtN(v) || '0' : '—'; }
-    function figSvg(it) { return FIGV === '3d' ? iso3d(it) : bracketSvg(it, 'val'); }
-    function edCalc() {   // 数字を打つたびに計算の結果と図だけ書き直す
+    function edCalc() {   // 数字を打つたびに、自動の数字・図・確認だけ書き直す
       var it = S.items[ED]; if (!it) return; var lg = legOf(it), set = function (id, v) { var el = document.getElementById(id); if (el) el.textContent = v; };
-      rowsOf(it).forEach(function (r) { var el = document.getElementById('rest_' + r.k); if (el) { el.textContent = restText(it, r); el.style.color = rowTot(it, r) && rowRest(it, r) <= 0 ? '#b3261e' : ''; } });
-      SHP[it.shape].gs.forEach(function (x) { set('gop_' + x[0], num(it[x[0]]) ? fmtN(lg.a - num(it[x[0]])) : '—'); });
-      var fg = document.getElementById('edFigSvg'); if (fg) fg.innerHTML = figSvg(it);
-      var e = itemErrors(it), eb = document.getElementById('edErr'); if (eb) { eb.style.display = e.length ? '' : 'none'; eb.textContent = e.join('　'); }
+      SHP[it.shape].lens.forEach(function (x) { var el = document.getElementById('len_' + x[0]), au = totAuto(it, x[0]); if (el) el.placeholder = au ? '自動 ' + fmtN(au) : ''; });
+      rowsOf(it).forEach(function (r) {
+        var sg = segsOf(it, r);
+        sg.auto.forEach(function (au, i) { var el = document.getElementById('seg_' + r.k + '_' + i); if (el) el.placeholder = au ? '自動 ' + fmtN(sg.v[i]) : ''; });
+        var g = num(rowOf(it, r).g); set('gop_' + r.k, g ? fmtN(lg.a - g) : '—');
+      });
+      var fg = document.getElementById('edFigSvg'); if (fg) fg.innerHTML = bracketSvg(it, 'val');
+      // 未記入は図の赤い記号で分かるので、ここでは記号だけ1行に。ほかの確認（合わない・重なる など）はそのまま出す
+      var e = itemErrors(it), miss = e.filter(function (x) { return /を入れてください$/.test(x); }), bad = e.filter(function (x) { return !/を入れてください$/.test(x); }), eb = document.getElementById('edErr');
+      if (eb) { eb.style.display = bad.length ? '' : 'none'; eb.textContent = bad.join('　'); }
+      var mb = document.getElementById('edMiss'); if (mb) { mb.style.display = miss.length ? '' : 'none'; mb.textContent = '未記入：' + miss.map(function (x) { return x.split('（')[0].replace(/ .*/, ''); }).join('・'); }
       schedulePreview();
     }
     function chipsHtml(k, map, cur) { return '<div class="chips">' + Object.keys(map).map(function (v) { return '<span class="chip' + (cur === v ? ' on' : '') + '" onclick="edSet(\'' + k + '\',\'' + v + '\')">' + esc(map[v]) + '</span>'; }).join('') + '</div>'; }
     function chipsArr(k, arr, cur) { var m = {}; arr.forEach(function (v) { m[v] = v; }); return chipsHtml(k, m, cur); }
     function renderEdit() {
       var it = S.items[ED]; if (!it) return;
-      var sh = SHP[it.shape], lg = legOf(it);
+      var sh = SHP[it.shape], LT = lettersOf(it), nums = holeNums(it);
       document.getElementById('edTitle').textContent = circled(ED + 1) + ' ' + SHAPES[it.shape];
-      var numIn = function (v, on) { return '<input type="text" inputmode="numeric" value="' + esc(v) + '" oninput="' + on + '">'; };
-      var dim = function (x) { return '<div><label>' + esc(x[1]) + '</label>' + numIn(it[x[0]], 'edIn(\'' + x[0] + '\',this.value)') + '</div>'; };
-      var sel = function (k, arr, cur, fmt) { return '<select onchange="edSet(\'' + k + '\',this.value)">' + arr.map(function (v) { return '<option value="' + esc(v) + '"' + (v === cur ? ' selected' : '') + '>' + esc(fmt ? fmt(v) : v) + '</option>'; }).join('') + '</select>'; };
-      var gauge = function (x) { return '<div class="fg"><label>' + esc(x[1]) + '</label><div class="dims"><div>' + numIn(it[x[0]], 'edIn(\'' + x[0] + '\',this.value)') + '</div><div class="calc">反対側 <span id="gop_' + x[0] + '">' + (num(it[x[0]]) ? fmtN(lg.a - num(it[x[0]])) : '—') + '</span></div></div></div>'; };
-      var row = function (r) {
-        var nm = r.n.map(circled);
-        return '<div class="fg"><span class="lbl">' + nm.join('') + '　' + esc(r.lb) + '</span><div class="dims">' + (it[r.k] || []).map(function (v, i) {
-          return '<div><label>' + (i ? nm[i - 1] : '端') + '→' + nm[i] + '</label>' + numIn(v, 'edRow(\'' + r.k + '\',' + i + ',this.value)') + '</div>';
-        }).join('') + '<div><label>' + nm[nm.length - 1] + '→端</label><div class="calc" id="rest_' + r.k + '">' + restText(it, r) + '</div></div></div></div>';
-      };
-      var figChip = function (v, lb) { return '<span class="chip' + (FIGV === v ? ' on' : '') + '" onclick="edFig(\'' + v + '\')">' + lb + '</span>'; };
+      var numIn = function (id, v, on) { return '<input type="text" inputmode="numeric" id="' + id + '" value="' + esc(v) + '" oninput="' + on + '">'; };
+      var sel = function (on, arr, cur, fmt) { return '<select onchange="' + on + '">' + arr.map(function (v) { return '<option value="' + esc(v) + '"' + (v === cur ? ' selected' : '') + '>' + esc(fmt ? fmt(v) : v) + '</option>'; }).join('') + '</select>'; };
+      var tab = function (v, lb) { return '<span class="chip' + (EDTAB === v ? ' on' : '') + '" onclick="edTab(\'' + v + '\')">' + lb + '</span>'; };
+      var body = '';
+      if (EDTAB === 'dim') {
+        body = '<div class="edbox"><div class="edbox-h">長さ（mm）</div><div class="dims">' + sh.lens.map(function (x) { return '<div><label>' + LT[x[0]] + '　' + esc(x[1]) + '</label>' + numIn('len_' + x[0], it[x[0]], 'edIn(\'' + x[0] + '\',this.value)') + '</div>'; }).join('') + '</div>' +
+          '<div class="note" style="margin-top:4px;">空欄なら、穴の寸法を全部入れたときに自動で入ります。</div></div>' +
+          sh.rows.map(function (r) {
+            var o = rowOf(it, r), L = LT[r.k]; if (!o.d.length) return '';
+            var nm = nums[r.k].map(circled);
+            return '<div class="edbox"><div class="edbox-h">' + L + '　' + esc(r.lb) + '（' + r.from + '）' + nm.join('') + '</div><div class="dims">' + o.s.map(function (v, i) {
+              return '<div><label>' + L + (i + 1) + '　' + (i ? nm[i - 1] : '端') + '→' + (i < nm.length ? nm[i] : '端') + '</label>' + numIn('seg_' + r.k + '_' + i, v, 'edSeg(\'' + r.k + '\',' + i + ',this.value)') + '</div>';
+            }).join('') + '</div><div class="fg" style="margin:8px 0 0;"><label>' + LT['g_' + r.k] + '　穴の線（角から）</label><div class="dims"><div>' + numIn('g_' + r.k, o.g, 'edGauge(\'' + r.k + '\',this.value)') + '</div><div class="calc">反対側 <span id="gop_' + r.k + '">—</span></div></div></div></div>';
+          }).join('') +
+          '<div class="note">入れていない寸法は、図に記号（赤い A・C1・G1 など）で出ます。1つの並びで1区間だけ空欄にすると、全体の長さから自動で計算します。穴の数は「穴」のタブで変えます。</div>';
+      } else if (EDTAB === 'hole') {
+        body = sh.rows.map(function (r) {
+          var o = rowOf(it, r), nm = nums[r.k].map(circled);
+          return '<div class="edbox"><div class="edbox-h">' + esc(r.lb) + '</div><div class="fg"><label>穴の数</label><div class="qty"><button type="button" onclick="edCount(\'' + r.k + '\',' + (o.d.length - 1) + ')">−</button><input type="number" inputmode="numeric" min="0" max="20" value="' + o.d.length + '" onchange="edCount(\'' + r.k + '\',this.value)"><button type="button" onclick="edCount(\'' + r.k + '\',' + (o.d.length + 1) + ')">＋</button></div></div>' +
+            (o.d.length ? '<div class="dims">' + o.d.map(function (d, i) { return '<div><label>' + nm[i] + ' の大きさ</label>' + sel('edDia(\'' + r.k + '\',' + i + ',this.value)', HOLE_D, d, function (v) { return 'φ' + v; }) + '</div>'; }).join('') + '<div><label>まとめて変える</label>' + sel('edDia(\'' + r.k + '\',-1,this.value)', [''].concat(HOLE_D), '', function (v) { return v ? 'φ' + v : '—'; }) + '</div></div>' : '<div class="note">穴なし</div>') + '</div>';
+        }).join('') + '<div class="note">穴の番号は図面の順（' + (it.shape === 'TB' ? '上の面 → 壁側 → 横材の正面 → 縦材の正面' : '正面 → 上の面') + '）に付きます。穴の位置は「寸法」のタブで入れます。</div>';
+      } else {
+        body = '<div class="edbox"><div class="spec-row"><span class="lbl">鋼材</span>' + sel('edSet(\'st\',this.value)', STEELS, it.st) + '</div>' + (it.st === 'その他' ? '<div class="fg"><input type="text" value="' + esc(it.sto) + '" placeholder="例：L60×60×5" oninput="edIn(\'sto\',this.value)"></div>' : '') +
+          '<div class="spec-row" style="margin-bottom:0;"><span class="lbl">仕上げ</span>' + sel('edSet(\'fin\',this.value)', FINS, finOf(it)) + '</div></div>';
+      }
       document.getElementById('edBody').innerHTML =
-        '<div class="ed-fig"><div class="chips" style="margin-bottom:6px;">' + figChip('2d', '図面') + figChip('3d', '立体') + '</div><div id="edFigSvg" onclick="figZoom()" title="押すと拡大">' + figSvg(it) + '</div>' +
+        '<div class="ed-fig"><div id="edFigSvg" onclick="figZoom()" title="押すと拡大">' + bracketSvg(it, 'val') + '</div>' +
         (isSet(it) ? '<div class="note" style="margin-top:6px;">セット＝図のものと左右反対のもの、各1台で1組</div>' : '<button type="button" class="btn btn-sub" style="margin-top:6px;" onclick="edFlip()">' + (it.flip ? '反転をやめる（図のとおりに戻す）' : '反転（左右反対にする）') + '</button>' + (it.flip ? '<span class="note" style="margin-left:8px;">反転中</span>' : '')) + '</div>' +
-        '<div class="ed-form"><div class="errbox" id="edErr" style="display:none;margin:0 0 10px;"></div>' +
+        '<div class="ed-form"><div class="errbox" id="edErr" style="display:none;margin:0 0 10px;"></div><div class="note" id="edMiss" style="display:none;margin:0 0 8px;color:#c62828;font-weight:700;"></div>' +
         '<div class="edbox"><div class="spec-row"><span class="lbl">品名</span>' + chipsHtml('shape', SHAPES, it.shape) + '</div>' +
         '<div class="fg"><label>数量</label><div class="qty"><button type="button" onclick="edQty(\'qty\',-1)">−</button><input type="number" inputmode="numeric" min="1" value="' + esc(it.qty) + '" oninput="edIn(\'qty\',this.value)"><button type="button" onclick="edQty(\'qty\',1)">＋</button></div></div>' +
-        '<div class="spec-row"><span class="lbl">単位</span>' + chipsArr('unit', UNITS, it.unit) + '</div><div class="note" style="margin-top:-4px;">台＝図のとおり1台（左右反対がほしいときは図の下の「反転」）。セット＝左右対称の2台で1組</div></div>' +
-        '<div class="edbox"><div class="spec-row"><span class="lbl">鋼材</span>' + sel('st', STEELS, it.st) + '</div>' + (it.st === 'その他' ? '<div class="fg"><input type="text" value="' + esc(it.sto) + '" placeholder="例：L60×60×5" oninput="edIn(\'sto\',this.value)"></div>' : '') +
-        '<div class="spec-row"><span class="lbl">仕上げ</span>' + sel('fin', FINS, it.fin) + '</div>' + (it.fin === 'その他' ? '<div class="fg"><input type="text" value="' + esc(it.fino) + '" placeholder="仕上げを入れてください" oninput="edIn(\'fino\',this.value)"></div>' : '') +
-        '<div class="spec-row" style="margin-bottom:0;"><span class="lbl">穴</span>' + sel('hd', HOLE_D, it.hd, function (v) { return 'φ' + v; }) + '</div></div>' +
-        '<div class="edbox"><div class="edbox-h">寸法（mm）</div><div class="dims fg">' + sh.lens.map(dim).join('') + '</div>' + sh.gs.map(gauge).join('') + sh.rows.map(row).join('') +
-        '<div class="note">穴の並びは端から順に区間の寸法を入れます。最後の区間（→端）は長さから計算します。</div></div>' +
+        '<div class="spec-row" style="margin-bottom:0;"><span class="lbl">単位</span>' + chipsArr('unit', UNITS, it.unit) + '</div><div class="note">台＝図のとおり1台（左右反対がほしいときは図の下の「反転」）。セット＝左右対称の2台で1組</div></div>' +
+        '<div class="chips" style="margin:0 0 10px;">' + tab('dim', '寸法') + tab('hole', '穴') + tab('spec', '仕様') + '</div>' + body +
         '<div class="edbox"><div class="fg"><label>備考（注文書に出ます）</label><input type="text" value="' + esc(it.memo) + '" oninput="edIn(\'memo\',this.value)"></div></div></div>';
       edCalc();
     }
@@ -703,7 +729,7 @@
       z.innerHTML = sv.outerHTML + '<div class="zc">押すと閉じる</div>'; z.classList.add('open');
     }
 
-    /* ===== 注文書（A4）。1件1ページ：図面を幅いっぱいに、その下に立体図と仕様の表 ===== */
+    /* ===== 注文書（A4）。1件1ページ：図面を幅いっぱいに、その下に穴の一覧と仕様の表 ===== */
     function headHtml(page, pages) {
       return '<div class="dp-title">' + revTag() + '<h1>金物 注文書</h1><div class="dp-no">（NO, <b>' + esc(S.no || '') + '</b>）<br>ページNo, ⇒ ' + page + '／' + pages + '</div></div>' +
         '<div class="dp-head"><div class="dp-lines">' +
@@ -719,16 +745,16 @@
     }
     function chgTable(rows) { return '<table class="dp-chgt"><colgroup><col></colgroup>' + rows.map(function (l) { return '<tr><td class="wrap">' + esc(l) + '</td></tr>'; }).join('') + '</table>'; }
     function figHtml(it, i, maxH) {
-      var cap = circled(i + 1) + ' ' + SHAPES[it.shape] + '　' + sizeText(it) + (isFlip(it) ? '　（反転）' : '');
-      return '<div class="dp-figs"><div class="dp-fig" data-ed="' + i + '"><div class="cap">' + esc(cap) + '</div>' + bracketSvg(it, 'val').replace('<svg ', '<svg style="max-height:' + Math.round(maxH * 0.62) + 'mm" ') +
-        '<div class="cap" style="margin-top:2mm;">立体図（参考' + (isSet(it) ? '・左右1組' : '') + '）</div><div style="width:' + (isSet(it) ? 78 : 58) + '%;margin:0 auto;">' + iso3d(it, Math.round(maxH * 0.3) + 'mm') + '</div></div></div>';
+      var cap = circled(i + 1) + ' ' + SHAPES[it.shape] + '　' + sizeText(it) + (isFlip(it) ? '　（反転）' : '') + (isSet(it) ? '　（左右1組）' : '');
+      return '<div class="dp-figs"><div class="dp-fig" data-ed="' + i + '"><div class="cap">' + esc(cap) + '</div>' + bracketSvg(it, 'val').replace('<svg ', '<svg style="max-height:' + Math.round(maxH * 0.9) + 'mm" ') +
+        '<div class="cap" style="margin-top:1mm;font-weight:400;">穴　' + esc(holeList(it) || 'なし') + '</div></div></div>';
     }
     function cell(v, cls) { return '<td' + (cls ? ' class="' + cls + '"' : '') + '>' + v + '</td>'; }
     function specTable(it, i) {
-      var colW = [8, 26, 22, 34, 16, 18, 16];
+      var colW = [8, 26, 22, 38, 20, 16, 16];
       return '<div class="dp-sec gt">■ 仕様</div><table class="dp-sp"><colgroup>' + colW.map(function (w) { return '<col style="width:' + w + 'mm">'; }).join('') + '<col></colgroup>' +
         '<tr><th>No.</th><th>品名</th><th>鋼材</th><th>仕上げ</th><th>穴</th><th>向き</th><th>数量</th><th>備考</th></tr>' +
-        '<tr' + (itemRed(it) ? ' class="red"' : '') + '>' + cell(circled(i + 1)) + cell(esc(SHAPES[it.shape]), 'wrap') + cell(esc(stOf(it)), 'wrap') + cell(esc(finOf(it)), 'wrap') + cell('φ' + esc(it.hd) + '×' + holeCount(it), 'wrap') + cell(esc(dirText(it)), 'wrap') + cell(esc(qtyText(it)), 'q') + cell(esc(it.memo || ''), 'wrap l') + '</tr></table>';
+        '<tr' + (itemRed(it) ? ' class="red"' : '') + '>' + cell(circled(i + 1)) + cell(esc(SHAPES[it.shape]), 'wrap') + cell(esc(stOf(it)), 'wrap') + cell(esc(finOf(it)), 'wrap') + cell(esc(holeSum(it)).replace(/・/g, '<br>'), 'wrap') + cell(esc(dirText(it)), 'wrap') + cell(esc(qtyText(it)), 'q') + cell(esc(it.memo || ''), 'wrap l') + '</tr></table>';
     }
     function buildPages() {
       SLIP_DIFF = slipDiff();
@@ -742,12 +768,11 @@
           if (chg) h += '<div class="dp-sec gt">■ 修正内容（' + revLabel() + '・前の版から変わった所）</div>' + chgTable(SLIP_DIFF.lines);
         }
         h += figHtml(it, p, Math.max(70, maxH)) + specTable(it, p);
-        h += '<div class="dp-foot">寸法は mm。穴の位置は図のとおり（丸＝正面の穴、短い線＝もう一方の面の穴）。穴の線は角（外側）から。' + (isSet(it) ? 'セット＝図のものと左右反対のもの、各1台で1組。' : '') + (isFlip(it) ? '反転：図は左右反対にした向きで描いています。' : '') + '</div>';
+        h += '<div class="dp-foot">寸法は mm。丸＝正面の穴、短い線＝もう一方の面の穴。穴の線は角（外側）から。赤い記号は寸法が未記入。' + (isSet(it) ? 'セット＝図のものと左右反対のもの、各1台で1組。' : '') + (isFlip(it) ? '反転：図は左右反対にした向きで描いています。' : '') + '</div>';
         pages.push('<div class="dp">' + h + '</div>');
       });
       return pages;
     }
-
     function renderPreview() {
       clearTimeout(pvTimer);
       var ids = ['pvDesk', 'pvMobile'].filter(function (id) { var h = document.getElementById(id); return h && (id === 'pvDesk' ? !!h.offsetParent : document.getElementById('pvBg').classList.contains('open')); });
@@ -972,13 +997,9 @@
       return JSON.stringify(x);
     }
     var HEAD_LBL = { no: '注文書NO', orderer: '注文者', room: '室名', orderDate: '発注日', delivDate: '搬入日', dest: '搬入先', memo: 'Memo', coAddr: '会社の住所' };
-    var ITEM_KEYS = ['shape', 'unit', 'flip', 'qty', 'st', 'sto', 'fin', 'fino', 'hd', 'L', 'H', 'g1', 'g2', 'g3', 'g4', 'r1', 'r2', 'r3', 'r4', 'memo'];
-    function itemLbl(it, k) {
-      var sh = SHP[it.shape] || SHP.TB, f = function (a) { return (a.filter(function (x) { return x[0] === k; })[0] || [])[1]; };
-      var r = sh.rows.filter(function (x) { return x.k === k; })[0];
-      return { shape: '品名', unit: '単位', flip: '反転', qty: '数量', st: '鋼材', sto: '鋼材', fin: '仕上げ', fino: '仕上げ', hd: '穴', memo: '備考' }[k] || f(sh.lens) || f(sh.gs) || (r ? rowNames(r) : k);
-    }
-    function dShow(v, k) { var m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(v); if (m) return (+m[2]) + '/' + (+m[3]); if (k === 'shape') return SHAPES[v] || v; if (k === 'flip') return v ? 'あり' : 'なし'; if (k === 'hd') return 'φ' + v; if (Array.isArray(v)) return v.join('・'); return (v === '' || v == null) ? '空' : String(v); }
+    var ITEM_LBL = { shape: '品名', unit: '単位', flip: '反転', qty: '数量', st: '鋼材', sto: '鋼材', fin: '仕上げ', memo: '備考' };
+    function dShow(v, k) { var m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(v); if (m) return (+m[2]) + '/' + (+m[3]); if (k === 'shape') return SHAPES[v] || v; if (k === 'flip') return v ? 'あり' : 'なし'; return (v === '' || v == null) ? '空' : String(v); }
+    function rowText(it, r) { var o = rowOf(it, r); return o.d.length ? '寸法 ' + o.s.map(function (v) { return v || '空'; }).join('・') + '　穴 ' + o.d.map(function (d) { return 'φ' + d; }).join('・') + '　穴の線 ' + (o.g || '空') : '穴なし'; }
     function slipDiff() {
       if (!HOST || !S.base || (S.rev || 1) < 2 || !S.status) return null;
       var b = S.base, out = { items: {}, spec: {}, lines: [] };
@@ -988,8 +1009,10 @@
         var o = bi[it.id], tag = circled(i + 1) + ' ' + SHAPES[it.shape];
         if (!o) { out.items[it.id] = true; out.lines.push('追加　' + tag + ' ' + sizeText(it) + ' ' + qtyText(it)); return; }
         delete bi[it.id];
-        var ch = [];
-        ITEM_KEYS.forEach(function (k) { var x = it[k], y = o[k]; if (stableJ(x == null ? '' : x) !== stableJ(y == null ? '' : y)) ch.push(itemLbl(it, k) + ' ' + dShow(y, k) + '→' + dShow(x, k)); });
+        var ch = [], LT = lettersOf(it);
+        Object.keys(ITEM_LBL).forEach(function (k) { if (stableJ(it[k] == null ? '' : it[k]) !== stableJ(o[k] == null ? '' : o[k])) ch.push(ITEM_LBL[k] + ' ' + dShow(o[k], k) + '→' + dShow(it[k], k)); });
+        SHP[it.shape].lens.forEach(function (x) { if (String(it[x[0]] || '') !== String(o[x[0]] || '')) ch.push(LT[x[0]] + ' ' + dShow(o[x[0]]) + '→' + dShow(it[x[0]])); });
+        if (it.shape === o.shape) rowsOf(it).forEach(function (r) { var x = rowText(it, r), y = rowText(o, r); if (x !== y) ch.push(LT[r.k] + '（' + r.lb + '）' + y + '→' + x); });
         if (ch.length) { out.items[it.id] = true; out.lines.push(tag + '　' + ch.join('、')); }
       });
       Object.keys(bi).forEach(function (id) { var o = bi[id]; out.lines.push('削除　' + (SHAPES[o.shape] || '') + ' ' + sizeText(o)); });
