@@ -73,7 +73,7 @@
 <header id="hd" style="display:none;">
   <b>給与管理</b>
   <nav id="nav"></nav>
-  <span class="who"><span id="who"></span>　<a href="#" id="out">ログアウト</a></span>
+  <span class="who"><span id="rdat" style="margin-right:14px;"></span><span id="who"></span>　<a href="#" id="out">ログアウト</a></span>
 </header>
 <main id="m"></main>
 
@@ -83,7 +83,7 @@
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
 import { getFirestore, collection, doc, getDoc, getDocs, setDoc, deleteDoc, writeBatch, query, where } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
-const APP_VER = 'Ver.20261104-23';
+const APP_VER = 'Ver.20261104-24';
 const API = 'https://script.google.com/macros/s/AKfycbyW2hFHqIQuu-TsflPk_0zv7gquhoepspuvRG9-bMStPDSWSc2blcDFBtWs7MisP3f_/exec';
 const app = initializeApp({ apiKey: 'AIzaSyDVR4p4DO4s9h70uPlXUVlhNcMP9-YkQ5Q', authDomain: 'genba-portal-9077b.firebaseapp.com', projectId: 'genba-portal-9077b' });
 const auth = getAuth(app);
@@ -356,20 +356,25 @@ function readAtText(mon) {
   if (!t.length) return '';
   return t.some(x => !x) ? 'まだ読んでいない人がいます' : fmtAt(Math.min(...t));
 }
+/* 日報シートから読んだ日時は、上の帯のアカウント名の左にいつも出す（どのタブでも。ユーザー指示 2026-11-04）。「今月の給与」で選んでいる月の分 */
+function showReadAt() {
+  const el = $('rdat'); if (!el) return;
+  el.innerHTML = MON ? '日報シートから読んだ日時（' + esc(ymLabel(MON.ym)) + '）：<b style="color:#fff;">' + esc(readAtText(MON) || '全員確定済み') + '</b>' : '日報シートから読んだ日時：<b style="color:#fff;">まだ開いていません</b>';
+}
 function calcOne(e) {
   const s = MON.saved[e.id] || {}, adj = s.adj || {};
   if (s.status === '確定' && s.result && s.result.payTotal != null) { MON.res[e.id] = s.result; return; }
   MON.res[e.id] = KY.calcMonth({ emp: e, att: { ...(MON.att[e.id] || {}), tripNights: adj.tripNights }, adj, cfg: cfgOf(MON.ym), ym: MON.ym, taxTable: taxFor(MON.ym) });
 }
 function renderMonth() {
-  MON.view = 'list';
+  MON.view = 'list'; showReadAt();
   const ym = MON.ym, c = cfgOf(ym), p = KY.period(ym, c.close), pd = payDayOf(ym), list = ST.emps.filter(e => !e.left);
   const done = list.length && list.every(e => (MON.saved[e.id] || {}).status === '確定');
   const warn = list.reduce((n, e) => n + ((MON.res[e.id] || {}).warns || []).length, 0);
   const sum = k => list.reduce((n, e) => n + (Number((MON.res[e.id] || {})[k]) || 0), 0);
   M.innerHTML = '<div class="card"><div class="row"><label class="f">給与の月<br><input type="month" id="ym" value="' + ym + '"></label>' +
     '<div class="note">対象 ' + dLabel(p.from) + '〜' + dLabel(p.to) + '<br>支給日 ' + dLabel(pd) + '</div><span class="sp"></span><button class="b" id="reload">更新</button>' +
-    (done ? '<span class="tag ok">確定済み</span><button class="b dark" id="ma">明細をメールで送る</button><button class="b danger" id="un">確定を解除</button>' : '<button class="b dark" id="ok"' + (warn || MON.sheet !== 'ok' ? ' disabled' : '') + '>この月を確定</button>') + '</div>' + '<div class="note">日報シートから読んだ日時：<b>' + esc(readAtText(MON) || '（全員確定済み）') + '</b>' + (done ? '　確定日時：' + esc(Object.values(MON.saved).map(s => s.at || '').sort().pop() || '') : '') + '</div>' + (done ? '' : MON.sheet === 'wait' ? '<div class="note">日報シートを読んでいます…（読み終わると確定できます）</div>' : MON.sheet === 'ng' ? '<div class="msg">日報シートを読めませんでした。もう一度「更新」を押してください。</div>' : MON.sheet === 'need' ? '<div class="msg">「更新」を押して、日報シートを読み直してください。読み直すと確定できます。<br>' + MON.why.map(esc).join('<br>') + '</div>' : '') +
+    (done ? '<span class="tag ok">確定済み</span><button class="b dark" id="ma">明細をメールで送る</button><button class="b danger" id="un">確定を解除</button>' : '<button class="b dark" id="ok"' + (warn || MON.sheet !== 'ok' ? ' disabled' : '') + '>この月を確定</button>') + '</div>' + (done ? '<div class="note">確定日時：' + esc(Object.values(MON.saved).map(s => s.at || '').sort().pop() || '') + '</div>' : '') + (done ? '' : MON.sheet === 'wait' ? '<div class="note">日報シートを読んでいます…（読み終わると確定できます）</div>' : MON.sheet === 'ng' ? '<div class="msg">日報シートを読めませんでした。もう一度「更新」を押してください。</div>' : MON.sheet === 'need' ? '<div class="msg">「更新」を押して、日報シートを読み直してください。読み直すと確定できます。<br>' + MON.why.map(esc).join('<br>') + '</div>' : '') +
     (warn ? '<div class="msg">確認が必要な所が ' + warn + ' 件あります。直すと確定できます。</div>' : '') + '</div>' +
     '<div class="card wrapx"><table class="t"><tr><th>氏名</th><th>状態</th><th class="n">出勤</th><th class="n">時間外</th><th class="n">支給合計</th><th class="n">控除合計</th><th class="n">差引支給額</th></tr>' +
     list.map(e => { const r = MON.res[e.id] || {}, a = MON.att[e.id] || {}, st = (MON.saved[e.id] || {}).status, w = (r.warns || []).length;
@@ -741,7 +746,7 @@ onAuthStateChanged(auth, async u => {
   try {
     const r = await pay('boot');
     ST.me = r.me; ST.cfg = { ...DEF, ...r.cfg }; ST.emps = sortEmps(r.emps);
-    $('who').textContent = r.me.name; $('hd').style.display = ''; draw();
+    $('who').textContent = r.me.name; $('hd').style.display = ''; showReadAt(); draw();
   } catch (e) { await signOut(auth).catch(() => {}); login(e.message); }
 });
 </script>
