@@ -83,7 +83,7 @@
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
 import { getFirestore, collection, doc, getDoc, getDocs, setDoc, deleteDoc, writeBatch, query, where } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
-const APP_VER = 'Ver.20261104-22';
+const APP_VER = 'Ver.20261104-23';
 const API = 'https://script.google.com/macros/s/AKfycbyW2hFHqIQuu-TsflPk_0zv7gquhoepspuvRG9-bMStPDSWSc2blcDFBtWs7MisP3f_/exec';
 const app = initializeApp({ apiKey: 'AIzaSyDVR4p4DO4s9h70uPlXUVlhNcMP9-YkQ5Q', authDomain: 'genba-portal-9077b.firebaseapp.com', projectId: 'genba-portal-9077b' });
 const auth = getAuth(app);
@@ -587,7 +587,8 @@ async function drawYear() {
     data.months.forEach(x => { const c = cfgOf(x.ym); x.result.hourly = c.monthHours > 0 ? x.result.pay.base / c.monthHours : 0; });
     const yms = [...new Set(data.months.map(x => x.ym))].sort(), bms = [...new Set(data.bonus.map(x => x.ym))].sort();
     // 提出のメモ（設定で入れたもの）は画面だけに全文を出す。PDF・スプレッドシートには入れない（ユーザー指示 2026-11-04）
-    const memo = [['税理士さん', ST.cfg.memoTax], ['社労士さん', ST.cfg.memoSr]].filter(x => String(x[1] || '').trim());
+    // 空でもボタンは出す（空のときに欄ごと消すと、ボタンが見つからなかった。2026-11-04）
+    const memo = [['税理士さん', ST.cfg.memoTax], ['社労士さん', ST.cfg.memoSr]].map(([w, t]) => [w, String(t || '').trim() ? t : 'まだ書いていません。設定の「提出のメモ」で書けます。']);
     // ふだんはボタンだけ。押すとその人のメモを開き、もう一度押すと閉じる（邪魔にならないように。ユーザー指示 2026-11-04）
     M.innerHTML = (memo.length ? '<div class="card" style="padding-top:10px;padding-bottom:10px;"><div class="row" style="align-items:center;"><b>提出のメモ</b>' + memo.map(([who], i) => '<button class="b" data-memo="' + i + '">' + who + '</button>').join('') + '<span class="note">押すと開きます（設定の「提出のメモ」で直せます。提出するファイルには入りません）</span></div>' +
       memo.map(([, t], i) => '<div data-memobox="' + i + '" style="display:none;white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.7;padding:8px 10px;background:#f6f8fb;border:1px solid var(--line);border-radius:6px;margin-top:8px;">' + esc(t) + '</div>').join('') + '</div>' : '') + '<div class="card"><div class="row"><label class="f">年<br><input type="number" id="yr" value="' + y + '" style="width:100px;"></label><span class="sp"></span><button class="b dark" id="l">全員の賃金台帳（PDF）</button><button class="b" id="c">賃金台帳（Googleスプレッドシート）</button></div><div class="note">確定した月だけが載ります。税理士さん・社労士さんへの提出用です。</div>' +
