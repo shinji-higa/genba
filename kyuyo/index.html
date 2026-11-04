@@ -83,7 +83,7 @@
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
 import { getFirestore, collection, doc, getDoc, getDocs, setDoc, deleteDoc, writeBatch, query, where } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
-const APP_VER = 'Ver.20261104-26';
+const APP_VER = 'Ver.20261104-27';
 const API = 'https://script.google.com/macros/s/AKfycbyW2hFHqIQuu-TsflPk_0zv7gquhoepspuvRG9-bMStPDSWSc2blcDFBtWs7MisP3f_/exec';
 const app = initializeApp({ apiKey: 'AIzaSyDVR4p4DO4s9h70uPlXUVlhNcMP9-YkQ5Q', authDomain: 'genba-portal-9077b.firebaseapp.com', projectId: 'genba-portal-9077b' });
 const auth = getAuth(app);
@@ -415,8 +415,7 @@ function slipHtml(e, r, ym, att) {
     '<div class="net"><span>差引支給額</span><b>¥' + yen(r.net) + '</b></div><div class="cols"><div><h4>支給</h4>' +
     l('基本給', P.base) + l('時間外手当', P.ot) + l('月60時間超の割増', P.ot60) + l('所定休日出勤手当', P.shoDay) + l('所定休日時間外手当', P.shoOt) + l('法定休日出勤手当', P.houDay) + l('法定休日時間外手当', P.houOt) + l('夜間作業手当', P.night) + l('家族手当', P.family) + l('交通費', P.commute) + l('出張手当', P.trip) + l('欠勤の減額', P.absent) + l('日割りの減額', P.prorate) + l('遅刻・早退の減額', P.early) + l('遡及分', P.retro) + l('休業手当・自宅待機', P.leave) + l('その他の支給', P.other) + l('支給合計', r.payTotal, 1) +
     '</div><div><h4>控除</h4>' + l('健康保険料', D.health) + l('厚生年金', D.pension) + l('雇用保険', D.emp) + l('所得税', D.tax) + l('住民税', D.resident) + l('年末調整', D.yearEnd) + l('その他の控除', D.otherDed) + l('控除合計', r.dedTotal, 1) + '</div></div>' +
-    '<div class="att"><span>出勤 ' + (a.workDays || 0) + '日</span><span>有給 ' + (a.paidDays || 0) + '日</span><span>欠勤 ' + (a.absentDays || 0) + '日</span><span>時間外 ' + (a.otH || 0) + 'h</span><span>所定休日 ' + (a.shoDays || 0) + '日</span><span>法定休日 ' + (a.houDays || 0) + '日</span><span>夜間作業 ' + ((a.nightDays || 0) + (a.nightShoDays || 0) + (a.nightHouDays || 0)) + '日</span><span>早退 ' + (a.earlyH || 0) + 'h</span></div>' +
-    '<div class="ft">時間単価 ' + yen(Math.round(r.hourly || 0)) + '円（基本給 ÷ 月平均 ' + (Math.round(c.monthHours * 10) / 10) + '時間）</div></div>';
+    '<div class="att"><span>出勤 ' + (a.workDays || 0) + '日</span><span>有給 ' + (a.paidDays || 0) + '日</span><span>欠勤 ' + (a.absentDays || 0) + '日</span><span>時間外 ' + (a.otH || 0) + 'h</span><span>所定休日 ' + (a.shoDays || 0) + '日</span><span>法定休日 ' + (a.houDays || 0) + '日</span><span>夜間作業 ' + ((a.nightDays || 0) + (a.nightShoDays || 0) + (a.nightHouDays || 0)) + '日</span><span>早退 ' + (a.earlyH || 0) + 'h</span></div></div>';   // 時間単価は明細に載せない（ユーザー指示 2026-11-04）
 }
 /* 紙で渡す明細（月を選んで出すPDF）：承諾書と同じ作り。上に宛名・題名、右下にダクトの絵とロゴ・会社の情報（ユーザー指示 2026-11-04）。
    代表者名は載せない（所得税法施行規則100条の記載事項は金額・源泉徴収税額・還付額などだけで、代表者名は無い。ユーザー決定 2026-11-04） */
