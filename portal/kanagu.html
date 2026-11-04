@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>金物注文</title>
-  <!-- Ver.20261104-03 -->
+  <!-- Ver.20261104-04 -->
   <style>
     /* 金物注文（鋼材テンプレート）。三角ブラケット・穴あきアングルの図面の寸法を画面で入力し、数字入りの図面を1件1ページで出す（立体図はやめた 2026-11-04）。
        仕組みはフード注文 hood.html と同じ（保存・提出・版・PDF）。2026-11-04 作成
@@ -507,8 +507,8 @@
       var lr = rowsOf(it).filter(function (r) { return r.on === 'L'; }), up = (tb ? lr : [lr[0]]).filter(function (r) { return holesN(it, r); }), down = tb ? [] : [lr[1]].filter(function (r) { return holesN(it, r); });
       var k = thumb ? (tb ? Math.min(58 / L, 42 / H) : 60 / L) : (tb ? Math.min(300 / L, 230 / H) : 330 / L);
       var aw = Math.max(thumb ? 2 : 5, a * k), th = Math.max(thumb ? 0.6 : 1.2, t * k);
-      var lm = thumb ? 3 : 54, tm = thumb ? 3 : 32 + up.length * 34, x0 = lm, y0 = tm, xR = x0 + L * k, ah = tb ? a * k : Math.max(5, a * k), yB = y0 + (tb ? H * k : ah);
-      var svX = xR + 130, rm = thumb ? 3 : (tb ? 130 + aw + 34 : 18), bm = thumb ? 3 : (tb ? 54 : (down.length ? 66 : 30));
+      var lm = thumb ? 3 : 74, tm = thumb ? 3 : 32 + up.length * 34, x0 = lm, y0 = tm, xR = x0 + L * k, ah = tb ? a * k : Math.max(5, a * k), yB = y0 + (tb ? H * k : ah);
+      var svX = xR + 130, rm = thumb ? 3 : (tb ? 130 + aw + 40 : 18), bm = thumb ? 3 : (tb ? 64 : (down.length ? 66 : 40));
       var VW = xR + rm, VH = yB + bm;
       var MX = function (x) { return flip ? VW - x : x; }, f = function (v) { return v.toFixed(1); };
       var ln = function (x1, y1, x2, y2, w, col) { return '<line x1="' + f(MX(x1)) + '" y1="' + f(y1) + '" x2="' + f(MX(x2)) + '" y2="' + f(y2) + '" stroke="' + (col || '#000') + '" stroke-width="' + (w || 0.5) + '"/>'; };
@@ -534,6 +534,8 @@
       };
       var ends = function (r) { return [0].concat(drawPos(it, r), [r.on === 'H' ? H : L]); };
       var nmOf = function (r) { return drawPos(it, r).map(function (p, i) { return [p, circled(nums[r.k][i])]; }); };
+      var fn = function (r) { return r.leg === 'face' ? '正面' : r.leg === 'wall' ? '壁側' : '上の面'; };   // 図に書く面の名前（ユーザー指示 2026-11-04）
+      var cap = function (x, y, s, anchor) { return '<text x="' + f(MX(x)) + '" y="' + f(y) + '" font-size="' + (FS - 1) + '" text-anchor="' + (anchor === 'e' ? (flip ? 'start' : 'end') : anchor === 's' ? (flip ? 'end' : 'start') : 'middle') + '" fill="#1d4f91" font-weight="700">' + esc(s) + '</text>'; };
       var gl = function (r) { var g = num(rowOf(it, r).g); return g ? [fmtC(g), fmtC(a - g)] : [LT['g_' + r.k], '']; };
       var o = '';
       // 部材
@@ -555,22 +557,22 @@
       if (thumb) return '<svg viewBox="0 0 ' + f(VW) + ' ' + f(VH) + '" xmlns="http://www.w3.org/2000/svg" width="100%" height="100%" preserveAspectRatio="xMidYMid meet">' + o + '</svg>';
       // 寸法：上（全体の長さ A、穴の並び）
       o += chainH([0, L], [totLabel(it, 'L')], 14, null, null) + ln(X(0), 18, X(0), y0 - 2, 0.35) + ln(X(L), 18, X(L), y0 - 2, 0.35);
-      up.forEach(function (r, i) { o += chainH(ends(r), segLabels(it, r), 48 + i * 34, nmOf(r), y0 - 2); });
-      down.forEach(function (r) { o += chainH(ends(r), segLabels(it, r), yB + 18, nmOf(r), yB + 2, true); });
+      up.forEach(function (r, i) { o += chainH(ends(r), segLabels(it, r), 48 + i * 34, nmOf(r), y0 - 2) + cap(X(0) - 6, 48 + i * 34 + 3, LT[r.k] + ' ' + fn(r), 'e'); });
+      down.forEach(function (r) { o += chainH(ends(r), segLabels(it, r), yB + 18, nmOf(r), yB + 2, true) + cap(X(0) - 6, yB + 21, LT[r.k] + ' ' + fn(r), 'e'); });
       // 穴の線（左）：横材の正面の穴（三角ブラケットは r2、穴あきアングルは r1）
       var fr = tb ? R('r2') : R('r1'), gx = x0 - 16;
       if (holesN(it, fr)) {
         var g1 = gOf(fr), gt = gl(fr);
         o += ln(gx, y0, gx, y0 + ah) + dot(gx, y0) + dot(gx, y0 + g1 * k) + dot(gx, y0 + ah) + ln(gx - 4, y0, x0 - 2, y0, 0.35) + ln(gx - 4, y0 + g1 * k, x0 - 2, y0 + g1 * k, 0.35) + ln(gx - 4, y0 + ah, x0 - 2, y0 + ah, 0.35);
-        o += tx(gx - 16, y0 - 1, gt[0], FS - 1) + (gt[1] ? tx(gx - 16, y0 + ah + 9, gt[1], FS - 1) : '');
+        o += tx(gx - 16, y0 - 1, gt[0], FS - 1) + (gt[1] ? tx(gx - 16, y0 + ah + 9, gt[1], FS - 1) : '') + cap(gx - 16, y0 + ah + (gt[1] ? 20 : 10), LT['g_' + fr.k] + ' ' + fn(fr));
       }
       var notes = [];
       var tr = tb ? R('r1') : R('r2');   // 上の面の穴の線は正面から見えないので文字で
       if (holesN(it, tr)) { var tg = gl(tr); notes.push('上の面の穴の線（' + LT['g_' + tr.k] + '）：角から ' + tg[0] + (tg[1] ? '（反対側 ' + tg[1] + '）' : '')); }
       if (tb) {
         var r3 = R('r3'), r4 = R('r4'), cx1 = xR + 24, cx2 = xR + 66, cx3 = xR + 112;
-        if (holesN(it, r4)) o += chainV(cx1, ends(r4), segLabels(it, r4), nmOf(r4), xR + 2);
-        if (holesN(it, r3)) o += chainV(cx2, ends(r3), segLabels(it, r3), nmOf(r3), cx1 + 2);
+        if (holesN(it, r4)) o += chainV(cx1, ends(r4), segLabels(it, r4), nmOf(r4), xR + 2) + cap(cx1, y0 - 6, LT.r4 + ' ' + fn(r4));
+        if (holesN(it, r3)) o += chainV(cx2, ends(r3), segLabels(it, r3), nmOf(r3), cx1 + 2) + cap(cx2, y0 - 6, LT.r3 + ' ' + fn(r3));
         o += chainV(cx3, [0, H], [totLabel(it, 'H')], null, cx2 + 2);
         // 横から見た縦材（壁側の面の穴を丸で）
         o += pg([[svX, y0], [svX + aw, y0], [svX + aw, yB], [svX, yB]]);
@@ -579,14 +581,14 @@
           drawPos(it, r3).forEach(function (p, i) { o += ci(svX + aw - g4 * k, Y(p), d3[i]) + tx(svX + aw + 14, Y(p) + 4, circled(nums.r3[i]), FS + 2); });
           var sg = yB + 10, sxg = svX + aw - g4 * k;
           o += ln(svX, sg, svX + aw, sg) + dot(svX, sg) + dot(sxg, sg) + dot(svX + aw, sg) + ln(svX, yB + 2, svX, sg + 4, 0.35) + ln(sxg, yB + 2, sxg, sg + 4, 0.35) + ln(svX + aw, yB + 2, svX + aw, sg + 4, 0.35);
-          o += (t4[1] ? tx(svX - 9, sg + 11, t4[1], FS - 1) : '') + tx(svX + aw + 10, sg + 11, t4[0], FS - 1);
+          o += (t4[1] ? tx(svX - 9, sg + 11, t4[1], FS - 1) : '') + tx(svX + aw + 10, sg + 11, t4[0], FS - 1) + cap(svX + aw / 2, sg + 22, LT.g_r3 + ' ' + fn(r3));
         }
-        o += tx(svX + aw / 2, yB + 34, '横から', FS - 1);
+        o += tx(svX + aw / 2, yB + 44, '横から（壁側）', FS - 1);
         // 縦材の正面の穴の線（下）
         if (holesN(it, r4)) {
           var g2 = gOf(r4), t2 = gl(r4), gy = yB + 14, xa = X(L) - aw, xg = X(L) - g2 * k;
           o += ln(xa, gy, X(L), gy) + dot(xa, gy) + dot(xg, gy) + dot(X(L), gy) + ln(xa, yB + 2, xa, gy + 4, 0.35) + ln(xg, yB + 2, xg, gy + 4, 0.35) + ln(X(L), yB + 2, X(L), gy + 4, 0.35);
-          o += (t2[1] ? tx(xa - 10, gy + 12, t2[1], FS - 1) : '') + tx(X(L) + 10, gy + 12, t2[0], FS - 1);
+          o += (t2[1] ? tx(xa - 10, gy + 12, t2[1], FS - 1) : '') + tx(X(L) + 10, gy + 12, t2[0], FS - 1) + cap(X(L) - aw / 2, gy + 24, LT.g_r4 + ' ' + fn(r4));
         }
       }
       if (notes.length) o += '<text x="4" y="' + f(VH - 4) + '" font-size="' + (FS - 1) + '">' + esc(notes.join('　')) + '</text>';
