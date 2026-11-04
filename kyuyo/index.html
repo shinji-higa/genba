@@ -83,13 +83,27 @@
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
 import { getFirestore, collection, doc, getDoc, getDocs, setDoc, deleteDoc, writeBatch, query, where } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
-const APP_VER = 'Ver.20261104-28';
+const APP_VER = 'Ver.20261104-29';
 const API = 'https://script.google.com/macros/s/AKfycbyW2hFHqIQuu-TsflPk_0zv7gquhoepspuvRG9-bMStPDSWSc2blcDFBtWs7MisP3f_/exec';
 const app = initializeApp({ apiKey: 'AIzaSyDVR4p4DO4s9h70uPlXUVlhNcMP9-YkQ5Q', authDomain: 'genba-portal-9077b.firebaseapp.com', projectId: 'genba-portal-9077b' });
 const auth = getAuth(app);
 const $ = id => document.getElementById(id), M = $('m'), KY = window.KY, TAX = window.KY_TAX;
 const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const yen = n => (Number(n) || 0).toLocaleString('ja-JP');
+/* 確かめる欄・知らせる欄。ブラウザの小窓（confirm/alert）は使わず、画面の中に出す（小窓だと操作が止まり見にくい。ユーザー決定 2026-11-04 案A）。
+   okBox はOKで true、やめるで false。alert はこのアプリの中だけ画面の欄に置き換える（待たない） */
+function okBox(msg, okLabel, noCancel) {
+  return new Promise(done => {
+    const w = document.createElement('div'); w.id = 'ask'; w.className = 'okbox';
+    w.innerHTML = '<div class="card"><div style="white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.7;max-height:60vh;overflow:auto;">' + esc(msg) + '</div><div class="row" style="margin-top:14px;"><span class="sp"></span>' + (noCancel ? '' : '<button class="b" data-k="n">やめる</button>') + '<button class="b dark" data-k="y">' + esc(okLabel || 'はい') + '</button></div></div>';
+    document.body.appendChild(w);
+    const end = v => { w.remove(); done(v); };
+    w.querySelector('[data-k="y"]').onclick = () => end(true);
+    if (!noCancel) w.querySelector('[data-k="n"]').onclick = () => end(false);
+    w.querySelector('[data-k="y"]').focus();
+  });
+}
+const alert = m => { okBox(String(m), 'OK', true); };
 /* 文字を書いてもらう欄。OK なら書いた文字、やめたら null を返す */
 function ask(title, okLabel) {
   return new Promise(done => {
@@ -385,7 +399,7 @@ function renderMonth() {
   $('reload').onclick = () => { if (!MON.reading) sheetRead(MON); };   // 日報シートを読み直し、集計の写しを更新する
   M.querySelectorAll('tr.link').forEach(t => { t.onclick = () => drawPerson(t.dataset.id); });
   if ($('ok')) $('ok').onclick = async () => {
-    if (!confirm(ymLabel(ym) + 'の給与を確定しますか？\n確定すると金額が固定されます。')) return;
+    if (!await okBox(ymLabel(ym) + 'の給与を確定しますか？\n確定すると金額が固定されます。')) return;
     $('ok').disabled = true;
     $('ok').textContent = '一人ずつの給与DBへ書いています…';
     try {
@@ -395,10 +409,10 @@ function renderMonth() {
       drawMonth();
     } catch (x) { alert(x.message); drawMonth(); }
   };
-  if ($('ma')) $('ma').onclick = () => {
+  if ($('ma')) $('ma').onclick = async () => {
     const ok = list.filter(e => e.email && e.consent), no = list.filter(e => !(e.email && e.consent));
     if (!ok.length) { alert('送れる人がいません。従業員のタブでメールと承諾日を入れてください。'); return; }
-    if (!confirm(ymLabel(ym) + 'の明細を送ります。\n\n' + ok.map(e => e.name + '　' + e.email).join('\n') + (no.length ? '\n\n送らない人（メールか承諾日が空欄）：\n' + no.map(e => e.name).join('\n') : '') + sentNote(MON.sent, ok) + '\n\nよろしいですか？')) return;
+    if (!await okBox(ymLabel(ym) + 'の明細を送ります。\n\n' + ok.map(e => e.name + '　' + e.email).join('\n') + (no.length ? '\n\n送らない人（メールか承諾日が空欄）：\n' + no.map(e => e.name).join('\n') : '') + sentNote(MON.sent, ok) + '\n\nよろしいですか？')) return;
     sendSlips(ok, ym);
   };
   if ($('un')) $('un').onclick = async () => {
@@ -483,7 +497,7 @@ function drawPerson(id) {
   const paint = () => { const r = MON.res[id]; $('pv').innerHTML = slipHtml(e, r, ym, MON.att[id]); $('tn').textContent = '所得税の自動計算は ' + yen(r.taxAuto) + '円です。' + (r.taxManual ? '手入力の ' + yen(r.ded.tax) + '円を使っています。' : '空欄のときはこの額を使います。'); };
   paint();
   $('bk').onclick = renderMonth;
-  if ($('m1')) $('m1').onclick = () => { if (confirm(e.name + ' の明細を ' + e.email + ' へ送りますか？')) sendSlips([e], ym); };
+  if ($('m1')) $('m1').onclick = async () => { if (await okBox(e.name + ' の明細を ' + e.email + ' へ送りますか？')) sendSlips([e], ym); };
   M.querySelectorAll('[data-a]').forEach(i => { i.oninput = () => { const v = i.value === '' ? undefined : Number(i.value); if (v === undefined) delete adj[i.dataset.a]; else adj[i.dataset.a] = v; MON.saved[id] = { ...s, adj }; calcOne(e); paint(); }; });
   if ($('sv')) $('sv').onclick = async () => { try { await pay('saveAdj', { ym, id, name: e.name, adj }); $('pm').style.color = 'var(--ok)'; $('pm').textContent = '保存しました'; } catch (x) { $('pm').textContent = x.message; } };
 }
@@ -515,15 +529,15 @@ async function drawBonus() {
       drawBonus();
     };
     if ($('bs')) $('bs').onclick = () => save(false).catch(x => alert(x.message));
-    if ($('bd')) $('bd').onclick = () => { if (confirm('賞与を確定しますか？')) save(true).catch(x => alert(x.message)); };
+    if ($('bd')) $('bd').onclick = async () => { if (await okBox('賞与を確定しますか？')) save(true).catch(x => alert(x.message)); };
     // 賞与明細：確定した人だけ。メールは給与と同じく、メールと承諾日がある人だけに送る
     const cl = list.filter(e => conf[e.id]);
     if ($('bv')) $('bv').onclick = () => { let w = $('bvw'); if (!w) { w = document.createElement('div'); w.id = 'bvw'; M.appendChild(w); } w.innerHTML = cl.map(e => '<div style="margin-bottom:14px;">' + bonusSlipHtml(e, conf[e.id], ym) + '</div>').join(''); w.scrollIntoView(); };
     if ($('bp')) $('bp').onclick = () => { $('bp').textContent = 'PDFを作っています…'; pdfOf(cl.map(e => paperBonus(e, conf[e.id], ym)), '賞与明細_' + ym + '.pdf').then(() => { $('bp').textContent = '明細（PDF）'; }, x => { $('bp').textContent = '明細（PDF）'; alert(x.message); }); };
-    if ($('bm')) $('bm').onclick = () => {
+    if ($('bm')) $('bm').onclick = async () => {
       const ok = cl.filter(e => e.email && e.consent), no = cl.filter(e => !(e.email && e.consent));
       if (!ok.length) { alert('送れる人がいません。従業員のタブでメールと承諾日を入れてください。'); return; }
-      if (!confirm(ymLabel(ym) + 'の賞与明細を送ります。\n\n' + ok.map(e => e.name + '　' + e.email).join('\n') + (no.length ? '\n\n送らない人（メールか承諾日が空欄）：\n' + no.map(e => e.name).join('\n') : '') + sentNote(r.sent, ok) + '\n\nよろしいですか？')) return;
+      if (!await okBox(ymLabel(ym) + 'の賞与明細を送ります。\n\n' + ok.map(e => e.name + '　' + e.email).join('\n') + (no.length ? '\n\n送らない人（メールか承諾日が空欄）：\n' + no.map(e => e.name).join('\n') : '') + sentNote(r.sent, ok) + '\n\nよろしいですか？')) return;
       sendBonusSlips(ok, ym, conf);
     };
     // 確定した人だけを「入力中」に戻す（賞与額と、手で入れた所得税が入力欄に戻る。2026-11-04）
@@ -680,7 +694,7 @@ function editEmp(e0) {
     try {
       const u = e.uid ? (await getDoc(doc(db, 'users', e.uid))).data() : null;
       if (u && u.canDaily) { msg('ポータルでこの人の「日報」にチェックが入っています。先にポータルでチェックを外してください（外さないと、また自動で足されます）。'); return; }
-      if (!confirm(e.name + ' を給与アプリから消しますか？\n\n間違えて足した人だけに使います。給与・賞与を確定したことがある人は消せません（「退職」で外します）。\n消した人の設定は、控えを削除フォルダに残します。')) return;
+      if (!await okBox(e.name + ' を給与アプリから消しますか？\n\n間違えて足した人だけに使います。給与・賞与を確定したことがある人は消せません（「退職」で外します）。\n消した人の設定は、控えを削除フォルダに残します。')) return;
       $('dl').disabled = true; $('dl').textContent = '消しています…';
       await mirrorQ;   // 保存の控えが書き終わってから消す（あとから行が戻らないように）
       await gas('deleteEmp', { id: e.id, name: e.name });
@@ -705,7 +719,7 @@ function editEmp(e0) {
         const r = KY.retroCalc({ oldEmp: old, newEmp: e, key: k, months: hit, cfgOf, taxFor }), to = KY.ymAdd(last, 1), kind = k === 'base' ? 'pay' : 'ded';
         if (r.amount) { x.retro = { ym: to, amount: r.amount, kind, months: r.months }; msg += '\n\n確定済みの月（' + r.months.join('・') + '）の差額 ' + r.amount.toLocaleString('ja-JP') + '円を、' + ymLabel(to) + 'の「' + (kind === 'pay' ? '遡及分' : 'その他の控除') + '」に入れます。'; }
       } else if (hit.length) msg += '\n\n確定済みの月（' + hit.map(m => m.ym).join('・') + '）にかかっています。差額は、次の月の手入力で入れてください。';
-      if (!confirm(msg + '\n\nよろしいですか？')) { e.hist[k].pop(); $('hm').textContent = ''; $('ha').disabled = false; return; }
+      if (!await okBox(msg + '\n\nよろしいですか？')) { e.hist[k].pop(); $('hm').textContent = ''; $('ha').disabled = false; return; }
       await save();
       mirror('logHist', { name: e.name, text: KY.HIST[k][0] + ' を ' + from + ' から変更（' + why + '）' + (x.retro ? '　確定済みの月の差額を ' + x.retro.ym + ' に入れる' : '') });   // 給与管理DB には金額を書かない
       editEmp(e);
@@ -718,7 +732,7 @@ function editEmp(e0) {
         const done = (await pay('year', { year: x.retro.ym.slice(0, 4), emps: [empRef(e)] })).months.some(m => m.ym === x.retro.ym);
         if (done) { alert(ymLabel(x.retro.ym) + 'は確定済みで、差額をもう払っているので取り消せません。逆の変更を新しく足してください。'); return; }
       }
-      if (!confirm(KY.HIST[k][0] + ' ' + x.from + ' の履歴を取り消しますか？' + (x.retro && x.retro.amount ? '\n差額 ' + x.retro.amount.toLocaleString('ja-JP') + '円も入れなくなります。' : ''))) return;
+      if (!await okBox(KY.HIST[k][0] + ' ' + x.from + ' の履歴を取り消しますか？' + (x.retro && x.retro.amount ? '\n差額 ' + x.retro.amount.toLocaleString('ja-JP') + '円も入れなくなります。' : ''))) return;
       collect(); e.hist[k].splice(Number(i), 1); await save();
       mirror('logHist', { name: e.name, text: '取り消し：' + KY.HIST[k][0] + ' ' + x.from + ' からの変更（' + (x.why || '') + '）' });
       editEmp(e);
