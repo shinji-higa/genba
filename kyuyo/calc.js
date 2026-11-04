@@ -75,7 +75,7 @@
 
   /** 1人1か月の給与 */
   function calcMonth(ctx) {
-    const { emp, att = {}, adj = {}, cfg, ym, taxTable } = ctx;
+    const { emp: emp0, att = {}, adj = {}, cfg, ym, taxTable } = ctx, emp = empAt(emp0, ym), hr = histRetro(emp0, ym);   // 基本給などは履歴からその月の値を使う
     const n = k => Number(att[k]) || 0, a = k => Number(adj[k]) || 0, warns = [];
     const base = Number(emp.base) || 0, hourly = cfg.monthHours > 0 ? base / cfg.monthHours : 0, daily = hourly * 8;
     const o = {};
@@ -97,7 +97,7 @@
     const pro = proDays(emp, ym, cfg);   // 入社・退職の月の日割り：在籍していない所定労働日を、欠勤と同じ日額で引く（手当は引かない。ユーザー決定 2026-11-04）
     o.prorate = -yen(daily * pro);
     o.early = -yen(hourly * n('earlyH'));
-    o.retro = a('retro');
+    o.retro = a('retro') + hr.pay;   // 遡及分＝手入力＋昇給を遡ったときの差額（履歴に控えた分）
     o.leave = a('leave');
     o.other = a('other');
     const payTotal = o.base + o.ot + o.ot60 + o.shoDay + o.shoOt + o.houDay + o.houOt + o.night + o.family + o.commute + o.trip + o.absent + o.prorate + o.early + o.retro + o.leave + o.other;
@@ -117,19 +117,20 @@
     d.tax = manual ? Number(adj.taxManual) || 0 : t.tax;
     d.resident = Number((emp.resident || {})[ym.slice(5)]) || 0;
     d.yearEnd = a('yearEnd');   // 年末調整：還付はマイナスで入れる
-    d.otherDed = a('otherDed');
+    d.otherDed = a('otherDed') + hr.ded;   // その他の控除＝手入力＋標準報酬を遡ったときの保険料の差額
     const dedTotal = d.health + d.pension + d.emp + d.tax + d.resident + d.yearEnd + d.otherDed;
     if (base <= 0) warns.push('基本給が入っていません');
     if (ins && !std) warns.push('標準報酬月額が入っていません');
     // notes は知らせるだけ（warns と違って確定は止めない）
     const notes = over60 > 0 ? ['時間外が月60時間を超えています（' + h60 + '時間、超えた分 ' + over60 + '時間）。超えた平日の ' + w60 + '時間に割増を足しました。'] : [];
+    hr.notes.forEach(x => notes.push(x));
     if (pro > 0) notes.push('入社か退職の月なので、在籍していない所定労働日 ' + pro + '日分を日割りで引きました（日額 ' + yen(daily).toLocaleString('ja-JP') + '円）。');
     return { hourly, daily, pay: o, payTotal, ded: d, dedTotal, net: payTotal - dedTotal, taxable, taxAuto: t.tax, taxManual: manual, warns, notes, h60, over60, proDays: pro };
   }
 
   /** 賞与 */
   function calcBonus(ctx) {
-    const { emp, amount, prevNet, cfg, ym, taxTable, taxManual } = ctx;
+    const { emp: emp0, amount, prevNet, cfg, ym, taxTable, taxManual } = ctx, emp = empAt(emp0, ym);
     const stdB = Math.floor(amount / 1000) * 1000, r = rateAt(cfg.rates, ym), ins = emp.insure !== false;
     const hRate = (Number(r.health) || 0) + (Number(r.child) || 0) + (careOn(emp, ym) ? Number(r.care) || 0 : 0);
     const d = {};
@@ -169,6 +170,47 @@
     const s = Number(start); let e = Number(end); if (!isFinite(s) || !isFinite(e)) return 0; if (e <= s) e += 24;
     return [[-2, 5], [22, 29], [46, 53]].reduce((n, [a, b]) => n + Math.max(0, Math.min(e, b) - Math.max(s, a)), 0);
   }
+  /* ---- 昇給と履歴（ユーザー決定 2026-11-03 案A＋案1）----
+     emp.hist = { base: [{ from: 'YYYY-MM', v, why, by, at, retro: { ym, amount, kind, months } }], std: [...], ... }
+     基本給・交通費・扶養・16歳未満は「給与の月」、標準報酬月額は「保険の月」で選ぶ。履歴が無い月は従業員の欄の値（最初の値）を使う。
+     確定済みの月にかかったときは、足した時点で差額を計算して retro に控え、次の未確定の月に入れる（基本給→遡及分、標準報酬→その他の控除） */
+  const HIST = { base: ['基本給', 'pay'], std: ['標準報酬月額（健康保険）', 'ins'], stdPen: ['標準報酬月額（厚生年金）', 'ins'], commute: ['交通費', 'pay'], deps: ['扶養親族等の数', 'pay'], kids16: ['16歳未満の家族', 'pay'] };
+  /** その月に使う値。kind が 'ins' の項目は ym に保険の月を渡す */
+  function valAt(emp, k, ym) {
+    let r = null; ((emp.hist || {})[k] || []).forEach(x => { if (x.from <= ym && (!r || x.from >= r.from)) r = x; });
+    return r ? r.v : emp[k];
+  }
+  /** 給与の月 ym に使う従業員（履歴の値を入れたもの）。標準報酬は前月（保険の月） */
+  function empAt(emp, ym) {
+    if (!emp || !emp.hist) return emp;
+    const i = ymAdd(ym, -1), o = { ...emp };
+    ['base', 'commute', 'deps', 'kids16'].forEach(k => { o[k] = valAt(emp, k, ym); });
+    ['std', 'stdPen'].forEach(k => { o[k] = valAt(emp, k, i); });
+    return o;
+  }
+  /** その月に入れる、履歴に控えた差額 */
+  function histRetro(emp, ym) {
+    const out = { pay: 0, ded: 0, notes: [] };
+    Object.keys((emp && emp.hist) || {}).forEach(k => (emp.hist[k] || []).forEach(x => {
+      if (!x.retro || x.retro.ym !== ym || !x.retro.amount) return;
+      out[x.retro.kind] += x.retro.amount;
+      out.notes.push((HIST[k] || [k])[0] + 'を ' + x.from + ' から変えた差額 ' + (x.retro.amount > 0 ? '' : '−') + Math.abs(x.retro.amount).toLocaleString('ja-JP') + '円を「' + (x.retro.kind === 'pay' ? '遡及分' : 'その他の控除') + '」に入れました（' + (x.retro.months || []).join('・') + '分）。');
+    }));
+    return out;
+  }
+  /** 確定済みの月の差額：前の従業員と新しい従業員で、同じ勤怠の計算をして差を足す。
+      基本給は支給合計の差（時間外なども時間単価が変わる）、標準報酬は健康保険＋厚生年金の差 */
+  function retroCalc({ oldEmp, newEmp, key, months, cfgOf, taxFor }) {
+    let amount = 0; const list = [];
+    months.forEach(m => {
+      const c = { emp: null, att: m.att || {}, adj: {}, cfg: cfgOf(m.ym), ym: m.ym, taxTable: taxFor(m.ym) };
+      const a = calcMonth({ ...c, emp: { ...oldEmp, hist: stripRetro(oldEmp.hist) } }), b = calcMonth({ ...c, emp: { ...newEmp, hist: stripRetro(newEmp.hist) } });
+      const v = HIST[key][1] === 'ins' ? (b.ded.health + b.ded.pension) - (a.ded.health + a.ded.pension) : b.payTotal - a.payTotal;
+      if (v) { amount += v; list.push(m.ym); }
+    });
+    return { amount, months: list };
+  }
+  const stripRetro = h => { const o = {}; Object.keys(h || {}).forEach(k => { o[k] = (h[k] || []).map(x => ({ ...x, retro: null })); }); return o; };   // 差額の計算では、ほかの控えた差額を入れない
   /** 日割りで引く日数：締めの期間の所定労働日（平日−祝日−会社休日 cfg.offDays）のうち、入社日より前と退職日より後の日 */
   function proDays(emp, ym, cfg) {
     const j = emp.joined || '', l = emp.leftDate || '';
@@ -185,6 +227,6 @@
   /** 家族手当：（扶養親族等の数＋16歳未満の家族）×1人の額、上限あり */
   const familyPay = (emp, cfg) => emp.noFamily ? 0 : Math.min(Number(cfg.familyMax != null ? cfg.familyMax : 30000), ((Number(emp.deps) || 0) + (Number(emp.kids16) || 0)) * Number(cfg.familyPer != null ? cfg.familyPer : 10000));
 
-  const api = { jpHolidays, workYear, calcMonth, calcBonus, monthlyTax, bonusRate, careTarget, payDay, period, rateAt, half, ymAdd, roundH, roundAtt, familyPay, lateH, proDays };
+  const api = { jpHolidays, workYear, calcMonth, calcBonus, monthlyTax, bonusRate, careTarget, payDay, period, rateAt, half, ymAdd, roundH, roundAtt, familyPay, lateH, proDays, HIST, valAt, empAt, histRetro, retroCalc };
   if (typeof module !== 'undefined') module.exports = api; else root.KY = api;
 })(typeof window !== 'undefined' ? window : globalThis);
