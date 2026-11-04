@@ -83,7 +83,7 @@
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
 import { getFirestore, collection, doc, getDoc, getDocs, setDoc, deleteDoc, writeBatch, query, where } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
-const APP_VER = 'Ver.20261104-10';
+const APP_VER = 'Ver.20261104-11';
 const API = 'https://script.google.com/macros/s/AKfycbyW2hFHqIQuu-TsflPk_0zv7gquhoepspuvRG9-bMStPDSWSc2blcDFBtWs7MisP3f_/exec';
 const app = initializeApp({ apiKey: 'AIzaSyDVR4p4DO4s9h70uPlXUVlhNcMP9-YkQ5Q', authDomain: 'genba-portal-9077b.firebaseapp.com', projectId: 'genba-portal-9077b' });
 const auth = getAuth(app);
@@ -213,7 +213,7 @@ const FAST_ACT = {
     const b = writeBatch(db);
     d.list.forEach(x => b.set(doc(db, 'payrollBonus', mid(d.ym, x.id)), plain({ ym: d.ym, year: d.ym.slice(0, 4), id: x.id, name: x.name, status: '入力中', amount: x.amount, result: x.result, expireAt: expireOf(d.ym) }), { mergeFields: ['ym', 'year', 'id', 'name', 'status', 'amount', 'result', 'expireAt'] }));
     await b.commit();
-    mirror('logAdj', { ym: d.ym, name: '賞与', keys: d.list.map(x => x.name + ' ' + yen(x.amount) + '円' + (x.result && x.result.taxManual ? '（所得税 手入力）' : '')) }); return {};   // 賞与の保存も操作記録に残す
+    if (d.list.length) mirror('logAdj', { ym: d.ym, name: '賞与', keys: d.list.map(x => x.name + (x.result && x.result.taxManual ? '（所得税 手入力）' : '')) }); return {};   // 賞与の保存も操作記録に残す（給与管理DB には金額を書かない。2026-11-04 直した）
   },
   async bonus(d) {
     if (!live(d.ym) || !live(d.prev)) {   // 写しが消えた月はスプレッドシートから
