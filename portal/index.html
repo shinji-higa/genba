@@ -141,7 +141,7 @@ storage.maxUploadRetryTime = 60000;   // 電波が切れたら1分で一度あ�
 const auth = getAuth(app);
 auth.languageCode = 'ja';   // パスワード再設定のメールと画面を日本語にする
 const db = initializeFirestore(app, { localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }) });
-const APP_VER = 'Ver.20261104-14';
+const APP_VER = 'Ver.20261104-15';
 
 /* ---------- 電波なしでも使う（今の現場管理と同じ考え方） ----------
    ・保存は押した瞬間に完了の形。電波が戻ったら自動で送る（データは Firestore が端末に貯める）
@@ -1572,7 +1572,7 @@ function showSiteForm(s) {
    1枚の中身は sites/{id}/orderBody、一覧に出す情報は sites/{id}/orders、記録は sites/{id}/orderLog */
 const O_KIND = {
   kaku: { host: 'denpyoHost', src: 'denpyo.html?v=9', title: '角ダクト注文', word: '伝票', log: '角ダクト', fn: 'Denpyo' },
-  maru: { host: 'maruHost', src: 'maru.html?v=5', title: '丸ダクト注文', word: '注文書', log: '丸ダクト', fn: 'Maru' },
+  maru: { host: 'maruHost', src: 'maru.html?v=6', title: '丸ダクト注文', word: '注文書', log: '丸ダクト', fn: 'Maru' },
   cons: { host: 'consHost', src: 'cons.html?v=22', title: '消耗品注文', word: '注文書', log: '消耗品', fn: 'Cons' },
   kana: { host: 'kanaHost', src: 'kana.html?v=7', title: '金物注文（添付）', word: '注文書', log: '金物（添付）', fn: 'Kana' },
   hood: { host: 'hoodHost', src: 'hood.html?v=35', title: 'フード注文', word: '注文書', log: 'フード', fn: 'Hood' },   // 厨房フード（箱型・山型・二重。数字入りの図の注文書。2026-11-03）

@@ -825,7 +825,7 @@
       return SIZES.filter(function (d) { return d <= d1; });
     }
     function mmIn(key, label, ph) {
-      return '<div class="fg"><label>' + label + '</label><input type="number" inputmode="numeric" value="' + esc(ED.it[key]) + '" placeholder="' + (ph || '') + '" oninput="ED.it.' + key + '=this.value; refreshEd(true)"></div>';
+      return '<div class="fg"><label>' + label + '</label><input type="number" inputmode="numeric" value="' + esc(ED.it[key]) + '" placeholder="' + (ph || '') + '" oninput="edNum(\'' + key + '\', this.value, \'' + String(label).replace(/<[^>]*>/g, ' ').replace(/["'\\]/g, '').replace(/\s+/g, ' ').trim() + '\')"></div>';
     }
     var CIRC = ['①', '②', '③', '④'];
     function openEditor() {
@@ -864,7 +864,7 @@
           [['2', '定尺 2m'], ['4', '定尺 4m'], ['L', '長さを指定']].map(function (o) {
             return '<span class="chip' + ((it.len || '4') === o[0] ? ' on' : '') + '" onclick="edSet(\'len\',\'' + o[0] + '\')">' + o[1] + '</span>';
           }).join('') + '</div></div>';
-        if (it.len === 'L') h += '<div class="fg"><label>長さ（mm）</label><input type="number" inputmode="numeric" value="' + esc(it.lenMm) + '" oninput="ED.it.lenMm=this.value; refreshEd(true)"></div>';
+        if (it.len === 'L') h += '<div class="fg"><label>長さ（mm）</label><input type="number" inputmode="numeric" value="' + esc(it.lenMm) + '" oninput="edNum(\'lenMm\', this.value, \'長さ\')"></div>';
       }
       if (t.fixT) h += '<div class="fg"><span class="lbl">板厚</span><div class="note">' + fmtT(t.fixT) + 't（' + esc(t.name) + 'は常に ' + fmtT(t.fixT) + 't）</div></div>';
       else if (!t.noT) {   // 板厚：部材ごとに選ぶ（最初は仕様どおり。ユーザー指示 2026-10-30）
@@ -872,7 +872,7 @@
           return chip('th', p, (p === '1.6t' ? p : p + '　' + fmtT(thickOf(it, p)) + 't'), itemPr(it) === p);
         }).join('') + '</div>' + (itemPr(it) !== specTh() ? '<div class="note" style="margin-top:6px;">ダクト仕様（' + esc(specTh()) + '）と違う板厚です。注文書の数に「' + PRESS_TAG[itemPr(it)] + '」の印が付きます。</div>' : '') + '</div>';
       }
-      h += '<div class="fg"><label>数</label><div class="qty"><button type="button" onclick="edQty(-1)">－</button><input type="number" inputmode="numeric" id="edQty" value="' + esc(it.qty) + '" oninput="ED.it.qty=this.value; refreshEd(true)"><button type="button" onclick="edQty(1)">＋</button></div></div>';
+      h += '<div class="fg"><label>数</label><div class="qty"><button type="button" onclick="edQty(-1)">－</button><input type="number" inputmode="numeric" id="edQty" value="' + esc(it.qty) + '" oninput="edNum(\'qty\', this.value, \'数\')"><button type="button" onclick="edQty(1)">＋</button></div></div>';
       h += '</div><div id="edErr"></div>';
       document.getElementById('edForm').innerHTML = h;
       refreshEd();
@@ -902,13 +902,18 @@
       if (p.L) h += '<div class="fg"><span class="lbl">長さ</span><div class="note">' + p.L + 'L</div></div>';
       if (p.lenSel) {
         h += '<div class="fg"><span class="lbl">長さ</span><div class="chips">' + chip('flenm', '', '1m', it.flenm !== 'in') + chip('flenm', 'in', '長さを指定', it.flenm === 'in') + '</div></div>';
-        if (it.flenm === 'in') h += '<div class="fg"><label>長さ（m）</label><input type="number" inputmode="decimal" step="0.1" value="' + esc(it.flen) + '" oninput="ED.it.flen=this.value; refreshEd(true)"></div>';
+        if (it.flenm === 'in') h += '<div class="fg"><label>長さ（m）</label><input type="number" inputmode="decimal" step="0.1" value="' + esc(it.flen) + '" oninput="edNum(\'flen\', this.value, \'長さ\')"></div>';
       }
       if (p.endc) h += '<div class="fg"><span class="lbl">端末加工</span><div class="chips">' + chip('endc', '1', 'あり', it.endc) + chip('endc', '', 'なし', !it.endc) + '</div>' +
         '<div class="note" style="margin-top:6px;">端末加工ありは 0.5m・1m・1.5m・2m が標準（10m まで作れます）。加工なしは 10m 巻きです。</div></div>';
       return h;
     }
-    function fxSet(k, v) { ED.it.fx = Object.assign({}, ED.it.fx || {}); ED.it.fx[k] = v; refreshEd(true); }
+    /* ありえない数字は入れさせない（ユーザー指示 2026-11-04：金物・フードと同じ。ポータルだけの直し。今の現場管理の maru.html から写し直すときは残す）。
+       数・長さの欄は数字と小数点だけ（－などは消える）。0 は前の数字に戻して理由を出す。形の欄（fx）は－だけ消す */
+    function cleanNum(v) { var s = String(v == null ? '' : v).replace(/[^\d.]/g, ''), i = s.indexOf('.'); return i < 0 ? s : s.slice(0, i + 1) + s.slice(i + 1).replace(/\./g, ''); }
+    function showVal(v) { var el = document.activeElement; if (el && el.tagName === 'INPUT' && el.value !== v) el.value = v; }
+    function edNum(k, v, lb) { v = cleanNum(v); if (v !== '' && num(v) <= 0) { showVal(ED.it[k] == null ? '' : String(ED.it[k])); toast((lb || k) + ' に 0 は入れられません'); return; } showVal(v); ED.it[k] = v; refreshEd(true); }
+    function fxSet(k, v) { if (k !== 'memo') { v = cleanNum(v); showVal(v); } ED.it.fx = Object.assign({}, ED.it.fx || {}); ED.it.fx[k] = v; refreshEd(true); }
     function edSet(k, v) {
       var m = /^fit(\d)$/.exec(k);
       if (m) { ED.it.fits = (ED.it.fits || ['NI', 'NI', 'NI', 'NI']).slice(); ED.it.fits[+m[1]] = v; openEditor(); return; }
