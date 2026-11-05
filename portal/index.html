@@ -141,8 +141,11 @@ const storage = getStorage(app);
 storage.maxUploadRetryTime = 60000;   // 電波が切れたら1分で一度あきらめ、端末に貯めたまま後で送り直す
 const auth = getAuth(app);
 auth.languageCode = 'ja';   // パスワード再設定のメールと画面を日本語にする
-const db = initializeFirestore(app, { localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }) });
-const APP_VER = 'Ver.20261105-05';
+// 確認用のスイッチ（2026-11-05）：端末に portalNet=lp を入れると、サーバーとのやりとりを細かく分けて受け取る形（ロングポーリング）にする。
+// 最新が届くまで20〜30秒かかることがあり、つながり方のせいかを比べるため。ふだんの人には関係しない
+const portalNet = (() => { try { return localStorage.getItem('portalNet') || ''; } catch (e) { return ''; } })();
+const db = initializeFirestore(app, Object.assign({ localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }) }, portalNet === 'lp' ? { experimentalForceLongPolling: true } : {}));
+const APP_VER = 'Ver.20261105-06';
 
 /* ---------- 電波なしでも使う（今の現場管理と同じ考え方） ----------
    ・保存は押した瞬間に完了の形。電波が戻ったら自動で送る（データは Firestore が端末に貯める）
