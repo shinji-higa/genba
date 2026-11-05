@@ -77,13 +77,13 @@
 </header>
 <main id="m"></main>
 
-<script src="tax.js?v=Ver.20261105-05"></script>
-<script src="calc.js?v=Ver.20261105-05"></script>
+<script src="tax.js?v=Ver.20261105-06"></script>
+<script src="calc.js?v=Ver.20261105-06"></script>
 <script type="module">
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
 import { getFirestore, collection, doc, getDoc, getDocs, setDoc, deleteDoc, writeBatch, query, where } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
-const APP_VER = 'Ver.20261105-05';
+const APP_VER = 'Ver.20261105-06';
 const API = 'https://script.google.com/macros/s/AKfycbyW2hFHqIQuu-TsflPk_0zv7gquhoepspuvRG9-bMStPDSWSc2blcDFBtWs7MisP3f_/exec';
 const app = initializeApp({ apiKey: 'AIzaSyDVR4p4DO4s9h70uPlXUVlhNcMP9-YkQ5Q', authDomain: 'genba-portal-9077b.firebaseapp.com', projectId: 'genba-portal-9077b' });
 const auth = getAuth(app);
@@ -448,7 +448,7 @@ function paperHtml(title, e, ym, slip, sub) {
     '<div style="position:absolute;right:60px;bottom:56px;text-align:right;' + PAPER_SERIF + 'font-size:12px;line-height:1.7;color:#222;text-shadow:0 0 3px #fff,0 0 3px #fff,0 0 2px #fff;"><img src="paper_logo.png" style="width:200px;display:block;margin:0 0 8px auto;"><b style="font-size:13.5px;">エクスケアダクト株式会社</b><br>〒661-0961　兵庫県尼崎市戸ノ内町5丁目10-16<br>TEL (06)6420-4045　FAX (06)6420-4046</div></div>';
 }
 const paperSlip = (e, r, ym, att) => paperHtml('給与支払明細書', e, ym, slipHtml(e, r, ym, att), '支給日 ' + dLabel(payDayOf(ym)));
-const paperBonus = (e, r, ym) => paperHtml('賞与支払明細書', e, ym, bonusSlipHtml(e, r, ym));
+const paperBonus = (e, r, ym) => paperHtml('賞与支払明細書', e, ym, bonusSlipHtml(e, r, ym), bonusDay(r) ? '支給日 ' + bonusDay(r) : '');
 /* 明細のメール：データは付けず文章だけ（ユーザー指示 2026-11-02） */
 /* メールの最後の会社情報（承諾書のひな形のフッターと同じ。送り元が人事なので代表者の行の代わりに「人事」。2026-11-04） */
 const MAIL_SIGN = '――――――――――――――――――――\nエクスケアダクト株式会社　人事\n〒661-0961　兵庫県尼崎市戸ノ内町5丁目10-16\nTEL (06)6420-4045　FAX (06)6420-4046\n';
@@ -462,16 +462,17 @@ function mailText(e, r, ym) {
 const sentTag = (sent, id) => { const s = (sent || {})[id]; return s ? '<span class="tag">送信済み ' + esc(String(s.at).slice(5, 16)) + (s.n > 1 ? '（' + s.n + '回）' : '') + '</span> ' : ''; };
 const sentMsg = r => r.list.map(x => x.name + '：' + (x.ng ? '送れませんでした（' + x.ng + '）' : x.to + ' へ送りました' + (x.fix ? '（件名に【訂正】を付けました）' : ''))).join('\n');
 const sentNote = (sent, list) => { const s = list.filter(e => (sent || {})[e.id]); return s.length ? '\n\n前に送った人（確定し直していれば件名に【訂正】が付きます）：\n' + s.map(e => e.name + '　' + String(sent[e.id].at).slice(0, 16)).join('\n') : ''; };
-/* 賞与明細：給与明細と同じ見た目。支給日は決まっていないので載せない */
+/* 賞与明細：給与明細と同じ見た目。支給日は賞与の画面でその回ごとに入れる（r.payDay 'YYYY-MM-DD'。ユーザー決定 2026-11-05 案A） */
+const bonusDay = r => r && r.payDay ? dLabel(new Date(r.payDay + 'T00:00:00')) : '';
 function bonusSlipHtml(e, r, ym) {
   const D = r.ded || {}, l = (k, v, sum) => (v || sum) ? '<div class="l' + (sum ? ' sum' : '') + '"><span>' + k + '</span><span>' + yen(v) + '</span></div>' : '';
-  return '<div class="slip"><div class="top"><div><div style="font-size:.8rem;opacity:.8;">エクスケアダクト株式会社</div><h3>賞与明細</h3></div><div style="text-align:right;">' + ymLabel(ym) + '分<br><b>' + esc(e.name) + '</b> 様</div></div>' +
+  return '<div class="slip"><div class="top"><div><div style="font-size:.8rem;opacity:.8;">エクスケアダクト株式会社</div><h3>賞与明細</h3></div><div style="text-align:right;">' + ymLabel(ym) + '分' + (bonusDay(r) ? '<br>支給日 ' + bonusDay(r) : '') + '<br><b>' + esc(e.name) + '</b> 様</div></div>' +
     '<div class="net"><span>差引支給額</span><b>¥' + yen(r.net) + '</b></div><div class="cols"><div><h4>支給</h4>' + l('賞与額', r.amount) + l('支給合計', r.amount, 1) +
     '</div><div><h4>控除</h4>' + l('健康保険料', D.health) + l('厚生年金', D.pension) + l('雇用保険', D.emp) + l('所得税', D.tax) + l('控除合計', r.dedTotal, 1) + '</div></div></div>';
 }
 function bonusMailText(e, r, ym) {
   const D = r.ded || {}, l = (k, v) => v ? k + '：' + yen(v) + '円\n' : '';
-  return e.name + ' 様\n\n' + ymLabel(ym) + '分の賞与明細をお送りします。\n\n■ 差引支給額：' + yen(r.net) + '円\n\n【支給】\n賞与額：' + yen(r.amount) + '円\n\n【控除】\n' +
+  return e.name + ' 様\n\n' + ymLabel(ym) + '分の賞与明細をお送りします。\n' + (bonusDay(r) ? '支給日：' + bonusDay(r) + '\n' : '') + '\n■ 差引支給額：' + yen(r.net) + '円\n\n【支給】\n賞与額：' + yen(r.amount) + '円\n\n【控除】\n' +
     l('健康保険料', D.health) + l('厚生年金', D.pension) + l('雇用保険', D.emp) + l('所得税', D.tax) + '控除合計：' + yen(r.dedTotal) + '円\n\n' + MAIL_SIGN;
 }
 async function sendBonusSlips(list, ym, res) {
@@ -514,6 +515,7 @@ async function drawBonus() {
     const list = ST.emps.filter(e => !e.left), amt = {}, prev = {}, taxM = {}, conf = {}, c = cfgOf(ym);
     r.list.forEach(x => { amt[x.id] = x.amount; if (x.status === '確定') { conf[x.id] = x.result; taxM[x.id] = x.result.ded.tax; } else if (x.result && x.result.taxManual) taxM[x.id] = x.result.ded.tax; }); r.prev.forEach(x => { prev[x.id] = x.result; });
     const done = r.list.length && r.list.every(x => x.status === '確定');
+    let payDay = ((r.list.find(x => x.result && x.result.payDay) || {}).result || {}).payDay || '';   // 賞与の支給日はその回ごとに入れる（2026-11-05 案A）。入れるまで確定できない
     const pym = KY.ymAdd(ym, -1), hand = e => !prev[e.id] && e.prevYm === pym && e.prevNet !== '' && e.prevNet != null;   // アプリの前月が無いときだけ、従業員の「切り替え前の前月の給与」を使う
     const calc = e => { if (conf[e.id]) return conf[e.id]; const pn = prev[e.id] ? prev[e.id].taxable || 0 : hand(e) ? Number(e.prevNet) || 0 : 0; return KY.calcBonus({ emp: e, amount: Number(amt[e.id]) || 0, prevNet: pn, cfg: c, ym, taxTable: taxFor(ym), taxManual: taxM[e.id] }); };   // 確定した人は給与DBの金額
     const paint = () => {
@@ -521,11 +523,12 @@ async function drawBonus() {
       $('bt').querySelectorAll('[data-b]').forEach(i => { i.onchange = () => { amt[i.dataset.b] = Number(i.value) || 0; paint(); }; });
       $('bt').querySelectorAll('[data-t]').forEach(i => { i.onchange = () => { if (i.value === '') delete taxM[i.dataset.t]; else taxM[i.dataset.t] = Number(i.value); paint(); }; });
     };
-    M.innerHTML = '<div class="card"><div class="row"><label class="f">賞与の月<br><input type="month" id="bym" value="' + ym + '"></label><span class="sp"></span>' + (done ? '<span class="tag ok">確定済み</span>' : '<button class="b" id="bs">保存</button><button class="b dark" id="bd">確定</button>') + (Object.keys(conf).length ? '<button class="b" id="bv">明細を画面で見る</button><button class="b" id="bp">明細（PDF）</button><button class="b dark" id="bm">明細をメールで送る</button><button class="b danger" id="bu">確定を解除</button>' : '') + '</div>' + (Object.keys(conf).length ? '<div class="note">確定日時：' + esc(r.list.filter(x => x.status === '確定').map(x => x.at || '').sort().pop() || '') + '</div>' : '') + '<div class="note">所得税の率は前月の給与（社会保険料を引いた額）で決まります。前月の給与を先に確定してください。アプリに切り替えて最初の賞与は、従業員の「切り替え前の前月の給与」を使います。所得税の欄は、空欄なら薄く出ている自動計算の額を使います。入れるとその額を使います。</div></div><div class="card wrapx"><table class="t" id="bt"></table></div>';
+    M.innerHTML = '<div class="card"><div class="row"><label class="f">賞与の月<br><input type="month" id="bym" value="' + ym + '"></label><label class="f">支給日<br><input type="date" id="bpd" value="' + esc(payDay) + '"' + (done ? ' disabled' : '') + '></label><span class="sp"></span>' + (done ? '<span class="tag ok">確定済み</span>' : '<button class="b" id="bs">保存</button><button class="b dark" id="bd"' + (payDay ? '' : ' disabled title="支給日を入れると確定できます"') + '>確定</button>') + (Object.keys(conf).length ? '<button class="b" id="bv">明細を画面で見る</button><button class="b" id="bp">明細（PDF）</button><button class="b dark" id="bm">明細をメールで送る</button><button class="b danger" id="bu">確定を解除</button>' : '') + '</div>' + (Object.keys(conf).length ? '<div class="note">確定日時：' + esc(r.list.filter(x => x.status === '確定').map(x => x.at || '').sort().pop() || '') + '</div>' : '') + '<div class="note">所得税の率は前月の給与（社会保険料を引いた額）で決まります。前月の給与を先に確定してください。アプリに切り替えて最初の賞与は、従業員の「切り替え前の前月の給与」を使います。所得税の欄は、空欄なら薄く出ている自動計算の額を使います。入れるとその額を使います。</div></div><div class="card wrapx"><table class="t" id="bt"></table></div>';
     paint();
     $('bym').onchange = e => { ST.bym = e.target.value; drawBonus(); };
+    $('bpd').onchange = e => { payDay = e.target.value; if ($('bd')) { $('bd').disabled = !payDay; $('bd').title = payDay ? '' : '支給日を入れると確定できます'; } };
     const save = async dn => {
-      const li = list.filter(e => Number(amt[e.id]) && !conf[e.id]).map(e => { const x = calc(e); return { ...empRef(e), amount: x.amount, result: x }; });
+      const li = list.filter(e => Number(amt[e.id]) && !conf[e.id]).map(e => { const x = calc(e); return { ...empRef(e), amount: x.amount, result: { ...x, payDay } }; });
       const r2 = await pay('saveBonus', { ym, done: dn, list: li }), ng = ((r2 && r2.list) || []).filter(x => !x.ok);
       if (ng.length) alert('確定できなかった人がいます（未確定のまま残しました）。\n\n' + ng.map(x => x.name + '：' + x.ng).join('\n'));
       drawBonus();
