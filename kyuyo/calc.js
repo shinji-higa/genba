@@ -119,6 +119,7 @@
     const t = emp.noTax ? { tax: 0 } : monthlyTax(taxTable, taxable, emp.deps);
     const manual = adj.taxManual !== undefined && adj.taxManual !== '' && adj.taxManual !== null;   // 所得税は手入力もできる（ユーザー指示 2026-11-02）
     if (t.warn && !manual) warns.push(t.warn);
+    if (taxTable && taxTable.missing && !emp.noTax && !manual) warns.push(taxTable.missing + '年の所得税の表がアプリにありません。国税庁の表を入れてから確定してください（所得税を手入力すれば、その額で確定できます）');
     d.tax = manual ? Number(adj.taxManual) || 0 : t.tax;
     d.resident = Number((emp.resident || {})[ym.slice(5)]) || 0;
     d.yearEnd = a('yearEnd');   // 年末調整：還付はマイナスで入れる
@@ -169,6 +170,7 @@
     d.tax = manual ? Number(taxManual) || 0 : auto;
     const dedTotal = d.health + d.pension + d.emp + d.tax, mon = pym.slice(0, 4) + '年' + Number(pym.slice(5)) + '月';
     if (amount > 0) {
+      if (taxTable && taxTable.missing && !emp.noTax && !manual) warns.push(taxTable.missing + '年の所得税の表（賞与の算出率）がアプリにありません。国税庁の表を入れてから確定してください（所得税を手入力すれば、その額で確定できます）');
       if (ins && !(Number(r.health) > 0 && Number(r.pension) > 0)) warns.push(mon + 'の健康保険・厚生年金の料率が、設定の料率の表にありません');
       if (emp.empIns !== false && !(Number(r.emp) > 0)) warns.push(mon + 'の雇用保険の料率が、設定の料率の表にありません');
       if (emp.leftDate && payDay && payDay > emp.leftDate) warns.push('支給日（' + payDay + '）が退職日（' + emp.leftDate + '）より後です');

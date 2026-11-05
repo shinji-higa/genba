@@ -77,13 +77,13 @@
 </header>
 <main id="m"></main>
 
-<script src="tax.js?v=Ver.20261105-23"></script>
-<script src="calc.js?v=Ver.20261105-23"></script>
+<script src="tax.js?v=Ver.20261105-24"></script>
+<script src="calc.js?v=Ver.20261105-24"></script>
 <script type="module">
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
 import { getFirestore, collection, doc, getDoc, getDocs, setDoc, deleteDoc, writeBatch, query, where } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
-const APP_VER = 'Ver.20261105-23';
+const APP_VER = 'Ver.20261105-24';
 const API = 'https://script.google.com/macros/s/AKfycbyW2hFHqIQuu-TsflPk_0zv7gquhoepspuvRG9-bMStPDSWSc2blcDFBtWs7MisP3f_/exec';
 const app = initializeApp({ apiKey: 'AIzaSyDVR4p4DO4s9h70uPlXUVlhNcMP9-YkQ5Q', authDomain: 'genba-portal-9077b.firebaseapp.com', projectId: 'genba-portal-9077b' });
 const auth = getAuth(app);
@@ -313,7 +313,8 @@ const EMP_KIND = ['社員', '役員', 'その他'];
 let ST = { me: null, cfg: null, emps: [], tab: 'month', ym: '' };
 const yearOf = ym => Number(String(ym || ST.ym || defaultYm()).slice(0, 4));
 const cfgOf = ym => { const c = ST.cfg, w = KY.workYear(yearOf(ym), 0); return { ...c, workDays: w.days, work: w, monthHours: w.days * c.stdH / 12 }; };
-const taxFor = ym => TAX[ym.slice(0, 4)] || TAX[Object.keys(TAX).sort().pop()];
+// その年の表がないときは、いちばん新しい年の表に「ない年」の印を付けて渡す。計算は止めず、確定は止める（2026-11-05 ユーザー決定 イ：黙って前の年の表を使っていた）
+const taxFor = ym => TAX[ym.slice(0, 4)] || { ...TAX[Object.keys(TAX).sort().pop()], missing: ym.slice(0, 4) };
 function defaultYm() { const d = new Date(); return d.getFullYear() + '-' + pad(d.getMonth() + 1); }
 const ymLabel = ym => Number(ym.slice(0, 4)) + '年' + Number(ym.slice(5)) + '月';
 const dLabel = d => d.getFullYear() + '/' + (d.getMonth() + 1) + '/' + d.getDate();
