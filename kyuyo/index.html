@@ -77,13 +77,13 @@
 </header>
 <main id="m"></main>
 
-<script src="tax.js?v=Ver.20261105-13"></script>
-<script src="calc.js?v=Ver.20261105-13"></script>
+<script src="tax.js?v=Ver.20261105-14"></script>
+<script src="calc.js?v=Ver.20261105-14"></script>
 <script type="module">
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
 import { getFirestore, collection, doc, getDoc, getDocs, setDoc, deleteDoc, writeBatch, query, where } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
-const APP_VER = 'Ver.20261105-13';
+const APP_VER = 'Ver.20261105-14';
 const API = 'https://script.google.com/macros/s/AKfycbyW2hFHqIQuu-TsflPk_0zv7gquhoepspuvRG9-bMStPDSWSc2blcDFBtWs7MisP3f_/exec';
 const app = initializeApp({ apiKey: 'AIzaSyDVR4p4DO4s9h70uPlXUVlhNcMP9-YkQ5Q', authDomain: 'genba-portal-9077b.firebaseapp.com', projectId: 'genba-portal-9077b' });
 const auth = getAuth(app);
@@ -518,6 +518,30 @@ function drawPerson(id) {
   if ($('sv')) $('sv').onclick = async () => { try { await pay('saveAdj', { ym, id, name: e.name, adj }); $('pm').style.color = 'var(--ok)'; $('pm').textContent = '保存しました'; } catch (x) { $('pm').textContent = x.message; } };
 }
 
+/* Google ドライブの書き出し先を選ぶ（2026-11-05 ユーザー指示：提出用のスプレッドシートは、書き出すたびに保存先を指定）。
+   前に選んだフォルダから始める。同じ名前のファイルがそのフォルダにあれば、上書きする（賃金台帳_年・年次有給休暇管理簿_年） */
+function pickFolder(title) {
+  return new Promise(done => {
+    let last = null; try { last = JSON.parse(localStorage.getItem('kyuyoFolder') || 'null'); } catch (x) {}
+    let stack = last && last.stack ? last.stack : [];   // [{ id, name }]。空ならいちばん上（マイドライブ・共有ドライブ）
+    const w = document.createElement('div'); w.className = 'okbox'; document.body.appendChild(w);
+    const end = v => { w.remove(); done(v); };
+    const draw = async () => {
+      const cur = stack[stack.length - 1], path = stack.map(x => x.name).join(' / ');
+      w.innerHTML = '<div class="card" style="width:min(560px,92vw);"><h2 style="margin-top:0;">' + esc(title) + '</h2><div class="note">選んでいる場所：<b>' + esc(path || '（まだ選んでいません）') + '</b></div><div id="pfl" style="max-height:50vh;overflow:auto;border:1px solid var(--line);border-radius:6px;margin-top:8px;"><div class="note" style="padding:10px;">フォルダを読んでいます…</div></div><div class="row" style="margin-top:12px;">' + (stack.length ? '<button class="b" data-k="up">← 上へ</button>' : '') + '<span class="sp"></span><button class="b" data-k="n">やめる</button><button class="b dark" data-k="y"' + (cur ? '' : ' disabled') + '>このフォルダに書き出す</button></div></div>';
+      w.querySelector('[data-k="n"]').onclick = () => end(null);
+      if (w.querySelector('[data-k="up"]')) w.querySelector('[data-k="up"]').onclick = () => { stack.pop(); draw(); };
+      w.querySelector('[data-k="y"]').onclick = () => { try { localStorage.setItem('kyuyoFolder', JSON.stringify({ stack })); } catch (x) {} end({ id: cur.id, path }); };
+      try {
+        const r = await pay('driveFolders', { parent: cur ? cur.id : '' }), box = w.querySelector('#pfl'); if (!box) return;
+        box.innerHTML = (r.folders || []).map((f, i) => '<button class="b" data-i="' + i + '" style="display:block;width:100%;text-align:left;border:0;border-bottom:1px solid var(--line);border-radius:0;">📁 ' + esc(f.name) + (f.kind ? ' <span class="note">' + esc(f.kind) + '</span>' : '') + '</button>').join('') || '<div class="note" style="padding:10px;">この中にフォルダはありません。「このフォルダに書き出す」で、ここに書き出せます。</div>';
+        box.querySelectorAll('[data-i]').forEach(b => { b.onclick = () => { const f = r.folders[Number(b.dataset.i)]; stack.push({ id: f.id, name: f.name }); draw(); }; });
+      } catch (x) { const box = w.querySelector('#pfl'); if (box) box.innerHTML = '<div class="msg" style="margin:8px;">' + esc(x.message) + '（前に選んだフォルダが消された・動かされたときは「上へ」で選び直してください）</div>'; }
+    };
+    draw();
+  });
+}
+
 /* 年次有給休暇管理簿：一人ずつ、付いた日（基準日）ごとに 日数・その1年に取った日・取った日数・年5日。画面・PDF・スプレッドシートで同じ中身 */
 async function leaveBook() {
   const list = ST.emps.filter(x => !x.left), tdy = new Date(), T = tdy.getFullYear() + '-' + pad(tdy.getMonth() + 1) + '-' + pad(tdy.getDate()), fd = d => d ? d.replace(/-/g, '/') : '', dd = n => (Math.round(n * 10) / 10) + '日';
@@ -716,7 +740,7 @@ async function drawYear() {
     const lk = async () => { $('ym2').textContent = '本人の給与DBから、取った有給の日を読んでいます…'; const r = await leaveBook(); $('ym2').textContent = ''; return r; };
     $('lkv').onclick = () => lk().then(b => { $('lkw').innerHTML = b.map(x => '<div style="margin-top:12px;">' + x.h + '</div>').join(''); }, x => { $('ym2').textContent = x.message; });
     $('lkp').onclick = () => pdfOf(() => lk().then(b => { $('ym2').textContent = 'PDFを作っています…'; return b.map(x => x.h); }), '年次有給休暇管理簿_' + new Date().getFullYear() + pad(new Date().getMonth() + 1) + pad(new Date().getDate()) + '.pdf').then(() => { $('ym2').textContent = ''; }, x => { $('ym2').textContent = x.message; });
-    $('lks').onclick = async () => { try { $('lks').disabled = true; const b = await lk(); $('ym2').textContent = 'Googleスプレッドシートに書いています…'; const r = await pay('ledgerSheet', { year: b.T.slice(0, 4), kind: 'leave', sheets: b.map(x => ({ name: x.e.name, rows: x.rows })) }); $('ym2').innerHTML = esc(r.name) + 'に ' + r.n + '人分を書きました（1人1シート）。<a href="' + esc(r.url) + '" target="_blank" rel="noopener">開く</a>'; window.open(r.url, '_blank', 'noopener'); } catch (x) { $('ym2').textContent = x.message; } $('lks').disabled = false; };
+    $('lks').onclick = async () => { try { const fo = await pickFolder('年次有給休暇管理簿を書き出すフォルダ'); if (!fo) return; $('lks').disabled = true; const b = await lk(); $('ym2').textContent = 'Googleスプレッドシートに書いています…'; const r = await pay('ledgerSheet', { year: b.T.slice(0, 4), kind: 'leave', folder: fo.id, sheets: b.map(x => ({ name: x.e.name, rows: x.rows })) }); $('ym2').innerHTML = esc(r.name) + 'に ' + r.n + '人分を書きました（1人1シート）。<a href="' + esc(r.url) + '" target="_blank" rel="noopener">開く</a>'; window.open(r.url, '_blank', 'noopener'); } catch (x) { $('ym2').textContent = x.message; } $('lks').disabled = false; };
     $('lv').onclick = () => { const e = list.find(x => x.id === $('lp').value); $('lw').style.display = ''; $('lw').innerHTML = ledgerHtml(e, y, data); };   // PDFを作る前に画面で確かめる
     // 個人別：台帳2ページ（横）のあとに、その人の給与明細・賞与明細を月の順に（縦）。同じ月は給与の次に賞与（ユーザー決定 2026-11-04 案A）。
     // 明細は1ページに2つずつ。2つで用紙に入らないときは pdfOf が縮めるので見切れない（ユーザー指示 2026-11-04）
@@ -737,8 +761,9 @@ async function drawYear() {
         const row = m => (data.months.find(x => x.ym === m && x.id === e.id) || {}).result || {}, bon = data.bonus.filter(x => x.id === e.id), brow = m => (bon.find(x => x.ym === m) || {}).result || {};
         return { name: e.name, rows: [['氏名', e.name], ['性別', e.gender || '未入力'], ['賃金台帳', y + '年（確定した月だけ）'], head].concat(block(YR_ROWS, row), bon.length ? block(BN_ROWS, brow) : []) };
       });
+      const fo = await pickFolder(y + '年の賃金台帳を書き出すフォルダ'); if (!fo) return;
       $('c').disabled = true; $('ym2').textContent = 'Googleスプレッドシートに書いています…';
-      try { const r = await pay('ledgerSheet', { year: y, sheets }); $('ym2').innerHTML = esc(r.name) + 'に ' + r.n + '人分を書きました（1人1シート）。<a href="' + esc(r.url) + '" target="_blank" rel="noopener">開く</a>'; window.open(r.url, '_blank', 'noopener'); }
+      try { const r = await pay('ledgerSheet', { year: y, folder: fo.id, sheets }); $('ym2').innerHTML = esc(fo.path) + ' の ' + esc(r.name) + 'に ' + r.n + '人分を書きました（1人1シート）。<a href="' + esc(r.url) + '" target="_blank" rel="noopener">開く</a>'; window.open(r.url, '_blank', 'noopener'); }
       catch (x) { $('ym2').textContent = x.message; }
       $('c').disabled = false;
     };
