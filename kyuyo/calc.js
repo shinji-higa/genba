@@ -132,8 +132,17 @@
     // notes は知らせるだけ（warns と違って確定は止めない）
     const notes = over60 > 0 ? ['時間外が月60時間を超えています（' + h60 + '時間、超えた分 ' + over60 + '時間）。超えた平日の ' + w60 + '時間に割増を足しました。'] : [];
     hr.notes.forEach(x => notes.push(x));
+    // 標準報酬の見直し（随時改定）の知らせ（2026-11-05 ユーザー指示）：固定の賃金（基本給・交通費・家族手当のもとの扶養）が変わった月から3か月の平均で
+    // 2等級以上変わるときは月額変更届が要る。変わった月の2か月後と3か月後の給与で知らせる。その後の標準報酬の履歴が入っていれば出さない
+    const stdCheck = [];
+    ['base', 'commute', 'deps', 'kids16'].forEach(k => ((emp0 && emp0.hist && emp0.hist[k]) || []).forEach(x => {
+      const M = x.from; if (!M || (ymAdd(M, 2) !== ym && ymAdd(M, 3) !== ym)) return;
+      const done = ['std', 'stdPen'].some(s => ((emp0.hist || {})[s] || []).some(h => h.from >= M));
+      if (!done && !stdCheck.includes(M)) stdCheck.push(M);
+    }));
+    stdCheck.forEach(M => notes.push('固定の賃金が ' + Number(M.slice(5)) + '月分から変わりました。' + Number(M.slice(5)) + '・' + Number(ymAdd(M, 1).slice(5)) + '・' + Number(ymAdd(M, 2).slice(5)) + '月分の給与の平均で、標準報酬月額が2等級以上変わるときは、月額変更届を出して、従業員の「昇給・変更の履歴」に標準報酬月額を「保険の月 ' + Number(ymAdd(M, 3).slice(5)) + '月」で入れてください。'));
     if (pro > 0) notes.push('入社か退職の月なので、在籍していない所定労働日 ' + pro + '日分を日割りで引きました（日額 ' + yen(daily).toLocaleString('ja-JP') + '円）。');
-    return { hourly, daily, pay: o, payTotal, ded: d, dedTotal, net: payTotal - dedTotal, taxable, taxAuto: t.tax, taxManual: manual, warns, notes, h60, over60, proDays: pro };
+    return { hourly, daily, pay: o, payTotal, ded: d, dedTotal, net: payTotal - dedTotal, taxable, taxAuto: t.tax, taxManual: manual, warns, notes, h60, over60, proDays: pro, stdCheck };
   }
 
   /** 資格を失う月（退職日の翌日の月）。退職日がなければ空 */
@@ -279,6 +288,27 @@
     }
     return out;
   }
+  /** from〜to（yyyy-mm-dd、両端を含む）の所定労働日の数：平日 − 祝日 − 会社休日（出勤率8割の目安に使う。2026-11-05） */
+  function workDaysBetween(from, to, offDays) {
+    let n = 0; const hol = {}, key = d => d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2) + '-' + ('0' + d.getDate()).slice(-2);
+    for (const d = new Date(from + 'T00:00:00'), e = new Date(to + 'T00:00:00'); d <= e; d.setDate(d.getDate() + 1)) {
+      const y = d.getFullYear(), k = key(d); hol[y] = hol[y] || jpHolidays(y);
+      if (d.getDay() === 0 || d.getDay() === 6 || hol[y][k] || (offDays || []).includes(k)) continue;
+      n++;
+    }
+    return n;
+  }
+  /** 出勤率の目安：次に有給が付く日の前の期間（初めは入社から6か月、その後は1年）のうち今日まで。欠勤は確定した月の勤怠の欠勤の日数を足す。
+      absentByYm は { 給与の月: 欠勤の日数 }。締めの期間の終わりが期間の中に入る月を数える。有給は出勤に数える */
+  function attendRate(emp, next, today, absentByYm, cfg) {
+    if (!next || !emp.joined) return null;
+    const first = addMon(emp.joined, 6) === next.date, from = first ? emp.joined : addMon(next.date, -12), toD = new Date(Math.min(new Date(today + 'T00:00:00'), new Date(next.date + 'T00:00:00') - 864e5));
+    const to = toD.getFullYear() + '-' + ('0' + (toD.getMonth() + 1)).slice(-2) + '-' + ('0' + toD.getDate()).slice(-2);
+    if (to < from) return null;
+    const all = workDaysBetween(from, to, (cfg || {}).offDays), key = d => d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2) + '-' + ('0' + d.getDate()).slice(-2);
+    let ab = 0; Object.keys(absentByYm || {}).forEach(ym => { const e = key(period(ym, (cfg || {}).close).to); if (e >= from && e <= addMon(to, 1)) ab += Number(absentByYm[ym]) || 0; });
+    return { from, to, all, absent: ab, rate: all ? (all - ab) / all : 1 };
+  }
   /** 有給の今の残り。taken は承認された有給の日 [{ date: 'yyyy/mm/dd', kubun }]（切り替えの日付より後の分） */
   function leaveCalc(emp, taken, today) {
     const T = dIso(today), base = dIso(emp.leaveBaseDate), grants = leaveGrants(emp, T), warns = [], notes = [];
@@ -313,6 +343,6 @@
   /** 家族手当：（扶養親族等の数＋16歳未満の家族）×1人の額、上限あり */
   const familyPay = (emp, cfg) => emp.noFamily ? 0 : Math.min(Number(cfg.familyMax != null ? cfg.familyMax : 30000), ((Number(emp.deps) || 0) + (Number(emp.kids16) || 0)) * Number(cfg.familyPer != null ? cfg.familyPer : 10000));
 
-  const api = { jpHolidays, workYear, calcMonth, calcBonus, monthlyTax, bonusRate, careTarget, payDay, period, rateAt, half, ymAdd, roundH, roundAtt, familyPay, lateH, proDays, inPeriod, lossYmOf, fyStart, leaveGrants, leaveCalc, leaveFixOf, HIST, valAt, empAt, histRetro, retroCalc };
+  const api = { jpHolidays, workYear, calcMonth, calcBonus, monthlyTax, bonusRate, careTarget, payDay, period, rateAt, half, ymAdd, roundH, roundAtt, familyPay, lateH, proDays, inPeriod, lossYmOf, fyStart, leaveGrants, leaveCalc, leaveFixOf, workDaysBetween, attendRate, HIST, valAt, empAt, histRetro, retroCalc };
   if (typeof module !== 'undefined') module.exports = api; else root.KY = api;
 })(typeof window !== 'undefined' ? window : globalThis);

@@ -77,13 +77,13 @@
 </header>
 <main id="m"></main>
 
-<script src="tax.js?v=Ver.20261105-18"></script>
-<script src="calc.js?v=Ver.20261105-18"></script>
+<script src="tax.js?v=Ver.20261105-21"></script>
+<script src="calc.js?v=Ver.20261105-21"></script>
 <script type="module">
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
 import { getFirestore, collection, doc, getDoc, getDocs, setDoc, deleteDoc, writeBatch, query, where } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
-const APP_VER = 'Ver.20261105-18';
+const APP_VER = 'Ver.20261105-21';
 const API = 'https://script.google.com/macros/s/AKfycbyW2hFHqIQuu-TsflPk_0zv7gquhoepspuvRG9-bMStPDSWSc2blcDFBtWs7MisP3f_/exec';
 const app = initializeApp({ apiKey: 'AIzaSyDVR4p4DO4s9h70uPlXUVlhNcMP9-YkQ5Q', authDomain: 'genba-portal-9077b.firebaseapp.com', projectId: 'genba-portal-9077b' });
 const auth = getAuth(app);
@@ -160,7 +160,7 @@ function attend(days, ym, close) {   // 時間外は1日ごとには丸めず、
     if (d.deleted || String(d.date) < from || String(d.date) > to) return;
     a.rows++;
     if (d.kubun === '欠勤') { a.absentDays++; return; }
-    if (d.kubun === '有給') { a.paidDays++; return; }
+    if (d.kubun === '有給') { if (d.leave && d.leave !== '承認') return; a.paidDays++; return; }   // 申請中・却下の有給は数えない（日報シートにも入らない。2026-11-05 画面だけ有給に数えていた）
     // 半日有給（午前有給・午後有給）は0.5日。残りの半日は出勤として数える（2026-11-05 ユーザー決定）。日報シートに入るのは承認された日だけ
     if (d.kubun === '午前有給' || d.kubun === '午後有給') { if (d.leave && d.leave !== '承認') return; a.paidDays += 0.5; }
     else if (d.kubun !== '出勤') return;
@@ -347,7 +347,21 @@ async function drawMonth() {
     ST.emps.filter(e => inMon(e, ym)).forEach(e => { calcOne(e); });
     renderMonth();
     if (!live(ym)) sheetRead(MON);   // 写しの期限が過ぎた古い月だけ、開いたときにスプレッドシートを読む
+    postCheck(MON);
   } catch (e) { fail(e); }
+}
+/* 確定した月の日報が、確定のあとで変わっていないか（2026-11-05 ユーザー指示）。確定した月を開いたときはその月、確定前の月を開いたときは前の月を、
+   日報シートから数え直して、確定したときの勤怠と比べる（あとから有給を承認した・日報を直した、など）。給与には自動で入れない（確定は変えない） */
+const ATT_KEYS = [['workDays', '出勤', '日'], ['paidDays', '有給', '日'], ['absentDays', '欠勤', '日'], ['otH', '時間外', '時間'], ['inH', '法定内の時間外', '時間'], ['earlyH', '早退', '時間'], ['shoDays', '所定休日の出勤', '日'], ['shoOtH', '所定休日の時間外', '時間'], ['houDays', '法定休日の出勤', '日'], ['houOtH', '法定休日の時間外', '時間'], ['nightDays', '夜間作業', '日']];
+function attDiff(a, b) { return ATT_KEYS.filter(([k]) => (Number((a || {})[k]) || 0) !== (Number((b || {})[k]) || 0)).map(([k, l, u]) => l + ' ' + (Number((a || {})[k]) || 0) + u + '→' + (Number((b || {})[k]) || 0) + u); }
+async function postCheck(mon) {
+  const list = ST.emps.filter(e => inMon(e, mon.ym)), done = list.length && list.every(e => (mon.saved[e.id] || {}).status === '確定'), ym = done ? mon.ym : KY.ymAdd(mon.ym, -1), c = cfgOf(ym);
+  try {
+    const r = await gas('attCheck', { ym, close: c.close, emps: ST.emps.filter(e => inMon(e, ym)).map(empRef) });
+    const out = Object.keys(r || {}).map(id => ({ e: ST.emps.find(x => x.id === id) || { name: id }, d: attDiff(KY.roundAtt(r[id].conf || {}), KY.roundAtt(r[id].now || {})) })).filter(x => x.d.length);
+    mon.post = { ym, list: out };
+    if (out.length && ST.tab === 'month' && MON === mon && mon.view === 'list') renderMonth();
+  } catch (x) { mon.post = null; }
 }
 /* 日報シートを読み直す必要があるか（ユーザー決定 2026-11-04）：写しがない・締め日より前に読んだ・読んだあとにポータルで日報が直された */
 function sheetState(mon) {
@@ -404,7 +418,11 @@ function renderMonth() {
   M.innerHTML = '<div class="card"><div class="row"><label class="f">給与の月<br><input type="month" id="ym" value="' + ym + '"></label>' +
     '<div class="note">対象 ' + dLabel(p.from) + '〜' + dLabel(p.to) + '<br>支給日 ' + dLabel(pd) + '</div><span class="sp"></span><button class="b" id="reload">更新</button>' +
     (done ? '<span class="tag ok">確定済み</span><button class="b dark" id="ma">明細をメールで送る</button><button class="b danger" id="un">確定を解除</button>' : '<button class="b dark" id="ok"' + (warn || MON.sheet !== 'ok' ? ' disabled' : '') + '>この月を確定</button>') + '</div>' + (done ? '<div class="note">確定日時：' + esc(Object.values(MON.saved).map(s => s.at || '').sort().pop() || '') + '</div>' : '') + (done ? '' : MON.sheet === 'wait' ? '<div class="note">日報シートを読んでいます…（読み終わると確定できます）</div>' : MON.sheet === 'ng' ? '<div class="msg">日報シートを読めませんでした。もう一度「更新」を押してください。</div>' : MON.sheet === 'need' ? '<div class="msg">「更新」を押して、日報シートを読み直してください。読み直すと確定できます。<br>' + MON.why.map(esc).join('<br>') + '</div>' : '') +
-    (warn ? '<div class="msg">確認が必要な所が ' + warn + ' 件あります。直すと確定できます。</div>' : '') + '</div>' +
+    (warn ? '<div class="msg">確認が必要な所が ' + warn + ' 件あります。直すと確定できます。</div>' : '') +
+    // 標準報酬の見直しの知らせ（2026-11-05）：随時改定の人と、7月分は算定基礎届
+    (() => { const sc = list.filter(e => ((MON.res[e.id] || {}).stdCheck || []).length); return sc.length ? '<div class="msg" style="color:var(--ink);background:#fff4d6;border-color:#d9a400;">' + '標準報酬の見直しを確かめてください（固定の賃金が変わって3か月）：' + sc.map(e => esc(e.name)).join('、') + '。くわしくは一人ずつの画面に出ています。</div>' : ''; })() +
+    (ym.slice(5) === '07' ? '<div class="msg" style="color:var(--ink);background:#fff4d6;border-color:#d9a400;">' + '7月は算定基礎届の月です。4・5・6月分の給与の平均で、9月分からの標準報酬月額が決まります。決まったら、従業員の「昇給・変更の履歴」に標準報酬月額を「保険の月 9月」で入れてください。</div>' : '') +
+    (MON.post && MON.post.list.length ? '<div class="msg">確定した' + ymLabel(MON.post.ym) + '分の日報が、確定のあとで変わっています。<br>' + MON.post.list.map(x => esc(x.e.name) + '：' + esc(x.d.join('、'))).join('<br>') + '<br>給与に入れるときは、' + ymLabel(MON.post.ym) + 'の確定を解除して確定し直すか、次の月の「遡及分」「その他の支給」「その他の控除」で直してください。</div>' : '') + '</div>' +
     '<div class="card wrapx"><table class="t"><tr><th>氏名</th><th>状態</th><th class="n">出勤</th><th class="n">時間外</th><th class="n">支給合計</th><th class="n">控除合計</th><th class="n">差引支給額</th></tr>' +
     list.map(e => { const r = MON.res[e.id] || {}, a = MON.att[e.id] || {}, st = (MON.saved[e.id] || {}).status, w = (r.warns || []).length;
       return '<tr class="link" data-id="' + esc(e.id) + '"><td><b>' + esc(e.name) + '</b></td><td>' + sentTag(MON.sent, e.id) + (st === '確定' ? '<span class="tag ok">確定</span>' : MON.sheet === 'wait' && !st ? '<span class="tag">読み込み中</span>' : w ? '<span class="tag ng">要確認 ' + w + '</span>' : '<span class="tag">確認待ち</span>') + (st !== '確定' && MON.sheet === 'ok' && !a.rows ? ' <span class="tag ng">日報なし</span>' : '') + (r.over60 > 0 ? ' <span class="tag ng">60時間超</span>' : '') + '</td><td class="n">' + (a.workDays || 0) + '日</td><td class="n">' + ((a.otH || 0) + (a.shoOtH || 0) + (a.houOtH || 0)) + 'h</td><td class="n">' + yen(r.payTotal) + '</td><td class="n">' + yen(r.dedTotal) + '</td><td class="n"><b>' + yen(r.net) + '</b></td></tr>'; }).join('') +
@@ -546,13 +564,17 @@ async function leaveList() {
   const list = ST.emps.filter(x => !x.left),   // 在籍している全員（月で絞らない）
     tdy = new Date(), T = tdy.getFullYear() + '-' + pad(tdy.getMonth() + 1) + '-' + pad(tdy.getDate()), dd = n => (Math.round(n * 10) / 10) + '日', fd = d => Number(d.slice(5, 7)) + '/' + Number(d.slice(8, 10));
   const fromOf = e => { const x = leaveEmp(e); return (x.leaveBaseDate || x.joined || '').replace(/-/g, '/'); };
-  let r; try { r = await pay('leaveTakenAll', { emps: list.map(e => ({ ...empRef(e), from: fromOf(e) })) }); } catch (x) { list.forEach(e => { const c = M.querySelector('[data-lr="' + e.id + '"]'); if (c) c.textContent = '読めません'; }); return; }
+  // 出勤率8割の目安のため、去年と今年の確定した月の欠勤も読む（2026-11-05）
+  const y0 = String(tdy.getFullYear()), ab = {};
+  const yearsP = Promise.all([String(tdy.getFullYear() - 1), y0].map(y => pay('year', { year: y, emps: list.map(empRef) }).catch(() => ({ months: [] })))).then(ds => ds.forEach(dd2 => (dd2.months || []).forEach(m => { ab[m.id] = ab[m.id] || {}; ab[m.id][m.ym] = Number(((m.result || {}).att || {}).absentDays) || 0; })));
+  let r; try { r = await pay('leaveTakenAll', { emps: list.map(e => ({ ...empRef(e), from: fromOf(e) })) }); await yearsP; } catch (x) { list.forEach(e => { const c = M.querySelector('[data-lr="' + e.id + '"]'); if (c) c.textContent = '読めません'; }); return; }
   list.forEach(e => {
     const c = M.querySelector('[data-lr="' + e.id + '"]'), f = M.querySelector('[data-lf="' + e.id + '"]'); if (!c || !f) return;
     const x = leaveEmp(e); if (!x.joined && !x.leaveBaseDate) { c.textContent = '—'; f.innerHTML = '<span class="note">入社日が空欄</span>'; return; }
     const L = KY.leaveCalc(x, r[e.id] || [], T), cur = (L.five || []).filter(v => !v.done).pop(), past = (L.five || []).filter(v => v.done && !v.ok).pop();
     c.textContent = dd(L.remain) + (L.warns.length ? ' ！' : '');
-    f.innerHTML = (cur ? (cur.ok ? '<span class="tag ok">5日取れた</span>' : '<span class="tag' + ((new Date(cur.until + 'T00:00:00') - tdy) / 864e5 < 92 ? ' ng' : '') + '">あと ' + dd(5 - cur.n) + '（' + fd(cur.until) + 'の前日まで）</span>') : '<span class="note">まだ10日付いていない</span>') + (past ? ' <span class="tag ng">前の期間 届かず</span>' : '');
+    const ar = KY.attendRate(x, L.next, T, ab[e.id] || {}, cfgOf(T.slice(0, 7))), low = ar && ar.rate < 0.8;
+    f.innerHTML = (low ? '<span class="tag ng">出勤率 ' + Math.floor(ar.rate * 100) + '%（欠勤 ' + ar.absent + '日／所定 ' + ar.all + '日）。8割に届かないと ' + fd(L.next.date) + ' に有給が付きません</span> ' : '') + (cur ? (cur.ok ? '<span class="tag ok">5日取れた</span>' : '<span class="tag' + ((new Date(cur.until + 'T00:00:00') - tdy) / 864e5 < 92 ? ' ng' : '') + '">あと ' + dd(5 - cur.n) + '（' + fd(cur.until) + 'の前日まで）</span>') : '<span class="note">まだ10日付いていない</span>') + (past ? ' <span class="tag ng">前の期間 届かず</span>' : '');
   });
 }
 
@@ -635,7 +657,8 @@ async function drawBonus() {
 
 /* 提出データ：個人別の月ごとの総額一覧と、月ごとの明細 */
 async function loadLib() {
-  for (const s of ['https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js', 'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js']) {
+  // PDFの部品は給与アプリと同じ公開場所（lib）に置いた（2026-11-05 ユーザー決定：外の部品置き場が止まっても保存できるように）。版は html2canvas 1.4.1・jsPDF 2.5.1
+  for (const s of ['./lib/html2canvas.min.js', './lib/jspdf.umd.min.js']) {
     if (document.querySelector('script[src="' + s + '"]')) continue;
     await new Promise((ok, ng) => { const x = document.createElement('script'); x.src = s; x.onload = ok; x.onerror = () => ng(new Error('PDFを作る部品を読み込めませんでした')); document.head.appendChild(x); });
   }
@@ -654,7 +677,7 @@ async function pickSave(name) {
    sheets は [{ name, rows }]（1人1シート）。数は数のまま入れ、カンマ付き・0は空欄で見せる。rows は関数でもよい（保存先を聞いてから読む） */
 async function xlsxOf(sheets, name) {
   const fh = await pickSave(name);
-  if (!window.XLSX) await new Promise((ok, ng) => { const x = document.createElement('script'); x.src = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js'; x.onload = ok; x.onerror = () => ng(new Error('Excelを作る部品を読み込めませんでした')); document.head.appendChild(x); });
+  if (!window.XLSX) await new Promise((ok, ng) => { const x = document.createElement('script'); x.src = './lib/xlsx.full.min.js';   /* SheetJS 0.18.5。公開場所に置いた（2026-11-05） */ x.onload = ok; x.onerror = () => ng(new Error('Excelを作る部品を読み込めませんでした')); document.head.appendChild(x); });
   if (typeof sheets === 'function') sheets = await sheets();
   if (!sheets.length) throw new Error('書き出す人がいません。');
   const wb = window.XLSX.utils.book_new(), used = {};
