@@ -224,9 +224,17 @@
     }
     return n;
   }
+  /** 締めの期間に1日でも在籍しているか。入社日が期間の終わりより後、退職日が期間の始まりより前の月は、明細を作らない
+      （日額×所定日数が基本給に届かず、在籍0日でも基本給の残り・手当・雇用保険が出ていた。2026-11-05 運用テストで発見） */
+  function inPeriod(emp, ym, cfg) {
+    const p = period(ym, (cfg || {}).close), key = d => d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2) + '-' + ('0' + d.getDate()).slice(-2);
+    if (emp.joined && emp.joined > key(p.to)) return false;
+    if (emp.leftDate && emp.leftDate < key(p.from)) return false;
+    return true;
+  }
   /** 家族手当：（扶養親族等の数＋16歳未満の家族）×1人の額、上限あり */
   const familyPay = (emp, cfg) => emp.noFamily ? 0 : Math.min(Number(cfg.familyMax != null ? cfg.familyMax : 30000), ((Number(emp.deps) || 0) + (Number(emp.kids16) || 0)) * Number(cfg.familyPer != null ? cfg.familyPer : 10000));
 
-  const api = { jpHolidays, workYear, calcMonth, calcBonus, monthlyTax, bonusRate, careTarget, payDay, period, rateAt, half, ymAdd, roundH, roundAtt, familyPay, lateH, proDays, HIST, valAt, empAt, histRetro, retroCalc };
+  const api = { jpHolidays, workYear, calcMonth, calcBonus, monthlyTax, bonusRate, careTarget, payDay, period, rateAt, half, ymAdd, roundH, roundAtt, familyPay, lateH, proDays, inPeriod, HIST, valAt, empAt, histRetro, retroCalc };
   if (typeof module !== 'undefined') module.exports = api; else root.KY = api;
 })(typeof window !== 'undefined' ? window : globalThis);

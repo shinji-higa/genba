@@ -83,7 +83,7 @@
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
 import { getFirestore, collection, doc, getDoc, getDocs, setDoc, deleteDoc, writeBatch, query, where } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
-const APP_VER = 'Ver.20261104-29';
+const APP_VER = 'Ver.20261105-01';
 const API = 'https://script.google.com/macros/s/AKfycbyW2hFHqIQuu-TsflPk_0zv7gquhoepspuvRG9-bMStPDSWSc2blcDFBtWs7MisP3f_/exec';
 const app = initializeApp({ apiKey: 'AIzaSyDVR4p4DO4s9h70uPlXUVlhNcMP9-YkQ5Q', authDomain: 'genba-portal-9077b.firebaseapp.com', projectId: 'genba-portal-9077b' });
 const auth = getAuth(app);
@@ -331,7 +331,7 @@ async function drawMonth() {
     MON = { ym, saved: r.saved, att: r.att, info: r.info || {}, sent, res: {}, view: 'list' };
     Object.values(MON.saved).forEach(s => { if (s.status === '確定' && s.result) s.result.hourly = c.monthHours > 0 ? s.result.pay.base / c.monthHours : 0; });
     MON.sheet = live(ym) ? sheetState(MON) : 'wait';
-    ST.emps.filter(e => !e.left).forEach(e => { calcOne(e); });
+    ST.emps.filter(e => inMon(e, ym)).forEach(e => { calcOne(e); });
     renderMonth();
     if (!live(ym)) sheetRead(MON);   // 写しの期限が過ぎた古い月だけ、開いたときにスプレッドシートを読む
   } catch (e) { fail(e); }
@@ -339,7 +339,7 @@ async function drawMonth() {
 /* 日報シートを読み直す必要があるか（ユーザー決定 2026-11-04）：写しがない・締め日より前に読んだ・読んだあとにポータルで日報が直された */
 function sheetState(mon) {
   const c = cfgOf(mon.ym), p = KY.period(mon.ym, c.close), closeEnd = new Date(p.to.getFullYear(), p.to.getMonth(), p.to.getDate() + 1).getTime();
-  const open = ST.emps.filter(e => !e.left && (mon.saved[e.id] || {}).status !== '確定'), why = [];
+  const open = ST.emps.filter(e => inMon(e, mon.ym) && (mon.saved[e.id] || {}).status !== '確定'), why = [];
   const none = open.filter(e => !(mon.info[e.id] || {}).at), early = open.filter(e => (mon.info[e.id] || {}).at && mon.info[e.id].at < closeEnd), chg = open.filter(e => (mon.info[e.id] || {}).changed);
   if (none.length) why.push('まだ日報シートを読んでいない人がいます（' + none.map(e => e.name).join('、') + '）');
   if (early.length) why.push('締め日（' + dLabel(p.to) + '）より前に読んだ集計です（' + early.map(e => e.name).join('、') + '）');
@@ -360,13 +360,13 @@ function sheetRead(mon) {
     }
     Object.keys(x.att).forEach(id => { const s = mon.saved[id]; if (!(s && s.status === '確定') && !x.att[id].error) { mon.att[id] = KY.roundAtt(x.att[id]); mon.info[id] = { at: x.at || Date.now(), changed: false }; } });
     mon.sheet = Object.values(x.att).some(a => a.error) ? 'ng' : old ? 'ok' : sheetState(mon);
-    ST.emps.filter(e => !e.left).forEach(e => { calcOne(e); });
+    ST.emps.filter(e => inMon(e, mon.ym)).forEach(e => { calcOne(e); });
     if (ST.tab === 'month' && mon.view === 'list') renderMonth();
   }).catch(() => { mon.reading = false; if (MON === mon) { mon.sheet = 'ng'; if (ST.tab === 'month' && mon.view === 'list') renderMonth(); } });
 }
 /** 日報シートから読んだ日時（確定していない人のうち一番古いもの） */
 function readAtText(mon) {
-  const t = ST.emps.filter(e => !e.left && (mon.saved[e.id] || {}).status !== '確定').map(e => (mon.info[e.id] || {}).at || 0);
+  const t = ST.emps.filter(e => inMon(e, mon.ym) && (mon.saved[e.id] || {}).status !== '確定').map(e => (mon.info[e.id] || {}).at || 0);
   if (!t.length) return '';
   return t.some(x => !x) ? 'まだ読んでいない人がいます' : fmtAt(Math.min(...t));
 }
@@ -375,6 +375,8 @@ function showReadAt() {
   const el = $('rdat'); if (!el) return;
   el.innerHTML = MON ? '日報シートから読んだ日時（' + esc(ymLabel(MON.ym)) + '）：<span style="color:#fff;font-weight:700;">' + esc(readAtText(MON) || '全員確定済み') + '</span>' : '日報シートから読んだ日時：<span style="color:#fff;font-weight:700;">まだ開いていません</span>';   // header b の大きい字にならないよう span で
 }
+/** その給与の月の一覧に出す人：退職のチェックがなく、締めの期間に1日でも在籍している人（入社前・退職後の月は明細を作らない。2026-11-05） */
+const inMon = (e, ym) => !e.left && KY.inPeriod(e, ym, cfgOf(ym));
 function calcOne(e) {
   const s = MON.saved[e.id] || {}, adj = s.adj || {};
   if (s.status === '確定' && s.result && s.result.payTotal != null) { MON.res[e.id] = s.result; return; }
@@ -382,7 +384,7 @@ function calcOne(e) {
 }
 function renderMonth() {
   MON.view = 'list'; showReadAt();
-  const ym = MON.ym, c = cfgOf(ym), p = KY.period(ym, c.close), pd = payDayOf(ym), list = ST.emps.filter(e => !e.left);
+  const ym = MON.ym, c = cfgOf(ym), p = KY.period(ym, c.close), pd = payDayOf(ym), list = ST.emps.filter(e => inMon(e, ym));
   const done = list.length && list.every(e => (MON.saved[e.id] || {}).status === '確定');
   const warn = list.reduce((n, e) => n + ((MON.res[e.id] || {}).warns || []).length, 0);
   const sum = k => list.reduce((n, e) => n + (Number((MON.res[e.id] || {})[k]) || 0), 0);
