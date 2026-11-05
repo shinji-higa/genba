@@ -142,7 +142,7 @@ storage.maxUploadRetryTime = 60000;   // 電波が切れたら1分で一度あ�
 const auth = getAuth(app);
 auth.languageCode = 'ja';   // パスワード再設定のメールと画面を日本語にする
 const db = initializeFirestore(app, { localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }) });
-const APP_VER = 'Ver.20261105-03';
+const APP_VER = 'Ver.20261105-04';
 
 /* ---------- 電波なしでも使う（今の現場管理と同じ考え方） ----------
    ・保存は押した瞬間に完了の形。電波が戻ったら自動で送る（データは Firestore が端末に貯める）
@@ -2036,11 +2036,12 @@ function dLoad() {
   if (stop) stop();
   const r = dRange(D.y, D.m);
   $('dLabel').textContent = D.y + '年' + D.m + '月分（' + (r.from.getMonth() + 1) + '/' + r.from.getDate() + '〜' + (r.to.getMonth() + 1) + '/' + r.to.getDate() + '）';
-  D.entries = {};
+  D.entries = {}; D.loaded = false; D.formKey = '';
   dRender();
   stop = onSnapshot(query(dCol(), where('date', '>=', dsOf(r.from)), where('date', '<=', dsOf(r.to))), s => {
     D.entries = {};
     s.docs.forEach(d => { if (!d.data().deleted) D.entries[d.data().date] = d.data(); });
+    D.loaded = true;
     dRender();
   }, e => { $('dList').innerHTML = banner('読み込めませんでした：' + e.message, true); });
 }
@@ -2095,6 +2096,12 @@ function dRender() {
   const info = dayType(D.sel), e = D.entries[D.sel];
   $('dDate').value = dsIso(D.sel);
   $('dType').innerHTML = '(' + DOW[info.dow] + ') ' + typeBadge(info.type) + (info.name ? ' <small>' + esc(info.name) + '</small>' : '');
+  $('dDel').style.display = e ? '' : 'none';
+  // 入力欄を入れ直すのは、日付か入力する人が変わったときと、期間の記録が最初に届いたときだけ。
+  // 裏で記録が変わった（syncedAt が付いたなど）ときの描き直しでは、入力途中の区分・時間・現場を消さない（2026-11-05 給与チャットからの依頼）
+  const fk = D.uid + '|' + D.sel;
+  if (D.loaded && D.formKey === fk) { dKubun(); return; }
+  if (D.loaded) D.formKey = fk;
   D.kubun = e ? e.kubun : '出勤';
   $('dStart').value = String(e && e.start != null && e.start !== '' ? e.start : 8);
   $('dEnd').value = String(e && e.end != null && e.end !== '' ? e.end : 17);
