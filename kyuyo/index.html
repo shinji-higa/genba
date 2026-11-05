@@ -77,13 +77,13 @@
 </header>
 <main id="m"></main>
 
-<script src="tax.js?v=Ver.20261105-08"></script>
-<script src="calc.js?v=Ver.20261105-08"></script>
+<script src="tax.js?v=Ver.20261105-09"></script>
+<script src="calc.js?v=Ver.20261105-09"></script>
 <script type="module">
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
 import { getFirestore, collection, doc, getDoc, getDocs, setDoc, deleteDoc, writeBatch, query, where } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
-const APP_VER = 'Ver.20261105-08';
+const APP_VER = 'Ver.20261105-09';
 const API = 'https://script.google.com/macros/s/AKfycbyW2hFHqIQuu-TsflPk_0zv7gquhoepspuvRG9-bMStPDSWSc2blcDFBtWs7MisP3f_/exec';
 const app = initializeApp({ apiKey: 'AIzaSyDVR4p4DO4s9h70uPlXUVlhNcMP9-YkQ5Q', authDomain: 'genba-portal-9077b.firebaseapp.com', projectId: 'genba-portal-9077b' });
 const auth = getAuth(app);
@@ -517,13 +517,17 @@ function drawPerson(id) {
 }
 
 /* 有給の残りの日数と年5日（2026-11-05 ユーザー決定：法律どおり。切り替え時点の残日数は従業員の欄で入れる） */
-async function leaveShow(e) {
-  const box = () => $('lvc'), tdy = new Date(), T = tdy.getFullYear() + '-' + pad(tdy.getMonth() + 1) + '-' + pad(tdy.getDate()), fd = d => d ? d.replace(/-/g, '/') : '';
+/** 有給の計算に使う従業員：設定の「切り替えの日」より前に入社した人は、その日の残日数から数える（2026-11-05 ユーザー指示：設定で入力し、任意の日で切り替え） */
+const leaveEmp = e => { const sw = ST.cfg.leaveSwitch || '', use = sw && !(e.joined && e.joined > sw); return { ...e, leaveBaseDate: use ? sw : '', leaveBase: use ? e.leaveBase : '', leaveCarry: use ? e.leaveCarry : '' }; };
+async function leaveShow(e0) {
+  const e = leaveEmp(e0), box = () => $('lvc'), tdy = new Date(), T = tdy.getFullYear() + '-' + pad(tdy.getMonth() + 1) + '-' + pad(tdy.getDate()), fd = d => d ? d.replace(/-/g, '/') : '';
   try {
     const from = e.leaveBaseDate ? e.leaveBaseDate.replace(/-/g, '/') : e.joined ? e.joined.replace(/-/g, '/') : '';
     const r = from ? await pay('leaveTaken', { emp: empRef(e), from }) : { list: [] };
     if (!box()) return;
     const L = KY.leaveCalc(e, r.list || [], T), dd = n => (Math.round(n * 10) / 10) + '日';
+    if (!ST.cfg.leaveSwitch) L.notes.push('設定の「有給の切り替え」の日がまだ入っていません。入社した日からの有給を、全部アプリで数えています。');
+    else if (e.leaveBaseDate) L.notes.push('設定の切り替えの日（' + e.leaveBaseDate.replace(/-/g, '/') + '）の残り ' + dd(Number(e.leaveBase) || 0) + (Number(e.leaveCarry) ? '（うち繰り越し ' + dd(Number(e.leaveCarry)) + '）' : '') + ' から数えています。');
     const five = (L.five || []).map(f => '<tr><td>' + fd(f.from) + '〜' + fd(f.until) + ' の前日</td><td class="n">' + dd(f.n) + '</td><td>' + (f.ok ? '<span class="tag ok">5日取れた</span>' : f.done ? '<span class="tag ng">5日に届かずに終わった</span>' : '<span class="tag ng">あと ' + dd(5 - f.n) + '（' + fd(f.until) + ' の前日まで）</span>') + (f.partial ? ' <span class="note">切り替え前に取った分は入っていません</span>' : '') + '</td></tr>').join('');
     box().innerHTML = '<h2>有給</h2><div class="row" style="align-items:baseline;gap:18px;"><div>今の残り <b style="font-size:22px;">' + dd(L.remain) + '</b></div>' + (L.next ? '<div>次に付く日 <b>' + fd(L.next.date) + '</b>（' + dd(L.next.days) + (L.next.fixed ? '・手直し' : '') + '）</div>' : '') + '</div>' +
       (L.warns.concat(L.notes).map(w => '<div class="msg">' + esc(w) + '</div>').join('')) +
@@ -687,7 +691,7 @@ async function drawYear() {
 }
 
 /* 従業員 */
-const EMP_F = [['code', '社員コード', 'text', '今の明細の社員コードです。'], ['name', '氏名', 'text', '明細に出る名前です。'], ['uid', 'ポータルのアカウント', 'text', '日報を読むために使います。ポータルのログインIDを入れます。空欄の人は氏名で探します。'], ['gender', '性別', 'gender', '賃金台帳に載せる項目です。'], ['joined', '入社日', 'date', '入社の月は、この日より前の所定労働日を日割りで引きます。有給はこの日から6か月で10日付きます（その後1年ごとに11・12・14・16・18・20日）。'], ['leaveBaseDate', '有給：切り替え時点の日付', 'date', 'アプリで有給を数え始める日です。この日より後に取った有給を、下の残日数から引きます。入社がこの日より後の人は空欄にします。'], ['leaveBase', '有給：その日の残日数', 'number', '上の日付の時点で残っている有給の日数です（その日に取った分は引いた後）。0.5日も入れられます。'], ['leaveCarry', '有給：うち繰り越し分', 'number', '上の残日数のうち、前の年から繰り越した分です。次に有給が付く日に消えます。分からなければ空欄にします（全部を今の年の分として数えます）。'], ['leaveFix', '有給：付与日数の手直し', 'text', '出勤率が8割に届かなかったなど、法律どおりでない年だけ入れます。「2027-10-13 0」のように、付く日と日数を空白で区切って入れます。2つ以上は「、」で区切ります。'], ['leftDate', '退職日', 'date', '退職の月は、この日より後の所定労働日を日割りで引きます。最後の給与を確定してから、下の「退職」にチェックします。'], ['kind', '区分', 'kind', '社員・役員などです。計算は下の「保険」の欄で変わります。'], ['email', '明細を送るメール', 'text', '任意です。空欄の人には送りません。'], ['consent', '電子交付の承諾日', 'date', '本人が承諾した日です。メールで送る前に入れます。'], ['base', '基本給', 'number', '月額です。'],['commute', '交通費', 'number', '毎月の定額です。所得税の対象から外します。'], ['std', '標準報酬月額（健康保険）', 'number', '年金事務所の決定通知書の額です。'], ['stdPen', '標準報酬月額（厚生年金）', 'number', '健康保険と違うときだけ入れます。空欄なら同じ額を使います。'], ['birth', '生年月日', 'date', '介護保険（40〜64歳）の判定に使います。'], ['care', '介護保険', 'care', '「自動」は生年月日で判定します。生年月日が空欄のときは対象外になるので、対象か対象外を選びます。'], ['deps', '扶養親族等の数', 'number', '扶養控除等申告書の人数です。所得税の表の列を決めます。家族手当にも使います。'], ['kids16', '16歳未満の家族', 'number', '扶養親族等の数に入らない16歳未満の家族の人数です。家族手当に使います。'], ['prevYm', '切り替え前の前月', 'month', 'アプリに切り替えて最初の賞与だけに使います。賞与の前の月を入れます。その月の給与をアプリで確定していれば、こちらは使いません。'], ['prevNet', '切り替え前の前月の給与', 'number', '上の月の給与から、交通費と社会保険料を引いた額です（前の明細の課税対象額）。賞与の所得税の率を決めます。'],['insure', '社会保険', 'bool', '外すと健康保険と厚生年金を引きません。'], ['empIns', '雇用保険', 'bool', '役員などは外します。'], ['noFamily', '家族手当なし', 'boolR', '役員など、家族手当を払わない人に入れます。'], ['noTax', '所得税を計算しない', 'boolR', '税理士さんの指示がある人だけ入れます。'], ['left', '退職', 'boolR', '入れると一覧から外します。過去の記録は残ります。']];
+const EMP_F = [['code', '社員コード', 'text', '今の明細の社員コードです。'], ['name', '氏名', 'text', '明細に出る名前です。'], ['uid', 'ポータルのアカウント', 'text', '日報を読むために使います。ポータルのログインIDを入れます。空欄の人は氏名で探します。'], ['gender', '性別', 'gender', '賃金台帳に載せる項目です。'], ['joined', '入社日', 'date', '入社の月は、この日より前の所定労働日を日割りで引きます。有給はこの日から6か月で10日付きます（その後1年ごとに11・12・14・16・18・20日）。'], ['leaveFix', '有給：付与日数の手直し', 'text', '出勤率が8割に届かなかったなど、法律どおりでない年だけ入れます。「2027-10-13 0」のように、付く日と日数を空白で区切って入れます。2つ以上は「、」で区切ります。'], ['leftDate', '退職日', 'date', '退職の月は、この日より後の所定労働日を日割りで引きます。最後の給与を確定してから、下の「退職」にチェックします。'], ['kind', '区分', 'kind', '社員・役員などです。計算は下の「保険」の欄で変わります。'], ['email', '明細を送るメール', 'text', '任意です。空欄の人には送りません。'], ['consent', '電子交付の承諾日', 'date', '本人が承諾した日です。メールで送る前に入れます。'], ['base', '基本給', 'number', '月額です。'],['commute', '交通費', 'number', '毎月の定額です。所得税の対象から外します。'], ['std', '標準報酬月額（健康保険）', 'number', '年金事務所の決定通知書の額です。'], ['stdPen', '標準報酬月額（厚生年金）', 'number', '健康保険と違うときだけ入れます。空欄なら同じ額を使います。'], ['birth', '生年月日', 'date', '介護保険（40〜64歳）の判定に使います。'], ['care', '介護保険', 'care', '「自動」は生年月日で判定します。生年月日が空欄のときは対象外になるので、対象か対象外を選びます。'], ['deps', '扶養親族等の数', 'number', '扶養控除等申告書の人数です。所得税の表の列を決めます。家族手当にも使います。'], ['kids16', '16歳未満の家族', 'number', '扶養親族等の数に入らない16歳未満の家族の人数です。家族手当に使います。'], ['prevYm', '切り替え前の前月', 'month', 'アプリに切り替えて最初の賞与だけに使います。賞与の前の月を入れます。その月の給与をアプリで確定していれば、こちらは使いません。'], ['prevNet', '切り替え前の前月の給与', 'number', '上の月の給与から、交通費と社会保険料を引いた額です（前の明細の課税対象額）。賞与の所得税の率を決めます。'],['insure', '社会保険', 'bool', '外すと健康保険と厚生年金を引きません。'], ['empIns', '雇用保険', 'bool', '役員などは外します。'], ['noFamily', '家族手当なし', 'boolR', '役員など、家族手当を払わない人に入れます。'], ['noTax', '所得税を計算しない', 'boolR', '税理士さんの指示がある人だけ入れます。'], ['left', '退職', 'boolR', '入れると一覧から外します。過去の記録は残ります。']];
 function drawEmp() {
   portalEmps(ST.emps).then(n => { if (n && ST.tab === 'emp' && $('add')) drawEmp(); }).catch(() => {});
   M.innerHTML = '<div class="card"><div class="row"><h2 style="margin:0;">従業員</h2><span class="note">ポータルで「日報」にチェックがある人は自動で増えます。</span><span class="sp"></span><button class="b dark" id="add">＋ 追加</button></div></div><div class="card wrapx"><table class="t"><tr><th>氏名</th><th>区分</th><th class="n">基本給</th><th class="n">扶養</th><th>メール</th></tr>' + ST.emps.map(e => '<tr class="link" data-id="' + esc(e.id) + '"><td><b>' + esc(e.name) + '</b>' + (e.left ? ' <span class="tag">退職</span>' : '') + '</td><td>' + esc(e.kind) + '</td><td class="n">' + yen(KY.valAt(e, 'base', defaultYm())) + '</td><td class="n">' + (KY.valAt(e, 'deps', defaultYm()) || 0) + '人</td><td>' + esc(e.email || '') + '</td></tr>').join('') + '</table></div>';
@@ -787,7 +791,8 @@ function drawSet() {
     CFG_DEF.map(([h, fs]) => '<div class="card"><h2>' + h + '</h2>' + fs.map(f => f[2] === 'memo' ? '<div style="padding:10px 0;border-bottom:1px solid #e3e8ee;"><div style="font-weight:700;">' + f[1] + '</div><div style="font-size:.84rem;color:var(--sub);margin:2px 0 6px;">' + f[3] + '</div><textarea data-c="' + f[0] + '" data-grow="1" style="display:block;width:100%;box-sizing:border-box;min-height:84px;overflow:hidden;resize:none;font:inherit;line-height:1.6;padding:8px 10px;border:1px solid var(--line);border-radius:6px;">' + esc(c[f[0]] || '') + '</textarea></div>' : f[2] === 'check' ? '<div class="set"><div class="k">' + f[1] + '</div><div><input type="checkbox" data-c="' + f[0] + '"' + (c[f[0]] ? ' checked' : '') + ' style="width:22px;height:22px;"></div><div class="d">' + f[3] + '</div></div>' : '<div class="set"><div class="k">' + f[1] + '</div><div class="row" style="flex-wrap:nowrap;gap:6px;"><input type="number" min="0" step="' + (f[2] === '倍' ? '0.01' : 'any') + '" data-c="' + f[0] + '"' + (f[2] === '倍' ? ' data-rate="1"' : '') + ' value="' + esc(f[2] === '倍' ? Number(c[f[0]]).toFixed(2) : c[f[0]]) + '"><span>' + f[2] + '</span></div><div class="d">' + f[3] + '</div></div>').join('') + (h === '基本の時間' ? '<div class="note" style="margin-top:8px;">' + w.year + '年の所定労働日数：平日 ' + w.weekdays + '日 − 祝日 ' + w.holidays + '日 ＝ <b>' + w.days + '日</b><br>月平均所定時間：<b>' + mh + '時間</b>（' + w.days + '日 × ' + c.stdH + '時間 ÷ 12）。時間単価＝基本給 ÷ この時間です。<br>時間外は1か月の合計で丸めます（平日・所定休日・法定休日ごと）。30分未満は切り捨て、30分以上は1時間に切り上げます。</div>' : '') + '</div>').join('') +
     '<div class="card"><h2>保険料率（適用月ごと）</h2><div class="note">変わるときは行を足します。健康保険・介護保険・支援金・厚生年金は「保険の月」、雇用保険は「給与の月」で使います。社会保険は前月分を今月の給与から引くので、3月分の率は4月の給与から効きます。</div><div class="wrapx"><table class="t" id="rt"></table></div><button class="b" id="ra" style="margin-top:8px;">＋ 行を足す</button>' +
     '<div class="set" style="border:0;"><div class="k">健康保険</div><div></div><div class="d">協会けんぽ兵庫の率（全体）です。本人はこの半分です。毎年3月分から変わります。</div><div class="k">介護保険</div><div></div><div class="d">40〜64歳の人だけにかかります（全体の率）。全国共通です。</div><div class="k">支援金</div><div></div><div class="d">子ども・子育て支援金です（全体の率）。明細では健康保険料に含めます。</div><div class="k">厚生年金</div><div></div><div class="d">全体の率です。本人はこの半分です。</div><div class="k">雇用保険</div><div></div><div class="d">本人負担の率です（建設の事業）。毎年4月に変わります。</div></div></div>' +
-    '<div class="card"><div class="row"><button class="b dark" id="sv">設定を保存</button><span id="sm" class="note"></span></div></div>';
+    '<div class="card"><div class="row"><button class="b dark" id="sv">設定を保存</button><span id="sm" class="note"></span></div></div>' +
+    leaveSwitchHtml();
   // メモの欄は中の文の長さに合わせて高くする（スクロールさせず全文を見せる。ユーザー指示 2026-11-04）
   M.querySelectorAll('textarea[data-grow]').forEach(t => { const g = () => { t.style.height = 'auto'; t.style.height = (t.scrollHeight + 2) + 'px'; }; t.oninput = g; g(); });
   const rates = JSON.parse(JSON.stringify(c.rates || []));
@@ -798,9 +803,38 @@ function drawSet() {
   drawR();
   $('ver').onclick = () => { $('ver').textContent = '入れ替えています…'; refreshApp(); };
   $('ra').onclick = () => { rates.push({ ...(rates[rates.length - 1] || {}), from: '' }); drawR(); };
+  leaveSwitchWire();
   $('sv').onclick = async () => {
     const d = { rates }; M.querySelectorAll('[data-c]').forEach(i => { d[i.dataset.c] = i.tagName === 'TEXTAREA' ? i.value : i.type === 'checkbox' ? i.checked : i.dataset.rate ? Math.round(Number(i.value) * 100) / 100 : Number(i.value); });   // 掛率は小数点第2位まで
     try { await pay('saveCfg', d); Object.assign(ST.cfg, d); drawSet(); $('sm').textContent = '保存しました'; } catch (x) { $('sm').textContent = x.message; }
+  };
+}
+
+/* 有給の切り替え（2026-11-05 ユーザー指示）：好きな日を「切り替えの日」にして、その日の時点の残日数を全員分入れる。
+   その日より後に取った有給をアプリが引いていく。切り替えの日より後に入社した人は、入社した日から数える */
+function leaveSwitchHtml() {
+  const sw = ST.cfg.leaveSwitch || '', list = ST.emps.filter(x => !x.left);   // 有給の切り替えは在籍している全員（月で絞らない）
+  return '<div class="card"><h2>有給の切り替え</h2><div class="note">アプリで有給を数え始める日と、その日の時点で一人ずつ残っている日数を入れます（その日に取った分は引いた後の日数）。「うち繰り越し」は、前の年から繰り越した分です。次に有給が付く日に消えます。分からなければ空欄にします。0.5日も入れられます。切り替えの日より後に入社した人は入れません（入社した日から数えます）。</div>' +
+    '<div class="row" style="margin-top:8px;"><label class="f">切り替えの日<br><input type="date" id="lsw" value="' + esc(sw) + '"></label></div>' +
+    '<div class="wrapx"><table class="t" id="lst" style="margin-top:8px;"><tr><th>氏名</th><th>入社日</th><th class="n">残日数</th><th class="n">うち繰り越し</th></tr>' + list.map(e => '<tr><td>' + esc(e.name) + '</td><td>' + esc(e.joined || '（空欄）') + '</td><td class="n"><input type="number" step="0.5" min="0" data-lb="' + esc(e.id) + '" value="' + esc(e.leaveBase == null ? '' : e.leaveBase) + '" style="width:90px;text-align:right;"></td><td class="n"><input type="number" step="0.5" min="0" data-lc="' + esc(e.id) + '" value="' + esc(e.leaveCarry == null ? '' : e.leaveCarry) + '" style="width:90px;text-align:right;"></td></tr>').join('') + '</table></div>' +
+    '<div class="row" style="margin-top:8px;"><button class="b dark" id="lsv">有給の切り替えを保存</button><span id="lsm" class="note"></span></div></div>';
+}
+function leaveSwitchWire() {
+  const paint = () => { const sw = $('lsw').value; $('lst').querySelectorAll('[data-lb],[data-lc]').forEach(i => { const e = ST.emps.find(x => x.id === (i.dataset.lb || i.dataset.lc)), off = !sw || (e.joined && e.joined > sw); i.disabled = off; i.title = !sw ? '先に切り替えの日を入れます' : off ? '切り替えの日より後に入社した人です' : ''; }); };
+  $('lsw').onchange = paint; paint();
+  $('lsv').onclick = async () => {
+    const sw = $('lsw').value, num = v => v === '' ? '' : Number(v);
+    try {
+      $('lsv').disabled = true; $('lsm').textContent = '保存しています…';
+      for (const e of ST.emps.filter(x => !x.left)) {
+        const b = $('lst').querySelector('[data-lb="' + e.id + '"]'), c = $('lst').querySelector('[data-lc="' + e.id + '"]'), nb = num(b.value), nc = num(c.value);
+        if (nc !== '' && nb !== '' && nc > nb) throw new Error(e.name + '：うち繰り越しが残日数より多くなっています。');
+        if ((e.leaveBase == null ? '' : e.leaveBase) === nb && (e.leaveCarry == null ? '' : e.leaveCarry) === nc) continue;
+        const x = { ...e, leaveBase: nb, leaveCarry: nc }; await pay('saveEmp', x); Object.assign(e, x);
+      }
+      if ((ST.cfg.leaveSwitch || '') !== sw) { await pay('saveCfg', { leaveSwitch: sw }); ST.cfg.leaveSwitch = sw; }
+      $('lsm').textContent = '保存しました';
+    } catch (x) { $('lsm').textContent = x.message; } finally { $('lsv').disabled = false; }
   };
 }
 
