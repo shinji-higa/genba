@@ -43,6 +43,11 @@
     Object.keys(base).sort().forEach(k => { const [a, b, c] = k.split('-').map(Number), dt = new Date(a, b - 1, c); if (dt.getDay() !== 0) return; const n = new Date(dt); do { n.setDate(n.getDate() + 1); } while (out[key(n)]); out[key(n)] = '振替休日'; });
     return out;
   }
+  /** 会社休日（'yyyy-mm-dd' の一覧）のうち、その年の平日で祝日でない日の数（所定労働日から引く日数。土日・祝日に重ねた日は数えない。2026-11-05） */
+  function offCount(y, offDays) {
+    const h = jpHolidays(y), seen = {};
+    return (offDays || []).filter(k => { if (seen[k] || String(k).slice(0, 4) !== String(y)) return false; seen[k] = 1; const d = new Date(k + 'T00:00:00'); return !isNaN(d) && d.getDay() !== 0 && d.getDay() !== 6 && !h[k]; }).length;
+  }
   /** その年の所定労働日数の内訳：平日 − 平日の祝日 − 会社休日 */
   function workYear(y, companyOff) {
     const h = jpHolidays(y); let weekdays = 0, holidays = 0;
@@ -345,6 +350,6 @@
   /** 家族手当：（扶養親族等の数＋16歳未満の家族）×1人の額、上限あり */
   const familyPay = (emp, cfg) => emp.noFamily ? 0 : Math.min(Number(cfg.familyMax != null ? cfg.familyMax : 30000), ((Number(emp.deps) || 0) + (Number(emp.kids16) || 0)) * Number(cfg.familyPer != null ? cfg.familyPer : 10000));
 
-  const api = { jpHolidays, workYear, calcMonth, calcBonus, monthlyTax, bonusRate, careTarget, payDay, period, rateAt, half, ymAdd, roundH, roundAtt, familyPay, lateH, proDays, inPeriod, lossYmOf, fyStart, leaveGrants, leaveCalc, leaveFixOf, workDaysBetween, attendRate, HIST, valAt, empAt, histRetro, retroCalc };
+  const api = { jpHolidays, workYear, offCount, calcMonth, calcBonus, monthlyTax, bonusRate, careTarget, payDay, period, rateAt, half, ymAdd, roundH, roundAtt, familyPay, lateH, proDays, inPeriod, lossYmOf, fyStart, leaveGrants, leaveCalc, leaveFixOf, workDaysBetween, attendRate, HIST, valAt, empAt, histRetro, retroCalc };
   if (typeof module !== 'undefined') module.exports = api; else root.KY = api;
 })(typeof window !== 'undefined' ? window : globalThis);
