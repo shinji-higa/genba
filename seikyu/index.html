@@ -89,12 +89,12 @@
 <main id="m"></main>
 <div id="busy"></div>
 
-<script src="calc.js?v=Ver.20261105-01"></script>
+<script src="calc.js?v=Ver.20261106-01"></script>
 <script type="module">
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
 import { getFirestore, collection, doc, getDoc, getDocs, setDoc, deleteDoc, writeBatch, runTransaction } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
-const APP_VER = 'Ver.20261105-01';
+const APP_VER = 'Ver.20261106-01';
 const API = 'https://script.google.com/macros/s/AKfycbzpJgqJOqQz5180PQF2S3kVN7TWg0c1dnyUUUNuCZtzy5_pmKEhAkw5w3gqSj31EEA1/exec';   // Apps Script「請求管理」（ポータル・給与とは別）
 /* ログインは給与アプリと同じ（ユーザー指示 2026-11-05）：ポータルの Firebase、メールとパスワード。入れるのはマスターと「請求管理」の権限（users.canInvoice）がある人 */
 const app = initializeApp({ apiKey: 'AIzaSyDVR4p4DO4s9h70uPlXUVlhNcMP9-YkQ5Q', authDomain: 'genba-portal-9077b.firebaseapp.com', projectId: 'genba-portal-9077b' });
@@ -202,7 +202,7 @@ const DEF_CFG = {
   bank: '', rates: SK.DEF_RATES, taxRound: 'down', amtRound: 'down',
   invNo: { prefix: 'S', digits: 5, next: 1 }, rcpNo: { prefix: 'R', digits: 5, next: 1 },
   defTerms: { close: 31, months: 1, day: 31 }, greeting: '下記の通りご請求申し上げます。',
-  coverPerson: '', coverText: '拝啓　時下ますますご清栄のことと心よりお喜び申し上げます。平素は格別のお引き立てを賜り、厚く御礼を申し上げます。\n　さて、早速ではございますが下記の書類をお送りいたします。よろしくご査収くださいますよう、お願い申し上げます。',
+  coverPerson: '比嘉 美紀', coverText: '拝啓　時下ますますご清栄のことと心よりお喜び申し上げます。平素は格別のお引き立てを賜り、厚く御礼を申し上げます。\n　さて、早速ではございますが下記の書類をお送りいたします。よろしくご査収くださいますよう、お願い申し上げます。',
   stamps: true, rcpPurpose: 'ダクト工事代として', memoTax: ''
 };
 const ST = { stamps: {}, me: null, cfg: plain(DEF_CFG), custs: [], invs: [], rcps: [], tab: 'inv', year: String(new Date().getFullYear()), yearData: {}, q: '', filt: 'all' };
@@ -210,6 +210,11 @@ const cfgMerge = c => { const o = Object.assign(plain(DEF_CFG), c || {}); o.comp
 const calcOf = inv => SK.calc(inv, ST.cfg);
 const stateOf = inv => SK.payState(inv.state === '取消' ? { ...inv, status: '取消' } : inv, today(), calcOf(inv).total);
 const custOf = id => ST.custs.find(c => c.id === id);
+/* 発行元（自社の名前・住所・振込先・登録番号）は書類ごとに保存したときの物を残す。設定を変えても前の書類は変わらない（ユーザー指示 2026-11-05：古い請求書が自動で今の会社名にならないように）。
+   販売らくだから写した請求書は、販売らくだが1枚ごとに持っていた当時の自社情報（比嘉板工の時期・前の住所・前の振込先など） */
+const curFrom = () => { const co = ST.cfg.company; return { name: co.name, person: '', zip: co.zip, addr: co.addr, tel: co.tel, fax: co.fax, regNo: co.regNo || '', bank: ST.cfg.bank || '' }; };
+const fromOf = d => (d && d.from) || curFrom();
+const isUs = f => String(f.name || '').replace(/s/g, '') === String(ST.cfg.company.name || '').replace(/s/g, '');   // 今の会社と同じ名前か（ロゴ・角印はそのときだけ）
 function expireOf(inv) {
   const st = stateOf(inv);
   if (!(st === '入金済み' || st === '入金なし' || st === '取消')) return null;
@@ -319,6 +324,7 @@ async function saveInv(inv, why) {
   const c = calcOf(inv);
   if (c.missing.length) throw new Error('発行日（' + dShort(inv.date) + '）に使う税率が、設定の税率の表にありません：' + c.missing.map(SK.kindName).join('・'));
   if (!inv.no) inv.no = await nextNo('invNo');
+  if (!inv.from) inv.from = curFrom();
   if (!inv.createdAt) { inv.createdAt = nowStr(); inv.createdBy = ST.me.name; }
   inv.updatedAt = nowStr(); inv.updatedBy = ST.me.name;
   const d = plain(inv); delete d.isNew; delete d.fromSheet;
@@ -413,13 +419,15 @@ function drawInvEdit() {
     $('sb').onchange = () => { readForm(); ST.dirty = true; drawInvEdit(); };
   }
   const needSaved = async () => { if (inv.isNew || ST.dirty) { await okBox('先に保存してください。', 'OK', true); return false; } return true; };
-  $('see').onclick = () => { readForm(); showPaper(invPages(inv, String(inv.sentBy).includes('紙'))); };
+  $('see').onclick = () => { readForm(); showPaper(invPages(inv, String(inv.sentBy).includes('紙') ? coverDef(inv) : null)); };
   $('pr').onclick = async () => {
     readForm(); if (!(await needSaved())) return;
-    printPages(invPages(inv, String(inv.sentBy).includes('紙')));
+    let cv = null;
+    if (String(inv.sentBy).includes('紙')) { cv = await coverForm(inv); if (cv === undefined) return; }   // 紙で送るときは、毎回 送り状の画面で中身を入れてから印刷（ユーザー指示 2026-11-06）
+    printPages(invPages(inv, cv));
     if (!inv.sentAt || inv.sentAt === '不明') { if (await okBox('印刷しました。送った日を今日（' + dShort(today()) + '）にしますか？', '今日にする')) { inv.sentAt = today(); try { await saveInv(inv, '送った日'); drawInvEdit(); } catch (e) { alert(e.message); } } }
   };
-  $('pdf').onclick = async () => { readForm(); if (!(await needSaved())) return; try { await pdfOf(invPages(inv, false), '請求書_' + inv.no + '_' + (inv.to.name || '') + '.pdf'); } catch (e) { alert(e.message); } };
+  $('pdf').onclick = async () => { readForm(); if (!(await needSaved())) return; try { await pdfOf(invPages(inv, null), '請求書_' + inv.no + '_' + (inv.to.name || '') + '.pdf'); } catch (e) { alert(e.message); } };
   if (!inv.isNew) {
     $('addP').onclick = () => addPayment(inv);
     M.querySelectorAll('[data-pr]').forEach(b => b.onclick = async () => {
@@ -429,7 +437,7 @@ function drawInvEdit() {
     });
     $('sent').onclick = async () => { const r = await formBox('送った日', [{ k: 'd', label: '送った日', type: 'date', value: inv.sentAt && inv.sentAt !== '不明' ? inv.sentAt : today() }]); if (!r) return; readForm(); inv.sentAt = r.d; try { await saveInv(inv, '送った日'); ST.dirty = false; drawInvEdit(); } catch (e) { alert(e.message); } };
     $('dup').onclick = () => {
-      const n = newInv(custOf(inv.custId)); n.to = plain(inv.to); n.title = inv.title; n.taxMode = inv.taxMode; n.note = inv.fixed ? '' : inv.note;
+      const n = newInv(custOf(inv.custId)); if (!custOf(inv.custId)) n.to = plain(inv.to);   // 宛名は今の得意先台帳の物（会社名が変わった得意先のため） n.title = inv.title; n.taxMode = inv.taxMode; n.note = inv.fixed ? '' : inv.note;
       n.lines = plain(inv.lines).map(l => { delete l.rate; delete l.inTax; if (inv.fixed && l.type === 'item') { if (l.qty == null || l.price == null) l.amountFix = l.amountFix; else delete l.amountFix; } return l; });
       openInv(n); ST.dirty = true; alert('複製しました。発行日・明細を確かめて保存してください。');
     };
@@ -471,16 +479,16 @@ function paginate(lines, first, firstLast, next, nextLast) {
   }
   return pages;
 }
-function companyBlock(withStamp, date) {
-  const co = ST.cfg.company, reg = co.regNo && (!date || String(date) >= '2023-10-01');   // 登録番号はインボイス制度（2023-10-01）からの書類だけに出す
+function companyBlock(withStamp, d) {
+  const co = fromOf(d), us = isUs(co);   // 登録番号は、その書類に入っていた時だけ出す
   return '<div style="position:relative;text-align:left;font-size:9.5pt;line-height:1.65;">' +
-    '<img src="paper_logo.png" style="width:52mm;display:block;margin-bottom:2mm;">' +
-    '<div style="font-size:11.5pt;font-weight:700;">' + esc(co.name) + '</div>' +
+    (us ? '<img src="paper_logo.png" style="width:52mm;display:block;margin-bottom:2mm;">' : '<div style="height:14mm;"></div>') +
+    '<div style="font-size:11.5pt;font-weight:700;">' + esc(co.name) + '</div>' + (co.person ? '<div>' + esc(co.person) + '</div>' : '') +
     '<div>〒' + esc(co.zip) + '　' + esc(co.addr) + '</div><div>TEL ' + esc(co.tel) + '　FAX ' + esc(co.fax) + '</div>' +
-    (reg ? '<div>登録番号：' + esc(co.regNo) + '</div>' : '') +
-    (withStamp && ST.cfg.stamps && ST.stamps.kaku ? '<img src="' + ST.stamps.kaku + '" style="position:absolute;left:40mm;top:7mm;width:21mm;opacity:.92;">' + (ST.stamps.higa ? '<img src="' + ST.stamps.higa + '" style="position:absolute;left:62mm;top:13mm;width:12mm;opacity:.92;">' : '') : '') + '</div>';
+    (co.regNo ? '<div>登録番号：' + esc(co.regNo) + '</div>' : '') +
+    (withStamp && ST.cfg.stamps ? (us && ST.stamps.kaku ? '<img src="' + ST.stamps.kaku + '" style="position:absolute;left:40mm;top:7mm;width:21mm;opacity:.92;">' : '') + (ST.stamps.higa ? '<img src="' + ST.stamps.higa + '" style="position:absolute;left:62mm;top:13mm;width:12mm;opacity:.92;">' : '') : '') + '</div>';
 }
-function invPages(inv, withCover) {
+function invPages(inv, cover) {   // cover：送り状の中身（coverForm で入れた物）。無ければ送り状なし
   const c = calcOf(inv), to = SK.addrLines(inv.to), lines = (inv.lines || []).filter(l => l.type === 'text' ? String(l.name || '').trim() : true);
   const hasDate = lines.some(l => l.date), hasMemo = lines.some(l => l.memo), hasRed = c.groups.some(g => g.kind === 'red');
   const pages = paginate(lines, 17, 13, 30, 24), N = pages.length;
@@ -492,7 +500,7 @@ function invPages(inv, withCover) {
     (hasMemo ? '<td style="font-size:8.5pt;">' + esc(l.memo || '') + '</td>' : '') + '</tr>';
   const tblCss = '<style>.it{border-collapse:collapse;width:100%;font-size:9.5pt;}.it th{background:#e4f1e8;border-top:1.5px solid #1a6b3c;border-bottom:1.5px solid #1a6b3c;font-weight:700;padding:1.6mm 1mm;letter-spacing:.1em;}.it td{border-bottom:.3mm solid #c9d6cd;padding:0 1.5mm;}.it td.r{text-align:right;font-variant-numeric:tabular-nums;}.sm td{padding:1mm 2mm;border-bottom:.3mm solid #c9d6cd;font-variant-numeric:tabular-nums;}</style>';
   const out = [];
-  if (withCover) out.push(coverPage(inv));
+  if (cover) out.push(coverPage(inv, cover));
   pages.forEach((pl, p) => {
     const last = p === N - 1;
     let h = tblCss;
@@ -505,14 +513,14 @@ function invPages(inv, withCover) {
       h += '<div style="position:absolute;left:15mm;top:72mm;width:100mm;font-size:10pt;">' + esc(ST.cfg.greeting) + (inv.title ? '<div style="margin-top:1.5mm;">件名：' + esc(inv.title) + '</div>' : '') +
         '<div style="margin-top:2.5mm;border:.5mm solid #1a6b3c;border-radius:1.5mm;padding:2.5mm 4mm;display:flex;justify-content:space-between;align-items:baseline;"><span style="font-size:11pt;font-weight:700;">今回ご請求額</span><span style="font-size:19pt;font-weight:700;">¥' + yen(c.total) + '<span style="font-size:9pt;">（税込）</span></span></div>' +
         (inv.due ? '<div style="margin-top:1.5mm;">お支払期限：' + dJp(inv.due) + '</div>' : '') + '</div>';
-      h += '<div style="position:absolute;left:122mm;top:69mm;width:76mm;">' + companyBlock(true, inv.date) + '</div>';
+      h += '<div style="position:absolute;left:122mm;top:69mm;width:76mm;">' + companyBlock(true, inv) + '</div>';
     }
     h += '<div style="position:absolute;left:15mm;right:15mm;top:' + (p === 0 ? 118 : 36) + 'mm;"><table class="it"><thead><tr>' + cols + '</tr></thead><tbody>' + pl.map(row).join('') + '</tbody></table>' + (last ? '' : '<div style="text-align:right;font-size:8.5pt;margin-top:1.5mm;">次のページへ続きます</div>') + '</div>';
     if (p > 0) h += '<div style="position:absolute;left:15mm;top:15mm;font-size:11pt;">' + esc(to.name) + '　' + (to.person ? '' : '') + '御請求書（つづき）</div>';
     if (last) {
       h += '<div style="position:absolute;left:15mm;right:15mm;bottom:26mm;display:flex;gap:8mm;align-items:flex-end;">' +
         '<div style="flex:1;font-size:9.5pt;line-height:1.6;">' + (hasRed ? '<div>※は軽減税率（8%）の対象です。</div>' : '') +
-        (ST.cfg.bank ? '<div style="margin-top:1.5mm;border:.3mm solid #8aa595;padding:2mm 3mm;border-radius:1.2mm;background:rgba(255,255,255,.85);"><b>お振込先</b><br>' + esc(ST.cfg.bank).replace(/\n/g, '<br>') + '</div>' : '') +
+        (fromOf(inv).bank ? '<div style="margin-top:1.5mm;border:.3mm solid #8aa595;padding:2mm 3mm;border-radius:1.2mm;background:rgba(255,255,255,.85);"><b>お振込先</b><br>' + esc(fromOf(inv).bank).replace(/\n/g, '<br>') + '</div>' : '') +
         (inv.note ? '<div style="margin-top:1.5mm;white-space:pre-wrap;background:rgba(255,255,255,.85);">' + esc(inv.note) + '</div>' : '') + '</div>' +
         '<table class="sm" style="border-collapse:collapse;width:82mm;font-size:9.5pt;background:rgba(255,255,255,.92);">' +
         c.groups.map(g => '<tr><td>' + esc(SK.groupLabel(g)) + '対象</td><td style="text-align:right;">' + yen(g.base) + '</td></tr>' + (g.rate ? '<tr><td>　消費税（' + g.rate + '%）</td><td style="text-align:right;">' + yen(g.tax) + '</td></tr>' : '')).join('') +
@@ -523,26 +531,57 @@ function invPages(inv, withCover) {
   });
   return out;
 }
+/* 送り状の中身の初めの値（宛名は請求書の宛名、送り主は設定の担当＝比嘉 美紀） */
+function coverDef(inv) {
+  const T = inv.to || {}, to = SK.addrLines(T);
+  const l5 = T.person ? [T.name, T.dept].filter(Boolean).join('　') : (T.dept ? T.name : ''), l6 = T.person ? T.person : (T.dept ? T.dept : T.name);
+  return { date: today(), zip: to.zip || '', addr1: to.addr1 || '', addr2: to.addr2 || '', l5: l5 || '', l6: l6 || '', honor: T.honor || '様', person: ST.cfg.coverPerson || '',
+    title: '書類送付のご案内', text: ST.cfg.coverText || '', items: ['請求書　1通　（No.' + inv.no + '）', inv.title ? '件名：' + inv.title : '', '', 'ご査収の程よろしくお願いいたします。'].join('\n') };
+}
+/* 送り状の画面（ユーザー指示 2026-11-06：毎回フォームで記入して印刷）。印刷は中身、「送り状なしで印刷」は null、やめたら undefined */
+function coverForm(inv) {
+  const v = coverDef(inv);
+  return new Promise(done => {
+    const w = document.createElement('div'); w.id = 'ask';
+    const I = (k, label, note, wide) => '<div style="' + (wide ? 'grid-column:1/-1;' : '') + '"><label class="f">' + label + '</label><input data-k="' + k + '" value="' + esc(v[k]) + '" style="width:100%;">' + (note ? '<div class="note">' + note + '</div>' : '') + '</div>';
+    const A = (k, label, note, h) => '<div style="grid-column:1/-1;"><label class="f">' + label + '</label><textarea data-k="' + k + '" style="width:100%;min-height:' + h + 'px;">' + esc(v[k]) + '</textarea>' + (note ? '<div class="note">' + note + '</div>' : '') + '</div>';
+    w.innerHTML = '<div class="card" style="max-width:760px;max-height:92vh;overflow:auto;"><h2>送り状（' + esc(inv.no) + '）</h2><div class="note">ここで入れた中身で、送り状と請求書を一緒に印刷します。宛名は窓付き封筒の窓に出る所です。</div>' +
+      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px 14px;margin-top:10px;">' +
+      '<div><label class="f">日付</label><input data-k="date" type="date" value="' + esc(v.date) + '" style="width:100%;"></div>' + I('person', '担当（送り主）', '初めは 設定 の担当') +
+      '<div style="grid-column:1/-1;margin-top:6px;"><b>宛名（封筒の窓に出る所）</b></div>' +
+      I('zip', '郵便番号') + '<div></div>' + I('addr1', '住所1', '', true) + I('addr2', '住所2（ビル名など）', '', true) + I('l5', '会社名（担当者の名前を入れるときは 会社名＋部署）', '', true) + I('l6', '「様」の前の名前（担当者・部署・会社名）') + I('honor', '敬称') +
+      '<div style="grid-column:1/-1;margin-top:6px;"><b>中身</b></div>' +
+      I('title', '表題', '', true) + A('text', '送り文', '「敬具」は最後に自動で付きます。', 120) + A('items', '記（送る書類など。1行ずつ、7行まで）', '', 130) +
+      '</div><div class="row" style="margin-top:12px;"><button class="b" data-x="see">紙を見る</button><span class="sp"></span><button class="b" data-x="n">やめる</button><button class="b" data-x="no">送り状なしで印刷</button><button class="b dark" data-x="y">印刷</button></div></div>';
+    document.body.appendChild(w);
+    const val = () => { const o = {}; w.querySelectorAll('[data-k]').forEach(e => { o[e.dataset.k] = e.value; }); return o; };
+    const end = r => { w.remove(); done(r); };
+    w.querySelector('[data-x="n"]').onclick = () => end(undefined);
+    w.querySelector('[data-x="no"]').onclick = () => end(null);
+    w.querySelector('[data-x="y"]').onclick = () => end(val());
+    w.querySelector('[data-x="see"]').onclick = () => showPaper([coverPage(inv, val())]);
+  });
+}
 /* 送り状（ユーザー指示 2026-11-05：紙で送るときだけ請求書と一緒に印刷。左上の宛先は窓付き封筒に合わせ、位置と会社情報は今の Word「書類送付状.docx」と同じ）。
    位置は Word から読んだ値：左余白23mm、日付 上5.6mm、〒 11.9mm、住所 18.3mm・24.9mm、会社名 31.2mm、様の行 37.3mm（下線の長さ81.5mm）、
-   会社のロゴ 約47mm・会社名 56.6mm・〒 63.0mm・TEL 69.3mm・担当 75.7mm（右側 108mm から）、表題 88.9mm（22pt）、本文 113.5mm、記 約167mm、線 176.5mm から 9.55mm おきに7本、以上 約246mm */
-function coverPage(inv) {
-  const to = SK.addrLines(inv.to), co = ST.cfg.company, ab = (top, size, txt) => '<div style="position:absolute;left:23mm;top:' + top + 'mm;font-size:' + size + 'pt;white-space:nowrap;">' + txt + '</div>';
-  let h = '<div style="position:absolute;right:23mm;top:5.6mm;font-size:11pt;">' + wareki(inv.sentAt && inv.sentAt !== '不明' ? inv.sentAt : today()) + '</div>';
+   会社のロゴ 約47mm・会社名 56.6mm・〒 63.0mm・TEL 69.3mm・担当 75.7mm（右側 108mm から）、表題 88.9mm（22pt）、本文 113.5mm、記 約167mm、線 176.5mm から 9.55mm おきに7本、以上 約246mm
+   2026-11-06：中身は毎回 coverForm で入れる（cv）。送り主の会社情報は送る日の物なので、今の設定の会社情報 */
+function coverPage(inv, cv) {
+  cv = cv || coverDef(inv);
+  const co = ST.cfg.company, ab = (top, size, txt) => '<div style="position:absolute;left:23mm;top:' + top + 'mm;font-size:' + size + 'pt;white-space:nowrap;">' + txt + '</div>';
+  let h = '<div style="position:absolute;right:23mm;top:5.6mm;font-size:11pt;">' + wareki(cv.date || today()) + '</div>';
   // 窓の幅（下線の長さ 81.5mm）に収まらない長い行だけ、文字を小さくして1行に収める（折り返すと窓から外れるため）
-  const T = inv.to || {}, W = 81.5, fit = (s, base, w) => { const L = [...String(s || '')].reduce((a, ch) => a + (/[ -~｡-ﾟ]/.test(ch) ? .5 : 1), 0); return L ? Math.min(base, Math.floor(w / (L * 0.3528) * 10) / 10) : base; };
-  const l5 = [T.name, T.person ? T.dept : ''].filter(Boolean).join('　'), l6 = T.person ? T.person : (T.dept ? '' : T.name);
-  h += ab(11.9, 12, '〒' + esc(to.zip)) + ab(18.3, fit(to.addr1, 12, W), esc(to.addr1)) + ab(24.9, fit(to.addr2, 10.5, W), esc(to.addr2)) + ab(31.2, fit(T.person ? l5 : (T.dept ? T.name : ''), 10.5, W), esc(T.person ? l5 : (T.dept ? T.name : '')));
-  const l6t = T.person ? l6 : (T.dept ? T.dept : T.name);
-  h += '<div style="position:absolute;left:23mm;top:37.3mm;width:' + W + 'mm;border-bottom:.3mm solid #1d1d1d;font-size:' + fit(l6t + '　様', 12, W) + 'pt;display:flex;justify-content:space-between;white-space:nowrap;"><span>' + esc(l6t) + '</span><span>' + esc(T.honor || '様') + '</span></div>';
+  const W = 81.5, fit = (s, base, w) => { const L = [...String(s || '')].reduce((a, ch) => a + (/[ -~｡-ﾟ]/.test(ch) ? .5 : 1), 0); return L ? Math.min(base, Math.floor(w / (L * 0.3528) * 10) / 10) : base; };
+  h += ab(11.9, 12, cv.zip ? '〒' + esc(cv.zip) : '') + ab(18.3, fit(cv.addr1, 12, W), esc(cv.addr1)) + ab(24.9, fit(cv.addr2, 10.5, W), esc(cv.addr2)) + ab(31.2, fit(cv.l5, 10.5, W), esc(cv.l5));
+  h += '<div style="position:absolute;left:23mm;top:37.3mm;width:' + W + 'mm;border-bottom:.3mm solid #1d1d1d;font-size:' + fit(cv.l6 + '　' + (cv.honor || ''), 12, W) + 'pt;display:flex;justify-content:space-between;white-space:nowrap;"><span>' + esc(cv.l6) + '</span><span>' + esc(cv.honor || '') + '</span></div>';
   h += '<img src="paper_logo.png" style="position:absolute;left:108mm;top:46.5mm;width:56mm;">';
   h += '<div style="position:absolute;left:108mm;top:56.6mm;font-size:10pt;line-height:1;font-family:\'MS Gothic\',\'ＭＳ ゴシック\',sans-serif;font-weight:700;">' + esc(co.name) + '</div>';
-  h += '<div style="position:absolute;left:108mm;top:63mm;font-size:10pt;">〒' + esc(co.zip) + '　' + esc(co.addr) + '</div><div style="position:absolute;left:108mm;top:69.3mm;font-size:10pt;">TEL.' + esc(co.tel) + '　FAX.' + esc(co.fax) + '</div><div style="position:absolute;left:108mm;top:75.7mm;font-size:10pt;">担当：' + esc(ST.cfg.coverPerson || '') + '</div>';
-  h += '<div style="position:absolute;left:0;right:0;top:88.9mm;text-align:center;font-size:22pt;">書類送付のご案内</div>';
-  h += '<div style="position:absolute;left:23mm;right:23mm;top:113.5mm;font-size:11pt;line-height:1.75;white-space:pre-wrap;">' + esc(ST.cfg.coverText) + '<div style="text-align:right;">敬具</div></div>';
+  h += '<div style="position:absolute;left:108mm;top:63mm;font-size:10pt;">〒' + esc(co.zip) + '　' + esc(co.addr) + '</div><div style="position:absolute;left:108mm;top:69.3mm;font-size:10pt;">TEL.' + esc(co.tel) + '　FAX.' + esc(co.fax) + '</div><div style="position:absolute;left:108mm;top:75.7mm;font-size:10pt;">担当：' + esc(cv.person || '') + '</div>';
+  h += '<div style="position:absolute;left:0;right:0;top:88.9mm;text-align:center;font-size:22pt;">' + esc(cv.title || '') + '</div>';
+  h += '<div style="position:absolute;left:23mm;right:23mm;top:113.5mm;font-size:11pt;line-height:1.75;white-space:pre-wrap;">' + esc(cv.text || '') + '<div style="text-align:right;">敬具</div></div>';
   h += '<div style="position:absolute;left:0;right:0;top:164mm;text-align:center;font-size:11pt;">記</div>';
-  const items = ['請求書　1通　（No.' + inv.no + '）', inv.title ? '件名：' + inv.title : '', '', 'ご査収の程よろしくお願いいたします。'];
-  for (let k = 0; k < 7; k++) h += '<div style="position:absolute;left:26.7mm;width:155.3mm;top:' + (176.5 + k * 9.55 - 6.5).toFixed(2) + 'mm;height:6.5mm;border-bottom:.3mm solid #1d1d1d;font-size:11pt;padding-left:2mm;">' + esc(items[k] || '') + '</div>';
+  const items = String(cv.items || '').split('\n');
+  for (let k = 0; k < 7; k++) h += '<div style="position:absolute;left:26.7mm;width:155.3mm;top:' + (176.5 + k * 9.55 - 6.5).toFixed(2) + 'mm;height:6.5mm;border-bottom:.3mm solid #1d1d1d;font-size:11pt;padding-left:2mm;white-space:nowrap;overflow:hidden;">' + esc(items[k] || '') + '</div>';
   h += '<div style="position:absolute;right:28mm;top:243mm;font-size:11pt;">以上</div>';
   return pgWrap(h, false);
 }
@@ -558,7 +597,7 @@ function rcpPages(r) {
       '<div style="margin:3mm 0 0 45mm;width:72mm;font-size:10pt;line-height:1.7;">但し　' + esc(r.purpose) + '<br>上記正に領収いたしました。' +
       '<div style="font-size:8.5pt;margin-top:1mm;line-height:1.6;">' + (r.groups || []).map(g => '<div>' + esc(SK.groupLabel(g)) + '対象 ' + yen(g.incl) + '円（うち消費税 ' + yen(g.tax) + '円）</div>').join('') + (r.how ? '<div>受け取り方：' + esc(r.how) + '</div>' : '') + (r.invNo ? '<div>請求書 No.' + esc(r.invNo) + '</div>' : '') + '</div></div>' +
       (!copy && duty ? '<div style="position:absolute;left:15mm;top:50mm;width:24mm;height:28mm;border:.3mm dashed #888;font-size:8pt;color:#666;text-align:center;padding-top:9mm;">収入印紙<br>' + yen(duty) + '円</div>' : '') +
-      '<div style="position:absolute;right:12mm;top:76mm;width:72mm;">' + companyBlock(!copy, r.date) + '</div></div>';
+      '<div style="position:absolute;right:12mm;top:76mm;width:72mm;">' + companyBlock(!copy, r) + '</div></div>';
   };
   return [pgWrap(half(false) + '<div style="border-top:.3mm dashed #888;margin:0 8mm;text-align:center;font-size:8pt;color:#888;">切り取り線</div>' + half(true), false)];
 }
@@ -660,6 +699,7 @@ function drawRcp() {
 }
 async function saveRcp(r) {
   if (!r.no) r.no = await nextNo('rcpNo');
+  if (!r.from) r.from = curFrom();
   if (!r.createdAt) { r.createdAt = nowStr(); r.createdBy = ST.me.name; }
   busy('保存しています…');
   try { await gas('saveRcp', { r: plain(r) }); r.expireAt = endOfMarch(String(r.date).slice(0, 4)); await store.put(C.rcp, r.id, r); } finally { busy(''); }
@@ -752,7 +792,7 @@ async function drawSub() {
     '<tr><td><b>請求書（PDF）</b><div class="note">' + lab + 'に出した請求書（取消を除く）。印鑑つき、1枚ずつ。</div></td><td class="n">' + md.issued.length + ' 枚　' + yen(tot(md.issued)) + ' 円</td><td><button class="b dark" id="p1"' + (md.issued.length ? '' : ' disabled') + '>PDFを作る</button></td></tr>' +
     '<tr><td><b>入金分（PDF）</b><div class="note">' + lab + 'に入金があった請求書。</div></td><td class="n">' + md.paidIn.length + ' 枚</td><td><button class="b dark" id="p2"' + (md.paidIn.length ? '' : ' disabled') + '>PDFを作る</button></td></tr>' +
     '<tr><td><b>一覧（Excel）</b><div class="note">シート「請求書」「入金」「' + lab + '末の未入金」の3つ。</div></td><td class="n">未入金 ' + md.unpaid.length + ' 枚</td><td><button class="b dark" id="x1">Excelを作る</button></td></tr></tbody></table>';
-  const pagesOf = list => list.flatMap(i => invPages(i, false));
+  const pagesOf = list => list.flatMap(i => invPages(i, null));
   $('p1').onclick = async () => { try { await pdfOf(() => pagesOf(md.issued), lab + '_請求書.pdf'); } catch (e) { alert(e.message); } };
   $('p2').onclick = async () => { try { await pdfOf(() => pagesOf(md.paidIn), lab + '_入金分.pdf'); } catch (e) { alert(e.message); } };
   $('x1').onclick = async () => {
@@ -777,7 +817,7 @@ function drawCfg() {
   const empty = !ST.hasCfg && !ST.custs.length;
   M.innerHTML = (empty ? '<div class="card" style="border-color:var(--accent);"><h2>はじめに：販売らくだのデータを読み込む</h2><div class="note">PC で販売らくだの写しから作った「seikyu_import.json」（請求システム／移行）を読み込み、スプレッドシート（請求管理DB）と画面の写しを作ります。販売らくだには触りません。</div><div class="row" style="margin-top:10px;"><button class="b dark" id="imp">読み込む</button></div></div>' : '') +
     '<div class="card"><div class="row"><h2 style="margin:0;">設定</h2><span class="sp"></span><button class="b dark" id="sv">保存</button></div>' +
-    S('会社名', I('c_name', co.name), '請求書・送り状・領収書に出ます。') + S('郵便番号', I('c_zip', co.zip), '') + S('住所', I('c_addr', co.addr), '2026-11-05 ユーザー決定：戸ノ内町5丁目10-16。') +
+    S('会社名', I('c_name', co.name), 'これから作る請求書・領収書と送り状に出ます。前に作った請求書・領収書は、作ったときの会社名・住所・振込先のままです。') + S('郵便番号', I('c_zip', co.zip), '') + S('住所', I('c_addr', co.addr), '2026-11-05 ユーザー決定：戸ノ内町5丁目10-16。') +
     S('TEL', I('c_tel', co.tel), '') + S('FAX', I('c_fax', co.fax), '') + S('登録番号', I('c_reg', co.regNo), '適格請求書発行事業者の登録番号（T＋13けた）。請求書に必ず出します。') +
     S('振込先', '<textarea id="bank">' + esc(g.bank) + '</textarea>', '請求書の下の「お振込先」に出ます。改行もそのまま出ます。') +
     S('あいさつ文', I('greet', g.greeting), '請求書の「今回ご請求額」の上に出ます。') +
@@ -794,8 +834,8 @@ function drawCfg() {
     S('支払いの決まりの初め', '<span class="row" style="gap:4px;flex-wrap:nowrap;"><select id="dc">' + CLOSES.map(o => '<option value="' + o[0] + '"' + (String(Math.min(31, g.defTerms.close)) === o[0] ? ' selected' : '') + '>' + o[1] + '</option>').join('') + '</select><select id="dm">' + PMS.map(o => '<option value="' + o[0] + '"' + (String(g.defTerms.months) === o[0] ? ' selected' : '') + '>' + o[1] + '</option>').join('') + '</select><select id="dd">' + PDAYS.map(o => '<option value="' + o[0] + '"' + (String(Math.min(31, g.defTerms.day)) === o[0] ? ' selected' : '') + '>' + o[1] + '</option>').join('') + '</select></span>', '新しい得意先の初めの値。') +
     S('領収書の但し書き', I('rp', g.rcpPurpose), '新しい領収書の初めの値。') +
     '</div><div class="card"><h2>送り状</h2>' +
-    S('担当', I('cp', g.coverPerson), '送り状の「担当：」に出ます。') +
-    S('本文', '<textarea id="ct" style="min-height:110px;">' + esc(g.coverText) + '</textarea>', '今の Word の送り状と同じ文です。') +
+    S('担当', I('cp', g.coverPerson), '送り状の画面の「担当（送り主）」の初めの値です。印刷のたびに変えられます。') +
+    S('本文', '<textarea id="ct" style="min-height:110px;">' + esc(g.coverText) + '</textarea>', '送り状の画面の「送り文」の初めの値です。印刷のたびに変えられます。') +
     '</div><div class="card"><h2>税理士さんへのメモ</h2><textarea id="mt" style="min-height:90px;">' + esc(g.memoTax) + '</textarea><div class="note">提出データの画面のボタンで見られます（送り方・締め切りなど）。</div></div>' +
     '<div class="card"><div class="row"><span>アプリの版：<b>' + APP_VER + '</b></span><span class="sp"></span><button class="b" id="rf">最新の版にする</button></div></div>';
   $('rf').onclick = refreshApp;

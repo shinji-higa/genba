@@ -1,5 +1,5 @@
 /* 請求管理：画面の入れ物だけ控える。請求のデータは控えない（給与と同じ） */
-const CACHE = 'seikyu-shell-v1';
+const CACHE = 'seikyu-shell-v2';
 const FILES = ['./', 'calc.js', 'manifest.json'];
 self.addEventListener('install', e => { e.waitUntil(caches.open(CACHE).then(c => c.addAll(FILES)).then(() => self.skipWaiting())); });
 self.addEventListener('activate', e => { e.waitUntil(self.clients.claim()); });
