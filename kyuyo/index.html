@@ -77,13 +77,13 @@
 </header>
 <main id="m"></main>
 
-<script src="tax.js?v=Ver.20261105-25"></script>
-<script src="calc.js?v=Ver.20261105-25"></script>
+<script src="tax.js?v=Ver.20261105-26"></script>
+<script src="calc.js?v=Ver.20261105-26"></script>
 <script type="module">
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
 import { getFirestore, collection, doc, getDoc, getDocs, setDoc, deleteDoc, writeBatch, query, where } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
-const APP_VER = 'Ver.20261105-25';
+const APP_VER = 'Ver.20261105-26';
 const API = 'https://script.google.com/macros/s/AKfycbyW2hFHqIQuu-TsflPk_0zv7gquhoepspuvRG9-bMStPDSWSc2blcDFBtWs7MisP3f_/exec';
 const app = initializeApp({ apiKey: 'AIzaSyDVR4p4DO4s9h70uPlXUVlhNcMP9-YkQ5Q', authDomain: 'genba-portal-9077b.firebaseapp.com', projectId: 'genba-portal-9077b' });
 const auth = getAuth(app);
@@ -946,23 +946,29 @@ function offDaysHtml() {
 function offDaysWire() {
   const c = ST.cfg, names = c.offNames || {};
   let rows = (c.offDays || []).slice().sort().map(d => ({ d, n: names[d] || '' }));
+  // 土日・祝日はもともと休みなので、会社休日には入れられない（2026-11-05 ユーザー指示）
+  const hols = {}, isOff0 = k => { const x = new Date(k + 'T00:00:00'), y = x.getFullYear(); if (isNaN(x)) return false; hols[y] = hols[y] || KY.jpHolidays(y); return x.getDay() === 0 || x.getDay() === 6 || !!hols[y][k]; };
+  const bad = () => rows.filter(r => r.d && isOff0(r.d)).map(r => r.d);
   const wd = ['日', '月', '火', '水', '木', '金', '土'], dup = () => { const m = {}; rows.forEach(r => { if (r.d) m[r.d] = (m[r.d] || 0) + 1; }); return Object.keys(m).filter(k => m[k] > 1); };
   const draw = () => {
-    const dd = dup(), h = {};
+    const dd = dup(), bd = bad(), h = {};
     $('oft').innerHTML = '<tr><th>日付</th><th>曜日など</th><th>名前</th><th></th></tr>' + rows.map((r, i) => {
-      let info = ''; if (r.d) { const x = new Date(r.d + 'T00:00:00'), y = x.getFullYear(); h[y] = h[y] || KY.jpHolidays(y); info = wd[x.getDay()] + (h[y][r.d] ? '・祝日（' + h[y][r.d] + '）' : '') + ((x.getDay() === 0 || x.getDay() === 6 || h[y][r.d]) ? '　<span class="note">もともと休みなので数えません</span>' : ''); }
-      return '<tr' + (dd.includes(r.d) ? ' style="background:#fdecea;"' : '') + '><td><input type="date" data-od="' + i + '" value="' + esc(r.d) + '"></td><td>' + info + '</td><td><input type="text" data-on="' + i + '" value="' + esc(r.n) + '" placeholder="年末年始" style="width:180px;"></td><td><button class="b" data-ox="' + i + '">この行を消す</button></td></tr>';
+      let info = ''; if (r.d) { const x = new Date(r.d + 'T00:00:00'), y = x.getFullYear(); h[y] = h[y] || KY.jpHolidays(y); info = wd[x.getDay()] + (h[y][r.d] ? '・祝日（' + h[y][r.d] + '）' : '') + ((x.getDay() === 0 || x.getDay() === 6 || h[y][r.d]) ? '　<b style="color:#b71c1c;">もともと休みの日です。入れられません</b>' : ''); }
+      return '<tr' + (dd.includes(r.d) || bd.includes(r.d) ? ' style="background:#fdecea;"' : '') + '><td><input type="date" data-od="' + i + '" value="' + esc(r.d) + '"></td><td>' + info + '</td><td><input type="text" data-on="' + i + '" value="' + esc(r.n) + '" placeholder="年末年始" style="width:180px;"></td><td><button class="b" data-ox="' + i + '">この行を消す</button></td></tr>';
     }).join('');
-    $('ofw').style.display = dd.length ? '' : 'none';
-    $('ofw').textContent = dd.length ? '同じ日付が2つあります（' + dd.map(d => d.replace(/-/g, '/')).join('、') + '）。1つにしてから保存してください。' : '';
+    const msg = [];
+    if (dd.length) msg.push('同じ日付が2つあります（' + dd.map(d => d.replace(/-/g, '/')).join('、') + '）。1つにしてから保存してください。');
+    if (bd.length) msg.push('土日・祝日はもともと休みなので、会社休日に入れられません（' + bd.map(d => d.replace(/-/g, '/')).join('、') + '）。消すか、ほかの日にしてから保存してください。');
+    $('ofw').style.display = msg.length ? '' : 'none';
+    $('ofw').innerHTML = msg.map(esc).join('<br>');
     $('oft').querySelectorAll('[data-od]').forEach(x => { x.onchange = () => { rows[Number(x.dataset.od)].d = x.value; draw(); }; });
     $('oft').querySelectorAll('[data-on]').forEach(x => { x.oninput = () => { rows[Number(x.dataset.on)].n = x.value; }; });
     $('oft').querySelectorAll('[data-ox]').forEach(x => { x.onclick = () => { rows.splice(Number(x.dataset.ox), 1); draw(); }; });
   };
   draw();
-  $('ofa').onclick = () => { const last = rows.length ? rows[rows.length - 1] : null; let d = ''; if (last && last.d) { const x = new Date(last.d + 'T00:00:00'); x.setDate(x.getDate() + 1); d = x.getFullYear() + '-' + pad(x.getMonth() + 1) + '-' + pad(x.getDate()); } rows.push({ d, n: last ? last.n : '' }); draw(); };   // 続けて入れやすいように、前の行の次の日と同じ名前を入れておく
+  $('ofa').onclick = () => { const last = rows.length ? rows[rows.length - 1] : null; let d = ''; if (last && last.d) { const x = new Date(last.d + 'T00:00:00'); do { x.setDate(x.getDate() + 1); d = x.getFullYear() + '-' + pad(x.getMonth() + 1) + '-' + pad(x.getDate()); } while (isOff0(d)); } rows.push({ d, n: last ? last.n : '' }); draw(); };   // 続けて入れやすいように、前の行の次の日と同じ名前を入れておく
   $('ofs').onclick = async () => {
-    if (dup().length) { $('ofm').textContent = '同じ日付があるので保存していません。'; return; }
+    if (dup().length || bad().length) { $('ofm').textContent = '赤い行を直してから保存してください（保存していません）。'; return; }
     const ok = rows.filter(r => r.d), offDays = ok.map(r => r.d).sort(), offNames = {}; ok.forEach(r => { offNames[r.d] = r.n.trim(); });
     try { $('ofs').disabled = true; await pay('saveCfg', { offDays, offNames }); ST.cfg.offDays = offDays; ST.cfg.offNames = offNames; drawSet(); $('offd').open = true; $('ofm').textContent = '保存しました'; } catch (x) { $('ofm').textContent = x.message; } finally { if ($('ofs')) $('ofs').disabled = false; }
   };
