@@ -77,13 +77,13 @@
 </header>
 <main id="m"></main>
 
-<script src="tax.js?v=Ver.20261105-15"></script>
-<script src="calc.js?v=Ver.20261105-15"></script>
+<script src="tax.js?v=Ver.20261105-16"></script>
+<script src="calc.js?v=Ver.20261105-16"></script>
 <script type="module">
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
 import { getFirestore, collection, doc, getDoc, getDocs, setDoc, deleteDoc, writeBatch, query, where } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
-const APP_VER = 'Ver.20261105-15';
+const APP_VER = 'Ver.20261105-16';
 const API = 'https://script.google.com/macros/s/AKfycbyW2hFHqIQuu-TsflPk_0zv7gquhoepspuvRG9-bMStPDSWSc2blcDFBtWs7MisP3f_/exec';
 const app = initializeApp({ apiKey: 'AIzaSyDVR4p4DO4s9h70uPlXUVlhNcMP9-YkQ5Q', authDomain: 'genba-portal-9077b.firebaseapp.com', projectId: 'genba-portal-9077b' });
 const auth = getAuth(app);
@@ -524,11 +524,11 @@ function pickFolder(title) {
   return new Promise(done => {
     let last = null; try { last = JSON.parse(localStorage.getItem('kyuyoFolder') || 'null'); } catch (x) {}
     let stack = last && last.stack ? last.stack : [];   // [{ id, name }]。空ならいちばん上（マイドライブ・共有ドライブ）
-    const w = document.createElement('div'); w.className = 'okbox'; document.body.appendChild(w);
+    const w = document.createElement('div'); w.id = 'ask'; w.className = 'okbox'; document.body.appendChild(w);   // 確認の小窓と同じく画面の真ん中に出す
     const end = v => { w.remove(); done(v); };
     const draw = async () => {
       const cur = stack[stack.length - 1], path = stack.map(x => x.name).join(' / ');
-      w.innerHTML = '<div class="card" style="width:min(560px,92vw);"><h2 style="margin-top:0;">' + esc(title) + '</h2><div class="note">選んでいる場所：<b>' + esc(path || '（まだ選んでいません）') + '</b></div><div id="pfl" style="max-height:50vh;overflow:auto;border:1px solid var(--line);border-radius:6px;margin-top:8px;"><div class="note" style="padding:10px;">フォルダを読んでいます…</div></div><div class="row" style="margin-top:12px;">' + (stack.length ? '<button class="b" data-k="up">← 上へ</button>' : '') + '<span class="sp"></span><button class="b" data-k="n">やめる</button><button class="b dark" data-k="y"' + (cur ? '' : ' disabled') + '>このフォルダに書き出す</button></div></div>';
+      w.innerHTML = '<div class="card" style="max-width:560px;"><h2 style="margin-top:0;">' + esc(title) + '</h2><div class="note">選んでいる場所：<b>' + esc(path || '（まだ選んでいません）') + '</b></div><div id="pfl" style="max-height:50vh;overflow:auto;border:1px solid var(--line);border-radius:6px;margin-top:8px;"><div class="note" style="padding:10px;">フォルダを読んでいます…</div></div><div class="row" style="margin-top:12px;">' + (stack.length ? '<button class="b" data-k="up">← 上へ</button>' : '') + '<span class="sp"></span><button class="b" data-k="n">やめる</button><button class="b dark" data-k="y"' + (cur ? '' : ' disabled') + '>このフォルダに書き出す</button></div></div>';
       w.querySelector('[data-k="n"]').onclick = () => end(null);
       if (w.querySelector('[data-k="up"]')) w.querySelector('[data-k="up"]').onclick = () => { stack.pop(); draw(); };
       w.querySelector('[data-k="y"]').onclick = () => { try { localStorage.setItem('kyuyoFolder', JSON.stringify({ stack })); } catch (x) {} end({ id: cur.id, path }); };
