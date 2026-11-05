@@ -257,9 +257,61 @@
     if (emp.leftDate && emp.leftDate < key(p.from)) return false;
     return true;
   }
+  /* ---- 有給の残りの日数と年5日（ユーザー決定 2026-11-05 案1：法律どおり）----
+     入社から6か月で10日、その後1年ごとに11・12・14・16・18・20日（6年6か月以降は毎年20日）。付けた日から2年で消える。
+     出勤率8割は全員届いている扱い。届かない人などの例外は、従業員の「付与日数の手直し」で直す（「2027-10-13 0」のように 日付 日数）。
+     切り替える前からいる人は「切り替え時点の残日数」と「その日付」を入れる。そのうち次の付与日で消える分（前の年の繰り越し）は「うち繰り越し分」。
+     使った日は古い分から引く。半日（午前有給・午後有給）は0.5日 */
+  const LEAVE_DAYS = [10, 11, 12, 14, 16, 18, 20];
+  const dIso = s => String(s || '').trim().replace(/\//g, '-');
+  const addMon = (iso, n) => { const [y, m, d] = iso.split('-').map(Number), x = new Date(y, m - 1 + n, d); if (x.getDate() !== d) x.setDate(0); return x.getFullYear() + '-' + ('0' + (x.getMonth() + 1)).slice(-2) + '-' + ('0' + x.getDate()).slice(-2); };
+  /** 付与日数の手直し { 'yyyy-mm-dd': 日数 } */
+  const leaveFixOf = t => { const o = {}; String(t || '').split(/[,、\n]/).forEach(x => { const m = x.trim().match(/^(\d{4})[-\/](\d{1,2})[-\/](\d{1,2})\s+(\d+(?:\.\d+)?)\s*日?$/); if (m) o[m[1] + '-' + ('0' + m[2]).slice(-2) + '-' + ('0' + m[3]).slice(-2)] = Number(m[4]); }); return o; };
+  /** 付ける日と日数の一覧（today の1年先まで） */
+  function leaveGrants(emp, today) {
+    if (!emp.joined) return [];
+    const fix = leaveFixOf(emp.leaveFix), out = [], end = addMon(today, 12);
+    for (let k = 0; k < 60; k++) {
+      const date = addMon(emp.joined, 6 + 12 * k); if (date > end) break;
+      const days = fix[date] != null ? fix[date] : LEAVE_DAYS[Math.min(k, LEAVE_DAYS.length - 1)];
+      out.push({ date, days, fixed: fix[date] != null });
+    }
+    return out;
+  }
+  /** 有給の今の残り。taken は承認された有給の日 [{ date: 'yyyy/mm/dd', kubun }]（切り替えの日付より後の分） */
+  function leaveCalc(emp, taken, today) {
+    const T = dIso(today), base = dIso(emp.leaveBaseDate), grants = leaveGrants(emp, T), warns = [], notes = [];
+    const lots = [], after = base ? grants.filter(g => g.date > base) : grants;
+    if (base) {
+      const prevG = grants.filter(g => g.date <= base), g1 = after[0], g2 = after[1];
+      const carry = Math.min(Number(emp.leaveCarry) || 0, Number(emp.leaveBase) || 0), cur = (Number(emp.leaveBase) || 0) - carry;
+      if (carry > 0) lots.push({ from: prevG.length > 1 ? prevG[prevG.length - 2].date : '', days: carry, left: carry, expire: g1 ? g1.date : '' });
+      if (cur > 0) lots.push({ from: prevG.length ? prevG[prevG.length - 1].date : '', days: cur, left: cur, expire: g2 ? g2.date : '' });
+      if (!emp.joined) notes.push('入社日が空欄なので、次に付く日と消える日が分かりません。入社日を入れてください。');
+    } else if (!emp.joined) { warns.push('入社日が空欄なので、有給を計算できません。'); return { remain: 0, lots: [], grants: [], used: [], warns, notes, next: null, five: null }; }
+    const used = (taken || []).map(x => ({ date: dIso(x.date), n: /午前|午後/.test(x.kubun || '') ? 0.5 : 1, kubun: x.kubun || '有給' })).filter(x => !base || x.date > base).sort((a, b) => a.date < b.date ? -1 : 1);
+    const ev = [].concat(after.filter(g => g.date <= T).map(g => ({ date: g.date, g })), used.map(u => ({ date: u.date, u }))).sort((a, b) => a.date < b.date ? -1 : a.date > b.date ? 1 : a.g ? -1 : 1);
+    const expire = d => lots.forEach(l => { if (l.expire && l.expire <= d && l.left > 0) { l.lost = l.left; l.left = 0; } });
+    ev.forEach(x => {
+      expire(x.date);
+      if (x.g) { lots.push({ from: x.g.date, days: x.g.days, left: x.g.days, expire: addMon(x.g.date, 24) }); return; }
+      let n = x.u.n;
+      lots.filter(l => l.left > 0 && (!l.expire || l.expire > x.date)).sort((a, b) => (a.expire || '9') < (b.expire || '9') ? -1 : 1).forEach(l => { const t = Math.min(l.left, n); l.left -= t; n -= t; });
+      if (n > 0) warns.push(x.date + ' の' + x.u.kubun + 'は、残りの日数が足りません（' + n + '日分）。');
+    });
+    expire(T);
+    const remain = lots.reduce((s, l) => s + l.left, 0), next = grants.find(g => g.date > T) || null;
+    // 年5日：10日以上付いた人は、付けた日から1年のうちに5日取らせる。今の期間と、ひとつ前の期間を見る
+    const five = grants.filter(g => g.date <= T && g.days >= 10).slice(-2).map(g => {
+      const until = addMon(g.date, 12), n = used.filter(u => u.date >= g.date && u.date < until).reduce((s, u) => s + u.n, 0);
+      return { from: g.date, until, n, ok: n >= 5, done: until <= T, partial: !!(base && g.date <= base) };
+    });
+    return { remain, lots: lots.filter(l => l.days > 0), grants, used, warns, notes, next, five };
+  }
+
   /** 家族手当：（扶養親族等の数＋16歳未満の家族）×1人の額、上限あり */
   const familyPay = (emp, cfg) => emp.noFamily ? 0 : Math.min(Number(cfg.familyMax != null ? cfg.familyMax : 30000), ((Number(emp.deps) || 0) + (Number(emp.kids16) || 0)) * Number(cfg.familyPer != null ? cfg.familyPer : 10000));
 
-  const api = { jpHolidays, workYear, calcMonth, calcBonus, monthlyTax, bonusRate, careTarget, payDay, period, rateAt, half, ymAdd, roundH, roundAtt, familyPay, lateH, proDays, inPeriod, lossYmOf, fyStart, HIST, valAt, empAt, histRetro, retroCalc };
+  const api = { jpHolidays, workYear, calcMonth, calcBonus, monthlyTax, bonusRate, careTarget, payDay, period, rateAt, half, ymAdd, roundH, roundAtt, familyPay, lateH, proDays, inPeriod, lossYmOf, fyStart, leaveGrants, leaveCalc, leaveFixOf, HIST, valAt, empAt, histRetro, retroCalc };
   if (typeof module !== 'undefined') module.exports = api; else root.KY = api;
 })(typeof window !== 'undefined' ? window : globalThis);
