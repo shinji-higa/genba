@@ -144,7 +144,7 @@ auth.languageCode = 'ja';   // パスワード再設定のメールと画面を�
 // 端末の控え（電波なしでも見られる）は1つのタブだけが持つ。2つ目からのタブは、開いている間だけの控えでサーバーと直接やりとりする。
 // 前は全部のタブで控えを分け合っていて、サーバーとやりとりするタブが裏にあると、ほかのタブに最新が届くまで約28秒待っていた（2026-11-05 確認）
 const db = initializeFirestore(app, { localCache: persistentLocalCache({ tabManager: persistentSingleTabManager() }) });
-const APP_VER = 'Ver.20261105-15';
+const APP_VER = 'Ver.20261105-16';
 
 /* ---------- 電波なしでも使う（今の現場管理と同じ考え方） ----------
    ・保存は押した瞬間に完了の形。電波が戻ったら自動で送る（データは Firestore が端末に貯める）
@@ -437,9 +437,9 @@ onAuthStateChanged(auth, async user => {
     const d = await getDoc(doc(db, 'users', user.uid));
     const x = d.exists() ? d.data() : {};
     const isMaster = x.isMaster === true, canAddSite = isMaster || x.canAddSite === true;
-    const canDaily = isMaster || x.canDaily === true, isSenior = x.isSenior === true, moved = canDaily !== me.canDaily || isSenior !== me.isSenior;
-    me.name = x.name || ''; me.group = x.group || ''; me.canDaily = canDaily; me.isSenior = isSenior;
-    localStorage.setItem(key, JSON.stringify({ isMaster, canAddSite, canDaily, isSenior, name: me.name, group: me.group }));
+    const canDaily = isMaster || x.canDaily === true, isSenior = x.isSenior === true, canPayroll = x.canPayroll === true, moved = canDaily !== me.canDaily || isSenior !== me.isSenior || canPayroll !== me.canPayroll;
+    me.name = x.name || ''; me.group = x.group || ''; me.canDaily = canDaily; me.isSenior = isSenior; me.canPayroll = canPayroll;
+    localStorage.setItem(key, JSON.stringify({ isMaster, canAddSite, canDaily, isSenior, canPayroll, name: me.name, group: me.group }));
     if (isMaster !== me.isMaster || canAddSite !== me.canAddSite || moved) {
       me.isMaster = isMaster; me.canAddSite = canAddSite;
       showList(); nStart();
