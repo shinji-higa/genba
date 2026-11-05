@@ -144,7 +144,7 @@ auth.languageCode = 'ja';   // パスワード再設定のメールと画面を�
 // 端末の控え（電波なしでも見られる）は1つのタブだけが持つ。2つ目からのタブは、開いている間だけの控えでサーバーと直接やりとりする。
 // 前は全部のタブで控えを分け合っていて、サーバーとやりとりするタブが裏にあると、ほかのタブに最新が届くまで約28秒待っていた（2026-11-05 確認）
 const db = initializeFirestore(app, { localCache: persistentLocalCache({ tabManager: persistentSingleTabManager() }) });
-const APP_VER = 'Ver.20261105-08';
+const APP_VER = 'Ver.20261105-09';
 
 /* ---------- 電波なしでも使う（今の現場管理と同じ考え方） ----------
    ・保存は押した瞬間に完了の形。電波が戻ったら自動で送る（データは Firestore が端末に貯める）
@@ -1058,11 +1058,12 @@ function xShell() {
   };
   $('xFDel').onclick = async () => {
     if (!X.selF.size) { uiAlert('削除するフォルダにチェックを入れてください。'); return; }
-    if (!await uiConfirm('選択中のフォルダを、中の' + xLabel(X.kind) + 'ごと削除します。よろしいですか？', '削除')) return;
     const ids = new Set();
     X.selF.forEach(id => { ids.add(id); xDescendants(id).forEach(x => ids.add(x)); });
     const files = xFiles().filter(f => ids.has(f.folder));
+    // 消せるかどうかを先に確かめてから「よろしいですか？」を聞く（前は聞いたあとで断っていた。2026-11-05 作業員の画面の確認 W1）
     if (files.some(f => !xMayRemove(f)) || [...ids].some(id => !xMayRemove(X.folders.find(f => f.id === id) || {}))) { uiAlert('削除できるのは、マスター・現場管理者、または自分が追加したものだけです。'); return; }
+    if (!await uiConfirm('選択中のフォルダを、中の' + xLabel(X.kind) + 'ごと削除します。よろしいですか？', '削除')) return;
     xBatch([...[...ids].map(id => ['folders', id]), ...files.map(f => ['files', f.id])], { deleted: true });
     X.selF.clear();
     if (ids.has(X.active[X.kind])) X.active[X.kind] = '';
@@ -2382,7 +2383,8 @@ window.hGPick = e => {
 };
 function hRender() {
   if (!H || !$('hMine')) return;
-  if (!H.canMine && H.view === 'mine') { if (H.canTeam) hView('team'); else { $('hMine').style.display = 'none'; } }
+  // 自分は記録しない人（60歳未満の現場管理者など）には入力欄を出さず、「みんなの体調」を開く（前は入力欄が出たままだった。2026-11-05 作業員の画面の確認 W3）
+  if (!H.canMine) { $('hMine').style.display = 'none'; if (H.canTeam && $('hTeam').style.display === 'none') hView('team'); }
   $('hTabs').style.display = H.canMine ? '' : 'none';
   $('hTabs').querySelector('[data-v="team"]').style.display = H.canTeam ? '' : 'none';
   $('hTabs').querySelectorAll('[data-v]').forEach(b => b.classList.toggle('active', b.dataset.v === H.view));
