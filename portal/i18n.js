@@ -340,7 +340,7 @@ Object.assign(I18N_ES, {
 // 日報の画面で訳が無かった言葉（2026-11-05 確認）と、有給の承認待ちの残り
 Object.assign(I18N_ES, { '入力する人': 'Quién registra', '夜間作業': 'Trabajo nocturno', '残り 読み込み中…': 'Saldo: cargando...', '残り：読み込めませんでした': 'Saldo: no se pudo cargar', '残り：給与アプリに未登録': 'Saldo: no registrado en nómina' });
 // 有給の承認待ちの見出しとボタン（2026-11-05）
-Object.assign(I18N_ES, { '有給の承認待ち': 'Vacaciones por aprobar', '承認': 'Aprobar', '却下': 'Rechazar', 'はい': 'Sí' });
+Object.assign(I18N_ES, { '有給の承認待ち': 'Vacaciones por aprobar', '承認': 'Aprobar', '却下': 'Rechazar', 'はい': 'Sí', '有給の承認待ちはありません。': 'No hay vacaciones por aprobar.' });
 I18N_ES_RE.unshift(
   [/^有給の承認待ち（(\d+)件）$/, 'Vacaciones por aprobar ($1)'],
   [/^「(承認|却下)」にしますか？$/, function(m, v) { return v === '承認' ? '¿Aprobar?' : '¿Rechazar?'; }],
