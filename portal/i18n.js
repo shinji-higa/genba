@@ -114,7 +114,7 @@
       '日報機能は準備中です。': 'El parte diario aún no está disponible.',
       // 日報
       '今月の集計': 'Resumen del mes', '日報入力': 'Registro del día', 'この月の日報': 'Registros del mes', '日付': 'Fecha', '区分': 'Tipo',
-      '出勤': 'Trabajó', '欠勤': 'Falta', '有給': 'Vacaciones', '出勤時刻': 'Entrada', '退勤時刻': 'Salida', '夜勤（休憩なし）': 'Turno noche (sin descanso)',
+      '出勤': 'Trabajó', '欠勤': 'Falta', '有給': 'Vacaciones', '午前有給': 'Vacaciones (mañana)', '午後有給': 'Vacaciones (tarde)', '出勤時刻': 'Entrada', '退勤時刻': 'Salida', '夜勤（休憩なし）': 'Turno noche (sin descanso)',
       '現場': 'Obra', '現場名を入力して「追加」': 'Escriba la obra y toque Agregar', '追加': 'Agregar', '保存しました ✓': 'Guardado ✓', '日報': 'Registro diario', 'メモ': 'Nota', '作業内容など（任意）': 'Trabajo realizado, etc. (opcional)', 'この内容で保存': 'Guardar',
       '平日': 'Laborable', '所定休日': 'Sábado', '法定休日': 'Domingo/feriado', '実働': 'Trabajado', '時間外': 'Horas extra', '早退': 'Faltan',
       '夜勤': 'Turno noche', '出勤日数': 'Días trabajados', '所定休日出勤日数': 'Días en sábado', '所定休日時間外': 'Horas extra en sábado',
