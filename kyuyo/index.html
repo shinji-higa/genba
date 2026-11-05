@@ -77,13 +77,13 @@
 </header>
 <main id="m"></main>
 
-<script src="tax.js?v=Ver.20261105-06"></script>
-<script src="calc.js?v=Ver.20261105-06"></script>
+<script src="tax.js?v=Ver.20261105-07"></script>
+<script src="calc.js?v=Ver.20261105-07"></script>
 <script type="module">
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
 import { getFirestore, collection, doc, getDoc, getDocs, setDoc, deleteDoc, writeBatch, query, where } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
-const APP_VER = 'Ver.20261105-06';
+const APP_VER = 'Ver.20261105-07';
 const API = 'https://script.google.com/macros/s/AKfycbyW2hFHqIQuu-TsflPk_0zv7gquhoepspuvRG9-bMStPDSWSc2blcDFBtWs7MisP3f_/exec';
 const app = initializeApp({ apiKey: 'AIzaSyDVR4p4DO4s9h70uPlXUVlhNcMP9-YkQ5Q', authDomain: 'genba-portal-9077b.firebaseapp.com', projectId: 'genba-portal-9077b' });
 const auth = getAuth(app);
@@ -228,6 +228,15 @@ const FAST_ACT = {
     d.list.forEach(x => b.set(doc(db, 'payrollBonus', mid(d.ym, x.id)), plain({ ym: d.ym, year: d.ym.slice(0, 4), id: x.id, name: x.name, status: '入力中', amount: x.amount, result: x.result, expireAt: expireOf(d.ym) }), { mergeFields: ['ym', 'year', 'id', 'name', 'status', 'amount', 'result', 'expireAt'] }));
     await b.commit();
     if (d.list.length) mirror('logAdj', { ym: d.ym, name: '賞与', keys: d.list.map(x => x.name + (x.result && x.result.taxManual ? '（所得税 手入力）' : '')) }); return {};   // 賞与の保存も操作記録に残す（給与管理DB には金額を書かない。2026-11-04 直した）
+  },
+  // 同じ年度（4月〜翌3月）に、この賞与の月より前に確定した賞与の標準賞与額の合計（健康保険の年度の上限 573万円のため。2026-11-05）
+  async bonusFy(d) {
+    const fy = KY.fyStart(d.ym), ys = [...new Set([fy.slice(0, 4), d.ym.slice(0, 4)])], ids = new Set((d.emps || []).map(e => e.id)), sum = {};
+    for (const y of ys) {
+      const list = live(y + '-12') ? (await getDocs(query(col('payrollBonus'), where('year', '==', y)))).docs.map(x => x.data()) : ((await gas('year', { year: y, emps: d.emps })).bonus || []);
+      list.filter(x => x.status === '確定' && x.result && ids.has(x.id) && x.ym >= fy && x.ym < d.ym).forEach(x => { const s = x.result.stdB != null ? Number(x.result.stdB) : Math.floor((Number(x.result.amount) || 0) / 1000) * 1000; sum[x.id] = (sum[x.id] || 0) + s; });
+    }
+    return sum;
   },
   async bonus(d) {
     if (!live(d.ym) || !live(d.prev)) {   // 写しが消えた月はスプレッドシートから
@@ -510,23 +519,28 @@ async function drawBonus() {
   const d = new Date(), ym = ST.bym || (d.getFullYear() + '-' + (d.getMonth() < 8 ? '06' : '12'));
   ST.bym = ym; busy('確定した賞与と前月の給与を、一人ずつの給与DBから読んでいます…');
   try {
-    const r = await pay('bonus', { ym, prev: KY.ymAdd(ym, -1), emps: ST.emps.map(empRef) });
+    const [r, prior] = await Promise.all([pay('bonus', { ym, prev: KY.ymAdd(ym, -1), emps: ST.emps.map(empRef) }), pay('bonusFy', { ym, emps: ST.emps.map(empRef) })]);
     if (ST.tab !== 'bonus' || ST.bym !== ym) return;
-    const list = ST.emps.filter(e => !e.left), amt = {}, prev = {}, taxM = {}, conf = {}, c = cfgOf(ym);
+    // 賞与の月に在籍している人だけ（入社が月末より後・退職が月初より前の人は出さない。2026-11-05）
+    const mEnd = ym + '-' + ('0' + new Date(Number(ym.slice(0, 4)), Number(ym.slice(5)), 0).getDate()).slice(-2), inB = e => !(e.joined && e.joined > mEnd) && !(e.leftDate && e.leftDate < ym + '-01');
+    const list = ST.emps.filter(e => !e.left && (inB(e) || r.list.some(x => x.id === e.id))), amt = {}, prev = {}, taxM = {}, conf = {}, c = cfgOf(ym);
     r.list.forEach(x => { amt[x.id] = x.amount; if (x.status === '確定') { conf[x.id] = x.result; taxM[x.id] = x.result.ded.tax; } else if (x.result && x.result.taxManual) taxM[x.id] = x.result.ded.tax; }); r.prev.forEach(x => { prev[x.id] = x.result; });
     const done = r.list.length && r.list.every(x => x.status === '確定');
     let payDay = ((r.list.find(x => x.result && x.result.payDay) || {}).result || {}).payDay || '';   // 賞与の支給日はその回ごとに入れる（2026-11-05 案A）。入れるまで確定できない
     const pym = KY.ymAdd(ym, -1), hand = e => !prev[e.id] && e.prevYm === pym && e.prevNet !== '' && e.prevNet != null;   // アプリの前月が無いときだけ、従業員の「切り替え前の前月の給与」を使う
-    const calc = e => { if (conf[e.id]) return conf[e.id]; const pn = prev[e.id] ? prev[e.id].taxable || 0 : hand(e) ? Number(e.prevNet) || 0 : 0; return KY.calcBonus({ emp: e, amount: Number(amt[e.id]) || 0, prevNet: pn, cfg: c, ym, taxTable: taxFor(ym), taxManual: taxM[e.id] }); };   // 確定した人は給与DBの金額
+    const calc = e => { if (conf[e.id]) return conf[e.id]; const pn = prev[e.id] ? prev[e.id].taxable || 0 : hand(e) ? Number(e.prevNet) || 0 : 0; return KY.calcBonus({ emp: e, amount: Number(amt[e.id]) || 0, prevNet: pn, cfg: c, ym, taxTable: taxFor(ym), taxManual: taxM[e.id], payDay, priorStd: prior[e.id] || 0 }); };   // 確定した人は給与DBの金額
     const paint = () => {
       $('bt').innerHTML = '<tr><th>氏名</th><th class="n">賞与額</th><th class="n">健康保険</th><th class="n">厚生年金</th><th class="n">雇用保険</th><th class="n">所得税</th><th class="n">差引支給額</th></tr>' + list.map(e => { const x = calc(e), D = x.ded, lk = done || conf[e.id] ? ' disabled' : ''; return '<tr><td><b>' + esc(e.name) + '</b> ' + sentTag(r.sent, e.id) + (conf[e.id] ? ' <span class="tag ok">確定</span>' : prev[e.id] ? '' : hand(e) ? ' <span class="tag">前月は従業員の欄</span>' : ' <span class="tag ng">前月未確定</span>') + '</td><td class="n"><input type="number" data-b="' + esc(e.id) + '" value="' + (amt[e.id] || '') + '" style="width:120px;text-align:right;"' + lk + '></td><td class="n">' + yen(D.health) + '</td><td class="n">' + yen(D.pension) + '</td><td class="n">' + yen(D.emp) + '</td><td class="n"><input type="number" data-t="' + esc(e.id) + '" value="' + (taxM[e.id] == null ? '' : taxM[e.id]) + '" placeholder="' + yen(x.taxAuto) + '" style="width:100px;text-align:right;"' + lk + '></td><td class="n"><b>' + yen(x.net) + '</b></td></tr>'; }).join('');
+      // 料率の表に行がないなどの知らせ（赤）は確定を止める。黄色は知らせるだけ
+      const ws = list.filter(e => Number(amt[e.id]) || conf[e.id]).map(e => [e, calc(e)]);
+      $('bw').innerHTML = ws.map(([e, x]) => (x.warns || []).map(w => '<div class="msg">' + esc(e.name) + '：' + esc(w) + '</div>').join('') + (x.notes || []).map(w => '<div class="msg" style="color:var(--ink);background:#fff4d6;border-color:#d9a400;">' + esc(e.name) + '：' + esc(w) + '</div>').join('')).join('');
       $('bt').querySelectorAll('[data-b]').forEach(i => { i.onchange = () => { amt[i.dataset.b] = Number(i.value) || 0; paint(); }; });
       $('bt').querySelectorAll('[data-t]').forEach(i => { i.onchange = () => { if (i.value === '') delete taxM[i.dataset.t]; else taxM[i.dataset.t] = Number(i.value); paint(); }; });
     };
-    M.innerHTML = '<div class="card"><div class="row"><label class="f">賞与の月<br><input type="month" id="bym" value="' + ym + '"></label><label class="f">支給日<br><input type="date" id="bpd" value="' + esc(payDay) + '"' + (done ? ' disabled' : '') + '></label><span class="sp"></span>' + (done ? '<span class="tag ok">確定済み</span>' : '<button class="b" id="bs">保存</button><button class="b dark" id="bd"' + (payDay ? '' : ' disabled title="支給日を入れると確定できます"') + '>確定</button>') + (Object.keys(conf).length ? '<button class="b" id="bv">明細を画面で見る</button><button class="b" id="bp">明細（PDF）</button><button class="b dark" id="bm">明細をメールで送る</button><button class="b danger" id="bu">確定を解除</button>' : '') + '</div>' + (Object.keys(conf).length ? '<div class="note">確定日時：' + esc(r.list.filter(x => x.status === '確定').map(x => x.at || '').sort().pop() || '') + '</div>' : '') + '<div class="note">所得税の率は前月の給与（社会保険料を引いた額）で決まります。前月の給与を先に確定してください。アプリに切り替えて最初の賞与は、従業員の「切り替え前の前月の給与」を使います。所得税の欄は、空欄なら薄く出ている自動計算の額を使います。入れるとその額を使います。</div></div><div class="card wrapx"><table class="t" id="bt"></table></div>';
+    M.innerHTML = '<div class="card"><div class="row"><label class="f">賞与の月<br><input type="month" id="bym" value="' + ym + '"></label><label class="f">支給日<br><input type="date" id="bpd" value="' + esc(payDay) + '"' + (done ? ' disabled' : '') + '></label><span class="sp"></span>' + (done ? '<span class="tag ok">確定済み</span>' : '<button class="b" id="bs">保存</button><button class="b dark" id="bd"' + (payDay ? '' : ' disabled title="支給日を入れると確定できます"') + '>確定</button>') + (Object.keys(conf).length ? '<button class="b" id="bv">明細を画面で見る</button><button class="b" id="bp">明細（PDF）</button><button class="b dark" id="bm">明細をメールで送る</button><button class="b danger" id="bu">確定を解除</button>' : '') + '</div>' + (Object.keys(conf).length ? '<div class="note">確定日時：' + esc(r.list.filter(x => x.status === '確定').map(x => x.at || '').sort().pop() || '') + '</div>' : '') + '<div class="note">所得税の率は前月の給与（社会保険料を引いた額）で決まります。前月の給与を先に確定してください。アプリに切り替えて最初の賞与は、従業員の「切り替え前の前月の給与」を使います。所得税の欄は、空欄なら薄く出ている自動計算の額を使います。入れるとその額を使います。</div></div><div class="card wrapx"><table class="t" id="bt"></table></div><div id="bw"></div>';
     paint();
     $('bym').onchange = e => { ST.bym = e.target.value; drawBonus(); };
-    $('bpd').onchange = e => { payDay = e.target.value; if ($('bd')) { $('bd').disabled = !payDay; $('bd').title = payDay ? '' : '支給日を入れると確定できます'; } };
+    $('bpd').onchange = e => { payDay = e.target.value; paint(); if ($('bd')) { $('bd').disabled = !payDay; $('bd').title = payDay ? '' : '支給日を入れると確定できます'; } };
     const save = async dn => {
       const li = list.filter(e => Number(amt[e.id]) && !conf[e.id]).map(e => { const x = calc(e); return { ...empRef(e), amount: x.amount, result: { ...x, payDay } }; });
       const r2 = await pay('saveBonus', { ym, done: dn, list: li }), ng = ((r2 && r2.list) || []).filter(x => !x.ok);
@@ -534,7 +548,7 @@ async function drawBonus() {
       drawBonus();
     };
     if ($('bs')) $('bs').onclick = () => save(false).catch(x => alert(x.message));
-    if ($('bd')) $('bd').onclick = async () => { if (await okBox('賞与を確定しますか？')) save(true).catch(x => alert(x.message)); };
+    if ($('bd')) $('bd').onclick = async () => { const ng = list.filter(e => Number(amt[e.id]) && !conf[e.id] && (calc(e).warns || []).length); if (ng.length) { alert('赤い知らせがある人がいるので、確定できません。\n\n' + ng.map(e => e.name + '：' + calc(e).warns.join('、')).join('\n')); return; } if (await okBox('賞与を確定しますか？')) save(true).catch(x => alert(x.message)); };
     // 賞与明細：確定した人だけ。メールは給与と同じく、メールと承諾日がある人だけに送る
     const cl = list.filter(e => conf[e.id]);
     if ($('bv')) $('bv').onclick = () => { let w = $('bvw'); if (!w) { w = document.createElement('div'); w.id = 'bvw'; M.appendChild(w); } w.innerHTML = cl.map(e => '<div style="margin-bottom:14px;">' + bonusSlipHtml(e, conf[e.id], ym) + '</div>').join(''); w.scrollIntoView(); };

@@ -105,7 +105,7 @@
     const insYm = ymAdd(ym, -1), r = rateAt(cfg.rates, insYm), emp2 = emp.empIns !== false;
     // 健康保険・厚生年金は、入社した月の分から、退職日の翌日（資格を失う日）の月の前月の分までかかる。
     // 入社前の月の分まで引いていた（2026-11-05 運用テスト：4/13入社の人の4月分給与から3月分を引いていた）
-    const lossYm = emp.leftDate ? (() => { const x = new Date(emp.leftDate + 'T00:00:00'); x.setDate(x.getDate() + 1); return x.getFullYear() + '-' + ('0' + (x.getMonth() + 1)).slice(-2); })() : '';
+    const lossYm = lossYmOf(emp);
     const ins = emp.insure !== false && !(emp.joined && insYm < emp.joined.slice(0, 7)) && !(lossYm && insYm >= lossYm);
     const std = Number(emp.std) || 0, stdP = Number(emp.stdPen) || std;
     const hRate = (Number(r.health) || 0) + (Number(r.child) || 0) + (careOn(emp, insYm) ? Number(r.care) || 0 : 0);
@@ -135,20 +135,38 @@
     return { hourly, daily, pay: o, payTotal, ded: d, dedTotal, net: payTotal - dedTotal, taxable, taxAuto: t.tax, taxManual: manual, warns, notes, h60, over60, proDays: pro };
   }
 
-  /** 賞与 */
+  /** 資格を失う月（退職日の翌日の月）。退職日がなければ空 */
+  const lossYmOf = emp => emp.leftDate ? (() => { const x = new Date(emp.leftDate + 'T00:00:00'); x.setDate(x.getDate() + 1); return x.getFullYear() + '-' + ('0' + (x.getMonth() + 1)).slice(-2); })() : '';
+  /** その月が入る年度（4月〜翌3月）の始まりの月 */
+  const fyStart = ym => { const [y, m] = String(ym).split('-').map(Number); return (m >= 4 ? y : y - 1) + '-04'; };
+  const HEALTH_BONUS_CAP = 5730000, PENSION_BONUS_CAP = 1500000;   // 標準賞与額の上限：健康保険は年度の合計573万円、厚生年金は1回150万円
+
+  /** 賞与。保険の月は支給日の月（支給日がなければ賞与の月）。
+      2026-11-05 運用テストで直した：入社前・資格を失う月の賞与にも健康保険・厚生年金をかけていた、料率の表に行がなくても黙って0円、
+      健康保険の年度の上限（573万円）がなかった。priorStd＝同じ年度にこれより前に払った賞与の標準賞与額の合計（健康保険の分） */
   function calcBonus(ctx) {
-    const { emp: emp0, amount, prevNet, cfg, ym, taxTable, taxManual } = ctx, emp = empAt(emp0, ym);
-    const stdB = Math.floor(amount / 1000) * 1000, r = rateAt(cfg.rates, ym), ins = emp.insure !== false;
-    const hRate = (Number(r.health) || 0) + (Number(r.child) || 0) + (careOn(emp, ym) ? Number(r.care) || 0 : 0);
+    const { emp: emp0, amount, prevNet, cfg, ym, taxTable, taxManual, payDay, priorStd } = ctx, emp = empAt(emp0, ym);
+    const pym = payDay ? String(payDay).slice(0, 7) : ym, r = rateAt(cfg.rates, pym), warns = [], notes = [];
+    const lossYm = lossYmOf(emp), ins = emp.insure !== false && !(emp.joined && pym < emp.joined.slice(0, 7)) && !(lossYm && pym >= lossYm);
+    const stdB = Math.floor(amount / 1000) * 1000, prior = Math.min(HEALTH_BONUS_CAP, Number(priorStd) || 0), stdH = Math.max(0, Math.min(stdB, HEALTH_BONUS_CAP - prior)), stdP = Math.min(stdB, PENSION_BONUS_CAP);
+    const hRate = (Number(r.health) || 0) + (Number(r.child) || 0) + (careOn(emp, pym) ? Number(r.care) || 0 : 0);
     const d = {};
-    d.health = ins ? half(stdB * hRate / 100 / 2) : 0;
-    d.pension = ins ? half(Math.min(stdB, 1500000) * (Number(r.pension) || 0) / 100 / 2) : 0;
+    d.health = ins ? half(stdH * hRate / 100 / 2) : 0;
+    d.pension = ins ? half(stdP * (Number(r.pension) || 0) / 100 / 2) : 0;
     d.emp = emp.empIns !== false ? half(amount * (Number(r.emp) || 0) / 100) : 0;
     const social = d.health + d.pension + d.emp, rate = emp.noTax ? 0 : bonusRate(taxTable, prevNet, emp.deps);
     const auto = Math.floor((amount - social) * rate / 100), manual = taxManual !== undefined && taxManual !== '' && taxManual !== null;
     d.tax = manual ? Number(taxManual) || 0 : auto;
-    const dedTotal = d.health + d.pension + d.emp + d.tax;
-    return { amount, ded: d, dedTotal, net: amount - dedTotal, rate, taxAuto: auto, taxManual: manual };
+    const dedTotal = d.health + d.pension + d.emp + d.tax, mon = pym.slice(0, 4) + '年' + Number(pym.slice(5)) + '月';
+    if (amount > 0) {
+      if (ins && !(Number(r.health) > 0 && Number(r.pension) > 0)) warns.push(mon + 'の健康保険・厚生年金の料率が、設定の料率の表にありません');
+      if (emp.empIns !== false && !(Number(r.emp) > 0)) warns.push(mon + 'の雇用保険の料率が、設定の料率の表にありません');
+      if (emp.leftDate && payDay && payDay > emp.leftDate) warns.push('支給日（' + payDay + '）が退職日（' + emp.leftDate + '）より後です');
+      if (emp.insure !== false && lossYm && pym >= lossYm) notes.push('資格を失う月（' + mon + '）に払う賞与なので、健康保険・厚生年金はかかりません。');
+      if (ins && stdH < stdB) notes.push('健康保険は年度の上限（標準賞与額の合計573万円）に届いたので、' + stdH.toLocaleString('ja-JP') + '円の分だけかけました（この年度のこれまでの合計 ' + prior.toLocaleString('ja-JP') + '円）。');
+      if (ins && stdP < stdB) notes.push('厚生年金は1回の上限（150万円）の分だけかけました。');
+    }
+    return { amount, ded: d, dedTotal, net: amount - dedTotal, rate, taxAuto: auto, taxManual: manual, stdB, stdH, warns, notes };
   }
 
   /** 支給日：月末。休みなら前の平日 */
@@ -242,6 +260,6 @@
   /** 家族手当：（扶養親族等の数＋16歳未満の家族）×1人の額、上限あり */
   const familyPay = (emp, cfg) => emp.noFamily ? 0 : Math.min(Number(cfg.familyMax != null ? cfg.familyMax : 30000), ((Number(emp.deps) || 0) + (Number(emp.kids16) || 0)) * Number(cfg.familyPer != null ? cfg.familyPer : 10000));
 
-  const api = { jpHolidays, workYear, calcMonth, calcBonus, monthlyTax, bonusRate, careTarget, payDay, period, rateAt, half, ymAdd, roundH, roundAtt, familyPay, lateH, proDays, inPeriod, HIST, valAt, empAt, histRetro, retroCalc };
+  const api = { jpHolidays, workYear, calcMonth, calcBonus, monthlyTax, bonusRate, careTarget, payDay, period, rateAt, half, ymAdd, roundH, roundAtt, familyPay, lateH, proDays, inPeriod, lossYmOf, fyStart, HIST, valAt, empAt, histRetro, retroCalc };
   if (typeof module !== 'undefined') module.exports = api; else root.KY = api;
 })(typeof window !== 'undefined' ? window : globalThis);
