@@ -45,6 +45,7 @@
   /* 不具合修正の報告：ボタンはすごく目立つ色で（ユーザー指示 2026-11-02） */
   #bugFab { position: fixed; right: 0; top: 36%; z-index: 9800; display: none; writing-mode: vertical-rl; padding: 14px 7px; background: #e60012; color: #ffffff; font-size: 0.95rem; font-weight: 800; letter-spacing: 0.12em; border: 2px solid #ffffff; border-right: 0; border-radius: 10px 0 0 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.45); cursor: pointer; font-family: inherit; }
   #bugFab.on { display: block; }
+  body.fv-open #bugFab { display: none !important; }   /* 拡大表示の「次へ」に重なるので隠す（2026-11-05 運用テスト No.9・10） */
   #bugFab:disabled { background: #7a0009; }
   #bugOv { position: fixed; inset: 0; z-index: 9900; background: rgba(17,17,17,0.55); display: flex; align-items: center; justify-content: center; padding: 12px; }
   .bug-box { background: #fff; color: #111; width: min(620px, 100%); max-height: 100%; overflow: auto; border-radius: 10px; padding: 14px; box-sizing: border-box; }
@@ -141,7 +142,7 @@ storage.maxUploadRetryTime = 60000;   // 電波が切れたら1分で一度あ�
 const auth = getAuth(app);
 auth.languageCode = 'ja';   // パスワード再設定のメールと画面を日本語にする
 const db = initializeFirestore(app, { localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }) });
-const APP_VER = 'Ver.20261105-02';
+const APP_VER = 'Ver.20261105-03';
 
 /* ---------- 電波なしでも使う（今の現場管理と同じ考え方） ----------
    ・保存は押した瞬間に完了の形。電波が戻ったら自動で送る（データは Firestore が端末に貯める）
@@ -376,7 +377,8 @@ function trShow(text, tr, render, mine) {
   render = render || esc;
   if (!t) return wrap(render(s));
   const other = t.src !== portalLang();
-  if (!other && !mine) return wrap(render(s));
+  // 自分が日本語で書いたものには「翻訳を見る」を出さない（日本語以外で書いた人は、訳を確かめられるよう出す。2026-11-05 運用テスト No.5）
+  if (!other && (!mine || t.src === 'ja')) return wrap(render(s));
   const label = open => '🌐 ' + (other ? window.T('自動翻訳') + ' · ' + window.T(open ? '原文を隠す' : '原文') : window.T(open ? '翻訳を隠す' : '翻訳を見る'));
   return wrap(render(other ? t.out : s) + '<div class="tr-orig" hidden>' + render(other ? s : t.out) + '</div><div><button type="button" class="cm-tr tr-link" data-trl="' + esc(label(false)) + '" data-trh="' + esc(label(true)) + '">' + esc(label(false)) + '</button></div>');
 }
@@ -612,6 +614,8 @@ function renderDetail(s) {
   if (detailTab === '報告') { rOpen(s); return; }
   if (detailTab === '写真' || detailTab === '資料') { xOpen(s, detailTab === '写真' ? 'photo' : 'doc'); return; }
   if (detailTab !== '現場詳細') return;
+  // 写真・資料・報告は現場を開いた時点で読み始める（報告タブを押してから待っていた。2026-11-05 運用テスト No.6）
+  if (!isOffline()) xEnsure(s, X ? X.kind : 'photo');
   autoGrow($('panelDetail'));
   $('panelDetail').querySelectorAll('.nearby-btn').forEach(b => {
     b.onclick = () => {
@@ -673,10 +677,10 @@ function xEnsure(s, kind) {
   if (!X || X.s.id !== s.id) {
     xStop();
     const t = performance.now();
-    X = { s, kind, folders: [], files: [], reports: [], active: { photo: '', doc: '' }, mode: { photo: 'grid', doc: 'textonly' }, sort: 'newest', selMode: false, sel: new Set(), selF: new Set(), rCat: '全て表示', rMode: 'textonly', rEdit: '' };
+    X = { s, kind, folders: [], files: [], reports: [], active: { photo: '', doc: '' }, mode: { photo: 'grid', doc: 'textonly' }, sort: 'newest', selMode: false, sel: new Set(), selF: new Set(), rCat: '全て表示', rMode: rModeGet(), rEdit: '' };
     let shown = isOffline();   // 電波なしで開いたときは、電波が戻るまでの時間を数えない
     const draw = snap => {
-      if (!shown && !snap.metadata.fromCache) { shown = true; $('speed').textContent = '表示：' + sec(t); }
+      if (!shown && !snap.metadata.fromCache) { shown = true; if ($('xRoot') || $('rRoot')) $('speed').textContent = '表示：' + sec(t); }
       if ($('xRoot')) xRender();
       if ($('rRoot')) rList();
     };
@@ -695,7 +699,7 @@ function xEnsure(s, kind) {
    @ で現場の担当者を選べる。ほかの人のコメントは、画面に見えた時点で既読になる */
 const cmList = (k, id) => (X.comments || []).filter(c => c.kind === k && c.target === id);
 const cmUnread = (k, id) => { const t = (X.reads || {})[k + ':' + id] || 0; return cmList(k, id).filter(c => c.by !== me.uid && (c.at || 0) > t).length; };
-const cmText = (k, id, label, toggle) => { const n = cmList(k, id).length, u = cmUnread(k, id); return '💬' + (label ? ' ' + label : '') + (toggle ? ' ' + ((X.cmOpen || {})[k + ':' + id] ? '▲' : '▼') : '') + (n ? ' ' + u + '/' + n : ''); };
+const cmText = (k, id, label, toggle) => { const n = cmList(k, id).length, u = cmUnread(k, id); return '💬' + (label ? ' ' + label : '') + (toggle ? ' ' + ((X.cmOpen || {})[k + ':' + id] ? '▲' : '▼') : '') + (n ? ' ' + n + '件' + (u ? '・未読' + u : '') : ''); };   // 「0/1」では分からないので「1件・未読1」に（2026-11-05 運用テスト No.3）
 const cmCls = (k, id) => ' cm-open-btn' + (cmList(k, id).length ? ' has-cm' : '') + (cmUnread(k, id) ? ' has-unread' : '');
 const cmBtn = (k, id, cls) => '<button type="button" class="' + cls + cmCls(k, id) + '" data-cm="' + k + '|' + esc(id) + '" title="コメント">' + cmText(k, id) + '</button>';
 const cmInline = (k, id) => '<div class="cm-inline" data-cmw="' + k + '|' + esc(id) + '"><button type="button" class="cm-toggle' + cmCls(k, id) + '" data-cm="' + k + '|' + esc(id) + '" data-label="コメント" data-toggle="1">' + cmText(k, id, 'コメント', true) + '</button><div class="cm-inline-body" style="display:none;"></div></div>';
@@ -900,7 +904,7 @@ function rOpen(s) {
     '<div style="display: flex; justify-content: flex-end; align-items: center; margin-bottom: 8px;"><select id="rMode" style="font-size: 0.8rem; padding: 4px 8px; border: 1px solid var(--border); border-radius: 4px; width:auto;"><option value="textonly">文字のみ</option><option value="grid">標準グリッド</option></select></div>' +
     '<div id="rBox"></div>';
   $('rMode').value = X.rMode;
-  $('rMode').onchange = () => { X.rMode = $('rMode').value; rList(); };
+  $('rMode').onchange = () => { X.rMode = $('rMode').value; try { localStorage.setItem('portalRMode', X.rMode); } catch (e) {} rList(); };
   $('rAdd').onclick = rForm;
   rList();
 }
@@ -920,7 +924,8 @@ function rForm() {
     $(id + 'B').onclick = () => $(id + 'F').click();
     $(id + 'F').onchange = () => {
       const f = $(id + 'F').files[0];
-      $(id + 'N').textContent = f ? f.name : '';
+      // 写真は送る前に小さな見本を出す（2026-11-05 運用テスト No.4）
+      $(id + 'N').innerHTML = f ? esc(f.name) + (kind === 'photo' && String(f.type).startsWith('image/') ? '<div><img src="' + URL.createObjectURL(f) + '" alt="" style="max-width:160px; max-height:160px; margin-top:6px; border:1px solid var(--border); border-radius:4px; object-fit:cover; display:block;"></div>' : '') : '';
       if (!f) { $(id + 'W').style.display = 'none'; return; }
       const keep = X.kind; X.kind = kind;
       const rows = []; const walk = (p, d) => xKids(p).forEach(x => { rows.push([x.id, '　'.repeat(d) + x.name]); walk(x.id, d + 1); });
@@ -930,6 +935,7 @@ function rForm() {
     };
   };
   pick('rI', 'photo'); pick('rD', 'doc');
+  $('rText').addEventListener('input', () => { if ($('rText').value.trim()) $('rErr').textContent = ''; });   // 文字を入れたら注意を消す（2026-11-05 運用テスト No.23）
   $('rSend').onclick = async () => {
     const content = $('rText').value.trim();
     if (!content) { $('rErr').textContent = '報告内容を入力してください。'; return; }
@@ -950,6 +956,8 @@ function rForm() {
     close();
   };
 }
+/* 報告の表示（文字のみ・グリッド）は端末に覚える（2026-11-05 運用テスト No.22） */
+function rModeGet() { try { return localStorage.getItem('portalRMode') || 'textonly'; } catch (e) { return 'textonly'; } }
 function rList() {
   if (!$('rBox') || !X) return;
   const live = X.reports.slice().sort((a, b) => (b.at || 0) - (a.at || 0));
@@ -1193,6 +1201,13 @@ function viewerClose(fromBack) {
   if (!fromBack && history.state && history.state.fileViewer) { try { history.back(); } catch (e) {} }
 }
 window.addEventListener('popstate', () => { if (VW) viewerClose(true); });
+// PC のキーボード：← → で前後、Esc で閉じる（画面の中の確認が出ているときは確認のほうが先に受け取る。2026-11-05 運用テスト No.9）
+document.addEventListener('keydown', e => {
+  if (!VW || document.querySelector('[aria-modal="true"]') || e.altKey || e.ctrlKey || e.metaKey || /^(INPUT|TEXTAREA|SELECT)$/.test((e.target && e.target.tagName) || '')) return;
+  if (e.key === 'ArrowLeft') { e.preventDefault(); viewerStep(-1); }
+  else if (e.key === 'ArrowRight') { e.preventDefault(); viewerStep(1); }
+  else if (e.key === 'Escape') { e.preventDefault(); viewerClose(); }
+});
 window.addEventListener('resize', () => { if (VW) viewerApply(); });
 function viewerStep(d) {
   const i = VW.index + d;
@@ -1358,15 +1373,18 @@ function xBatch(rows, data) {
   }
 }
 function xNewFolder(name, parent) {
-  const ref = doc(xSub('folders'));
-  fire(setDoc(ref, { kind: X.kind, name, parent: parent || '', at: Date.now(), by: me.uid, deleted: false }), 'フォルダ「' + name + '」');
+  const ref = doc(xSub('folders')), data = { kind: X.kind, name, parent: parent || '', at: Date.now(), by: me.uid, deleted: false };
+  fire(setDoc(ref, data), 'フォルダ「' + name + '」');
+  // 届く前でも一覧に入れておく（入れないと、すぐ開いたときに「無いフォルダ」としてTOPに戻っていた。2026-11-05 運用テスト No.8）
+  if (!X.folders.some(f => f.id === ref.id)) X.folders.push({ id: ref.id, ...data });
   return ref.id;
 }
 /* フォルダを選ぶ画面。allowTop=false のときは TOP を出さない。選ばなければ null */
-function xPick(title, allowTop, allowNew) {
+function xPick(title, allowTop, allowNew, skip) {
   return new Promise(done => {
     const rows = [];
-    const walk = (p, depth) => xKids(p).forEach(f => { rows.push([f.id, '　'.repeat(depth) + f.name]); walk(f.id, depth + 1); });
+    // skip：今入っているフォルダは移動先に出さない（2026-11-05 運用テスト No.24）
+    const walk = (p, depth) => xKids(p).forEach(f => { if (f.id !== skip) rows.push([f.id, '　'.repeat(depth) + f.name]); walk(f.id, depth + 1); });
     walk('', 0);
     const o = document.createElement('div');
     o.style.cssText = 'position:fixed; inset:0; background:rgba(0,0,0,.5); z-index:100; display:flex; align-items:center; justify-content:center; padding:16px;';
@@ -1397,7 +1415,8 @@ async function xAdd() {
 }
 async function xMove(ids) {
   if (!ids.length) return;
-  const to = await xPick('移動先のフォルダを選んでください', false);
+  const from = [...new Set(xFiles().filter(f => ids.includes(f.id)).map(f => f.folder || ''))];
+  const to = await xPick('移動先のフォルダを選んでください', false, false, from.length === 1 ? from[0] : undefined);
   if (to === null) return;
   xBatch(ids.map(id => ['files', id]), { folder: to });
   X.sel.clear(); X.selMode = false; xBulk();
@@ -2084,6 +2103,7 @@ function dRender() {
   // 保存済みの日はその現場。新しく入れる日は、前回入れた現場（無ければ担当の最初の現場）
   let lastS = [];
   try { lastS = JSON.parse(localStorage.getItem('portalDailySites:' + D.uid) || '[]') || []; } catch (x) {}
+  lastS = lastS.filter(n => allSites.some(s => s.siteName === n));   // 削除した現場は出さない（2026-11-05 運用テスト No.1）
   D.sites = e ? String(e.site || '').split('、').map(x => x.trim()).filter(Boolean) : (lastS.length ? lastS.slice() : (allSites[0] ? [allSites[0].siteName] : []));
   $('dSite').value = '';
   dChips();
@@ -2301,25 +2321,50 @@ function hGraphOpen() {
 }
 async function hGraphLoad(uid) {
   $('hGBox').innerHTML = '<div style="text-align:center; color:var(--muted);">読み込んでいます…</div>';
-  try {
-    const q = query(collection(db, 'health'), where('uid', '==', uid));
-    const a = await oRead(() => getDocs(q), () => getDocsFromCache(q));
+  const q = query(collection(db, 'health'), where('uid', '==', uid));
+  const draw = a => {
+    if (!$('hGBox') || ($('hGSel') && me.isMaster && ($('hGSel').value || me.uid) !== uid)) return;
     const list = a.docs.map(d => d.data()).filter(r => r.sys).sort((x, y) => String(x.date).localeCompare(String(y.date)));
-    if ($('hGBox')) $('hGBox').innerHTML = '<div class="set-sub-title">直近の記録</div>' + hGraphSvg(list);
-  } catch (e) { $('hGBox').innerHTML = banner('読み込めませんでした：' + ((e && e.message) || ''), true); }
+    hGList = list;
+    $('hGBox').innerHTML = '<div class="set-sub-title">直近の記録</div>' + hGraphSvg(list);
+  };
+  // 端末に残っている記録をまず出し、届いたら最新で描き直す（「読み込んでいます…」で約8秒待っていた。2026-11-05 運用テスト No.18）
+  let shown = false;
+  try { const c = await getDocsFromCache(q); if (!c.empty) { draw(c); shown = true; } } catch (e) {}
+  if (isOffline()) { if (!shown) $('hGBox').innerHTML = banner('電波がないため読み込めませんでした。', true); return; }
+  try { draw(await getDocs(q)); }
+  catch (e) { if (!shown) $('hGBox').innerHTML = banner('読み込めませんでした：' + ((e && e.message) || ''), true); }
 }
-function hGraphSvg(list, monthly) {
+/* 点は日付の間隔どおりに並べ、途中の日付も目盛りに出す。点を押すと、その日の数字を下に出す（2026-11-05 運用テスト No.19） */
+let hGList = [];
+const hGDay = ds => { const p = String(ds).split('/').map(Number); return new Date(p[0], (p[1] || 1) - 1, p[2] || 1).getTime(); };
+function hGraphSvg(list) {
   if (!list.length) return '<div style="text-align:center; color:var(--muted);">まだ記録がありません。</div>';
-  const W = 640, H_ = 300, L = 38, R = 12, T = 12, B = 34, top = 200, low = 40;
-  const x = i => L + (list.length < 2 ? (W - L - R) / 2 : i * (W - L - R) / (list.length - 1)), y = v => T + (top - Math.min(top, Math.max(low, v))) * (H_ - T - B) / (top - low);
+  const W = 640, H_ = 300, L = 38, R = 16, T = 12, B = 40, top = 200, low = 40, DAY = 86400000;
+  const t0 = hGDay(list[0].date), t1 = hGDay(list[list.length - 1].date), span = Math.max(t1 - t0, 0);
+  const x = i => L + (span ? (hGDay(list[i].date) - t0) / span * (W - L - R) : (W - L - R) / 2), y = v => T + (top - Math.min(top, Math.max(low, v))) * (H_ - T - B) / (top - low);
   const grid = [40, 80, 120, 160, 200].map(v => '<line x1="' + L + '" x2="' + (W - R) + '" y1="' + y(v) + '" y2="' + y(v) + '" stroke="#bbb" stroke-width="1"/><text x="' + (L - 6) + '" y="' + (y(v) + 4) + '" text-anchor="end" font-size="12" fill="#333">' + v + '</text>').join('');
-  const line = (k, color, dash) => { const pts = list.map((r, i) => [x(i), r[k]]).filter(p => Number(p[1]) > 0); return '<polyline fill="none" stroke="' + color + '" stroke-width="2.5"' + (dash ? ' stroke-dasharray="6 4"' : '') + ' points="' + pts.map(p => p[0].toFixed(1) + ',' + y(Number(p[1])).toFixed(1)).join(' ') + '"/>' + pts.map(p => '<circle cx="' + p[0].toFixed(1) + '" cy="' + y(Number(p[1])).toFixed(1) + '" r="3" fill="' + color + '"/>').join(''); };
-  const dLabel = r => monthly ? String(r.date).slice(0, 7) : String(r.date).slice(5);
-  const days = '<text x="' + L + '" y="' + (H_ - 12) + '" font-size="12" fill="#333">' + esc(dLabel(list[0])) + '</text><text x="' + (W - R) + '" y="' + (H_ - 12) + '" text-anchor="end" font-size="12" fill="#333">' + esc(dLabel(list[list.length - 1])) + '</text>';
+  const line = (k, color, dash) => { const pts = list.map((r, i) => [x(i), r[k]]).filter(p => Number(p[1]) > 0); return '<polyline fill="none" stroke="' + color + '" stroke-width="2.5"' + (dash ? ' stroke-dasharray="6 4"' : '') + ' points="' + pts.map(p => p[0].toFixed(1) + ',' + y(Number(p[1])).toFixed(1)).join(' ') + '"/>' + pts.map(p => '<circle cx="' + p[0].toFixed(1) + '" cy="' + y(Number(p[1])).toFixed(1) + '" r="3.5" fill="' + color + '"/>').join(''); };
+  // 日付の目盛り：期間を4つに分けた5か所（1日だけのときはその日）
+  const md = t => { const d = new Date(t); return (d.getMonth() + 1) + '/' + d.getDate(); };
+  const ticks = span >= 4 * DAY ? [0, 1, 2, 3, 4].map(k => t0 + span * k / 4) : span ? [t0, t1] : [t0];
+  const days = ticks.map((t, k) => { const px = L + (span ? (t - t0) / span * (W - L - R) : (W - L - R) / 2), an = ticks.length > 1 && k === 0 ? 'start' : ticks.length > 1 && k === ticks.length - 1 ? 'end' : 'middle';
+    return '<line x1="' + px.toFixed(1) + '" x2="' + px.toFixed(1) + '" y1="' + (H_ - B) + '" y2="' + (H_ - B + 5) + '" stroke="#555" stroke-width="1"/><text x="' + px.toFixed(1) + '" y="' + (H_ - 14) + '" text-anchor="' + an + '" font-size="12" fill="#333">' + esc(md(t)) + '</text>'; }).join('');
+  // 押しやすいよう、点ごとに縦長の見えない当たりを置く
+  const hit = list.map((r, i) => { const px = x(i), w = Math.max(14, Math.min(40, list.length > 1 ? (W - L - R) / list.length : 40)); return '<rect data-hi="' + i + '" x="' + (px - w / 2).toFixed(1) + '" y="' + T + '" width="' + w.toFixed(1) + '" height="' + (H_ - T - B) + '" fill="transparent" style="cursor:pointer;"><title>' + esc(String(r.date).slice(5) + '　' + hBp(r)) + '</title></rect>'; }).join('');
   const key = (c, t, dash) => '<span style="display:inline-flex; align-items:center; gap:4px; margin-right:12px;"><svg width="26" height="8"><line x1="0" x2="26" y1="4" y2="4" stroke="' + c + '" stroke-width="2.5"' + (dash ? ' stroke-dasharray="6 4"' : '') + '/></svg>' + t + '</span>';
   const last = list[list.length - 1];
-  return '<div style="font-size:0.85rem; margin-bottom:6px;">' + key('#111', '血圧（上）') + key('#666', '血圧（下）') + key('#333', '脈拍', true) + '</div><svg viewBox="0 0 ' + W + ' ' + H_ + '" style="width:100%; height:auto; display:block;" role="img" aria-label="血圧と脈拍のグラフ">' + grid + line('sys', '#111') + line('dia', '#666') + line('pulse', '#333', true) + days + '</svg><div class="set-note">' + (monthly ? list.length + 'か月分' : '記録 ' + list.length + '日分　最新：' + esc(hBp(last))) + '</div>';
+  return '<div style="font-size:0.85rem; margin-bottom:6px;">' + key('#111', '血圧（上）') + key('#666', '血圧（下）') + key('#333', '脈拍', true) + '</div><svg viewBox="0 0 ' + W + ' ' + H_ + '" style="width:100%; height:auto; display:block;" role="img" aria-label="血圧と脈拍のグラフ" onclick="hGPick(event)">' + grid + line('sys', '#111') + line('dia', '#666') + line('pulse', '#333', true) + days + '<g id="hGMark"></g>' + hit + '</svg>' +
+    '<div id="hGInfo" style="min-height:1.6em; margin-top:6px; font-weight:700; font-size:0.95rem;">点を押すと、その日の数字が出ます。</div><div class="set-note">記録 ' + list.length + '日分　最新：' + esc(hBp(last)) + '</div>';
 }
+window.hGPick = e => {
+  const t = e.target.closest && e.target.closest('[data-hi]'), r = t && hGList[Number(t.dataset.hi)];
+  if (!r || !$('hGInfo')) return;
+  const d = String(r.date).split('/').map(Number), dow = DOW[new Date(d[0], d[1] - 1, d[2]).getDay()];
+  $('hGInfo').textContent = d[0] + '/' + d[1] + '/' + d[2] + '（' + dow + '）　血圧 ' + hBp(r);
+  const m = $('hGMark'), xx = Number(t.getAttribute('x')) + Number(t.getAttribute('width')) / 2;
+  if (m) m.innerHTML = '<line x1="' + xx.toFixed(1) + '" x2="' + xx.toFixed(1) + '" y1="12" y2="260" stroke="#111" stroke-width="1" stroke-dasharray="3 3"/>';
+};
 function hRender() {
   if (!H || !$('hMine')) return;
   if (!H.canMine && H.view === 'mine') { if (H.canTeam) hView('team'); else { $('hMine').style.display = 'none'; } }

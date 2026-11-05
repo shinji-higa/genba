@@ -811,7 +811,7 @@
     function editItem(i) { if (revLocked()) { lockedToast(); return; } ED = { it: JSON.parse(JSON.stringify(S.items[i])), index: i }; openEditor(); }
     function sizeSel(key, list, label) {
       var it = ED.it;
-      return '<div class="fg"><label>' + label + '</label><select onchange="edSet(\'' + key + '\', +this.value)">' +
+      return '<div class="fg"><label>' + label + '</label><select data-fk="' + key + '" onchange="edSet(\'' + key + '\', +this.value)">' +
         list.map(function (d) { return '<option value="' + d + '"' + (+it[key] === d ? ' selected' : '') + '>φ' + d + '</option>'; }).join('') + '</select></div>';
     }
     /* 選べるサイズ：小さい口（②）は①より小さいサイズだけ、枝（③④）は①以下だけ（ユーザー指示 2026-10-30：
@@ -828,7 +828,13 @@
       return '<div class="fg"><label>' + label + '</label><input type="number" inputmode="numeric" value="' + esc(ED.it[key]) + '" placeholder="' + (ph || '') + '" oninput="edNum(\'' + key + '\', this.value, \'' + String(label).replace(/<[^>]*>/g, ' ').replace(/["'\\]/g, '').replace(/\s+/g, ' ').trim() + '\')"></div>';
     }
     var CIRC = ['①', '②', '③', '④'];
+    // 選び直すと画面を作り直すので、サイズの選択欄にカーソルを戻す（戻さないと矢印キーが2回目から効かなかった。2026-11-05 運用テスト No.16）
     function openEditor() {
+      var fa = document.activeElement, fk = fa && fa.dataset ? fa.dataset.fk : '';
+      openEditor0();
+      if (fk) { var el = document.querySelector('[data-fk="' + fk + '"]'); if (el) el.focus(); }
+    }
+    function openEditor0() {
       var it = ED.it, t = TYPES[it.type];
       document.getElementById('edTitle').textContent = t.full + (ED.index >= 0 ? '（編集）' : '');
       document.getElementById('edDel').style.display = ED.index >= 0 ? '' : 'none';
