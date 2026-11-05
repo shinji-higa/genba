@@ -81,6 +81,7 @@
     const o = {};
     o.base = base;
     o.ot = yen(hourly * cfg.ot * n('otH'));
+    o.inOt = yen(hourly * n('inH'));   // 法定内の時間外（半日有給の日に4時間を超えて8時間まで働いた分。1倍。案C 2026-11-05）
     // 月60時間超（ユーザー決定 2026-11-04）：数えるのは平日＋土曜の時間外（設定で土曜を外せる。日祝は法律で数えない）。
     // 超えた時間は平日の時間外から先に当て、平日の分だけ（60時間超の率 − 平日の率）を上乗せする。土曜の時間外はもともと高い率なので足さない
     const h60 = n('otH') + (cfg.noSat60 ? 0 : n('shoOtH')), over60 = Math.max(0, h60 - 60), w60 = Math.min(over60, n('otH'));
@@ -100,7 +101,7 @@
     o.retro = a('retro') + hr.pay;   // 遡及分＝手入力＋昇給を遡ったときの差額（履歴に控えた分）
     o.leave = a('leave');
     o.other = a('other');
-    const payTotal = o.base + o.ot + o.ot60 + o.shoDay + o.shoOt + o.houDay + o.houOt + o.night + o.family + o.commute + o.trip + o.absent + o.prorate + o.early + o.retro + o.leave + o.other;
+    const payTotal = o.base + o.ot + o.inOt + o.ot60 + o.shoDay + o.shoOt + o.houDay + o.houOt + o.night + o.family + o.commute + o.trip + o.absent + o.prorate + o.early + o.retro + o.leave + o.other;
     const insPay = payTotal - o.trip;   // 雇用保険の対象（出張手当は外す）
     const insYm = ymAdd(ym, -1), r = rateAt(cfg.rates, insYm), emp2 = emp.empIns !== false;
     // 健康保険・厚生年金は、入社した月の分から、退職日の翌日（資格を失う日）の月の前月の分までかかる。
@@ -185,8 +186,8 @@
   /** 日報の集計（1日ごとは丸めない）の時間外を丸める。丸める前の時間は raw に残す */
   function roundAtt(a) {
     if (!a || a.error) return a;
-    const raw = a.raw || { otH: a.otH, shoOtH: a.shoOtH, houOtH: a.houOtH };
-    return { ...a, raw, otH: roundH(raw.otH), shoOtH: roundH(raw.shoOtH), houOtH: roundH(raw.houOtH) };
+    const raw = a.raw || { otH: a.otH, inH: a.inH || 0, shoOtH: a.shoOtH, houOtH: a.houOtH };
+    return { ...a, raw, otH: roundH(raw.otH), inH: roundH(raw.inH || 0), shoOtH: roundH(raw.shoOtH), houOtH: roundH(raw.houOtH) };
   }
   /** 深夜（22時〜翌5時）に入る時間。日報の時刻は 20 や 5.5 の数。終わりが始まり以下なら翌日。
       夜間作業の日だけ数える。夜勤に休憩はない（ユーザー指示 2026-10-29）ので引かない */
