@@ -102,7 +102,11 @@
     o.other = a('other');
     const payTotal = o.base + o.ot + o.ot60 + o.shoDay + o.shoOt + o.houDay + o.houOt + o.night + o.family + o.commute + o.trip + o.absent + o.prorate + o.early + o.retro + o.leave + o.other;
     const insPay = payTotal - o.trip;   // 雇用保険の対象（出張手当は外す）
-    const insYm = ymAdd(ym, -1), r = rateAt(cfg.rates, insYm), ins = emp.insure !== false, emp2 = emp.empIns !== false;
+    const insYm = ymAdd(ym, -1), r = rateAt(cfg.rates, insYm), emp2 = emp.empIns !== false;
+    // 健康保険・厚生年金は、入社した月の分から、退職日の翌日（資格を失う日）の月の前月の分までかかる。
+    // 入社前の月の分まで引いていた（2026-11-05 運用テスト：4/13入社の人の4月分給与から3月分を引いていた）
+    const lossYm = emp.leftDate ? (() => { const x = new Date(emp.leftDate + 'T00:00:00'); x.setDate(x.getDate() + 1); return x.getFullYear() + '-' + ('0' + (x.getMonth() + 1)).slice(-2); })() : '';
+    const ins = emp.insure !== false && !(emp.joined && insYm < emp.joined.slice(0, 7)) && !(lossYm && insYm >= lossYm);
     const std = Number(emp.std) || 0, stdP = Number(emp.stdPen) || std;
     const hRate = (Number(r.health) || 0) + (Number(r.child) || 0) + (careOn(emp, insYm) ? Number(r.care) || 0 : 0);
     const d = {};
