@@ -77,13 +77,13 @@
 </header>
 <main id="m"></main>
 
-<script src="tax.js?v=Ver.20261105-17"></script>
-<script src="calc.js?v=Ver.20261105-17"></script>
+<script src="tax.js?v=Ver.20261105-18"></script>
+<script src="calc.js?v=Ver.20261105-18"></script>
 <script type="module">
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
 import { getFirestore, collection, doc, getDoc, getDocs, setDoc, deleteDoc, writeBatch, query, where } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
-const APP_VER = 'Ver.20261105-17';
+const APP_VER = 'Ver.20261105-18';
 const API = 'https://script.google.com/macros/s/AKfycbyW2hFHqIQuu-TsflPk_0zv7gquhoepspuvRG9-bMStPDSWSc2blcDFBtWs7MisP3f_/exec';
 const app = initializeApp({ apiKey: 'AIzaSyDVR4p4DO4s9h70uPlXUVlhNcMP9-YkQ5Q', authDomain: 'genba-portal-9077b.firebaseapp.com', projectId: 'genba-portal-9077b' });
 const auth = getAuth(app);
@@ -660,8 +660,8 @@ async function xlsxOf(sheets, name) {
   const wb = window.XLSX.utils.book_new(), used = {};
   sheets.forEach(sh => {
     let t = String(sh.name || '名前なし').replace(/[\[\]\*\?\/\\:]/g, '').trim().slice(0, 28) || '名前なし'; const b = t; let k = 2; while (used[t]) t = b + '（' + (k++) + '）'; used[t] = 1;
-    const ws = window.XLSX.utils.aoa_to_sheet(sh.rows);
-    Object.keys(ws).forEach(a => { const c = ws[a]; if (a[0] !== '!' && c && c.t === 'n') c.z = '#,##0.##;-#,##0.##;'; });
+    const ws = window.XLSX.utils.aoa_to_sheet(sh.rows);   // 数の見せ方：整数はカンマ付き、0.5日などは小数、0は空欄
+    Object.keys(ws).forEach(a => { const c = ws[a]; if (a[0] !== '!' && c && c.t === 'n') c.z = Number.isInteger(c.v) ? '#,##0;-#,##0;' : '#,##0.0#;-#,##0.0#;'; });
     ws['!cols'] = [{ wch: 30 }].concat(Array.from({ length: 30 }, () => ({ wch: 12 })));
     window.XLSX.utils.book_append_sheet(wb, ws, t);
   });
