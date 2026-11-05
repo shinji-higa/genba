@@ -144,7 +144,7 @@ auth.languageCode = 'ja';   // パスワード再設定のメールと画面を�
 // 端末の控え（電波なしでも見られる）は1つのタブだけが持つ。2つ目からのタブは、開いている間だけの控えでサーバーと直接やりとりする。
 // 前は全部のタブで控えを分け合っていて、サーバーとやりとりするタブが裏にあると、ほかのタブに最新が届くまで約28秒待っていた（2026-11-05 確認）
 const db = initializeFirestore(app, { localCache: persistentLocalCache({ tabManager: persistentSingleTabManager() }) });
-const APP_VER = 'Ver.20261105-16';
+const APP_VER = 'Ver.20261105-17';
 
 /* ---------- 電波なしでも使う（今の現場管理と同じ考え方） ----------
    ・保存は押した瞬間に完了の形。電波が戻ったら自動で送る（データは Firestore が端末に貯める）
@@ -894,6 +894,15 @@ function sSubmit() {
   });
   const data = { members, roles };
   if (me.isMaster) data.managers = managers;
+  // 決まりで、1回の保存で足せるのは8人まで（マスターとエクスケア社員は別）。9人以上は8人ずつ順に保存する（書き込みは出した順に届く）
+  const before = sSite.members || [], added = members.filter(x => !before.includes(x));
+  if (!me.isMaster && me.group !== 'エクスケア社員' && added.length > 8) {
+    for (let k = 8; k < added.length; k += 8) {
+      const later = added.slice(k), part = { members: members.filter(x => !later.includes(x)), roles: { ...roles } };
+      later.forEach(x => { delete part.roles[x]; });
+      fire(updateDoc(doc(db, 'sites', sSite.id), part), '担当の変更');
+    }
+  }
   fire(updateDoc(doc(db, 'sites', sSite.id), data), '担当の変更');
   sSite = { ...sSite, ...data }; sPending = {};
   sList();
