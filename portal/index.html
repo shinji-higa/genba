@@ -144,7 +144,7 @@ auth.languageCode = 'ja';   // パスワード再設定のメールと画面を�
 // 端末の控え（電波なしでも見られる）は1つのタブだけが持つ。2つ目からのタブは、開いている間だけの控えでサーバーと直接やりとりする。
 // 前は全部のタブで控えを分け合っていて、サーバーとやりとりするタブが裏にあると、ほかのタブに最新が届くまで約28秒待っていた（2026-11-05 確認）
 const db = initializeFirestore(app, { localCache: persistentLocalCache({ tabManager: persistentSingleTabManager() }) });
-const APP_VER = 'Ver.20261105-18';
+const APP_VER = 'Ver.20261106-01';
 
 /* ---------- 電波なしでも使う（今の現場管理と同じ考え方） ----------
    ・保存は押した瞬間に完了の形。電波が戻ったら自動で送る（データは Firestore が端末に貯める）
@@ -3115,6 +3115,7 @@ async function showUser(uid, note) {
       '<label class="check-row" style="margin-top: 8px;"><input id="cd" type="checkbox"' + (d.canDaily ? ' checked' : '') + '>日報</label>' +
       '<label class="check-row" style="margin-top: 8px;"><input id="sn" type="checkbox"' + (d.isSenior ? ' checked' : '') + '>60歳以上</label>' +
       '<label class="check-row" style="margin-top: 8px;"><input id="cp" type="checkbox"' + (d.canPayroll ? ' checked' : '') + '>給与管理</label>' +
+      '<label class="check-row" style="margin-top: 8px;"><input id="ci" type="checkbox"' + (d.canInvoice ? ' checked' : '') + '>請求管理</label>' +
       '<div class="form-group" style="margin-top: 10px;"><label>携帯番号（伝票・注文書の注文者の欄に出ます）</label><input type="tel" id="mb" value="' + esc(d.mobile) + '" placeholder="例: 090-1234-5678"></div>' +
       '<div class="form-group" style="margin-top: 10px;"><label>グループ</label><select id="g">' + ['', 'エクスケア社員', 'エクスケア', 'マルトク', 'NAFA'].map(g => '<option value="' + g + '"' + ((d.group || '') === g ? ' selected' : '') + '>' + (g || '（空欄：エクスケアとして扱う）') + '</option>').join('') + '</select></div></div>' +
       '<div class="info-card"><div class="card-header-row"><span style="font-weight: 700;">担当現場</span></div>' + list.map(s => {
@@ -3130,7 +3131,7 @@ async function showUser(uid, note) {
       try {
         const b = writeBatch(db);
         const g = $('g').value;
-        b.update(doc(db, 'users', uid), { name: $('n').value.trim(), isMaster: $('m').checked, canAddSite: $('ca').checked, canDaily: $('cd').checked, isSenior: $('sn').checked, canPayroll: $('cp').checked, mobile: $('mb').value.trim(), group: g, home: (g === 'マルトク' || g === 'NAFA') ? g : 'エクスケア' });
+        b.update(doc(db, 'users', uid), { name: $('n').value.trim(), isMaster: $('m').checked, canAddSite: $('ca').checked, canDaily: $('cd').checked, isSenior: $('sn').checked, canPayroll: $('cp').checked, canInvoice: $('ci').checked, mobile: $('mb').value.trim(), group: g, home: (g === 'マルトク' || g === 'NAFA') ? g : 'エクスケア' });
         list.forEach(s => {
           const on = P.querySelector('[data-s="' + s.id + '"]').checked, role = P.querySelector('[data-r="' + s.id + '"]').value;
           const members = (s.members || []).filter(x => x !== uid), roles = { ...(s.roles || {}) };
