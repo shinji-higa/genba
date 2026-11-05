@@ -77,13 +77,13 @@
 </header>
 <main id="m"></main>
 
-<script src="tax.js?v=Ver.20261105-12"></script>
-<script src="calc.js?v=Ver.20261105-12"></script>
+<script src="tax.js?v=Ver.20261105-13"></script>
+<script src="calc.js?v=Ver.20261105-13"></script>
 <script type="module">
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
 import { getFirestore, collection, doc, getDoc, getDocs, setDoc, deleteDoc, writeBatch, query, where } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
-const APP_VER = 'Ver.20261105-12';
+const APP_VER = 'Ver.20261105-13';
 const API = 'https://script.google.com/macros/s/AKfycbyW2hFHqIQuu-TsflPk_0zv7gquhoepspuvRG9-bMStPDSWSc2blcDFBtWs7MisP3f_/exec';
 const app = initializeApp({ apiKey: 'AIzaSyDVR4p4DO4s9h70uPlXUVlhNcMP9-YkQ5Q', authDomain: 'genba-portal-9077b.firebaseapp.com', projectId: 'genba-portal-9077b' });
 const auth = getAuth(app);
@@ -641,8 +641,18 @@ async function loadLib() {
   }
 }
 /* htmls の1つずつが1ページ。{ h, wide } で渡すとそのページだけ横向きにできる（台帳は横・明細は縦を1つのPDFに入れるため。2026-11-04） */
+/* 保存先を選ぶ（2026-11-05 ユーザー指示：ダウンロードは全部、保存先を指定できるように）。
+   Chrome（パソコン）は「名前を付けて保存」の画面を出す。前に選んだ場所を覚えている。この画面はボタンを押した直後にしか出せないので、PDFを作る前に聞く。
+   出せないブラウザ（iPhone・iPad など）は、今までどおりダウンロードのフォルダに入る */
+async function pickSave(name) {
+  if (!window.showSaveFilePicker) return null;
+  try { return await window.showSaveFilePicker({ id: 'kyuyo-save', suggestedName: name, types: [{ description: 'PDF', accept: { 'application/pdf': ['.pdf'] } }] }); }
+  catch (e) { if (e && e.name === 'AbortError') throw new Error('保存をやめました。'); return null; }   // ほかの理由で出せないときは、ふつうのダウンロードにする
+}
 async function pdfOf(htmls, name, wide) {
+  const fh = await pickSave(name);
   await loadLib();
+  if (typeof htmls === 'function') htmls = await htmls();   // 先に保存先を聞いてから、中身を読む（管理簿など）
   const pages = htmls.map(x => typeof x === 'string' ? { h: x, wide: !!wide } : x);
   const box = document.createElement('div'); box.style.cssText = 'position:fixed;left:-6000px;top:0;background:#fff;padding:12px;'; document.body.appendChild(box);
   const pdf = new window.jspdf.jsPDF({ unit: 'mm', format: 'a4', orientation: pages[0].wide ? 'landscape' : 'portrait', compress: true });
@@ -655,7 +665,8 @@ async function pdfOf(htmls, name, wide) {
     const H = (wd ? 210 : 297) - 12; let w = W - 12, h = w * cv.height / cv.width; if (h > H) { h = H; w = h * cv.width / cv.height; }   // 用紙から切れないように縮める
     pdf.addImage(cv.toDataURL('image/jpeg', 0.8), 'JPEG', 6, 6, w, h);
   }
-  box.remove(); pdf.save(name);
+  box.remove();
+  if (fh) { const w = await fh.createWritable(); await w.write(pdf.output('blob')); await w.close(); } else pdf.save(name);
 }
 const attOf = r => r.att || {};
 /* 賃金台帳の行（労働基準法施行規則54条の項目：賃金計算期間・労働日数・労働時間数・時間外/休日/深夜の時間数・賃金の種類ごとの額・控除の額）。
@@ -704,7 +715,7 @@ async function drawYear() {
     // 年次有給休暇管理簿（2026-11-05 ユーザー指示）
     const lk = async () => { $('ym2').textContent = '本人の給与DBから、取った有給の日を読んでいます…'; const r = await leaveBook(); $('ym2').textContent = ''; return r; };
     $('lkv').onclick = () => lk().then(b => { $('lkw').innerHTML = b.map(x => '<div style="margin-top:12px;">' + x.h + '</div>').join(''); }, x => { $('ym2').textContent = x.message; });
-    $('lkp').onclick = () => lk().then(b => { $('ym2').textContent = 'PDFを作っています…'; return pdfOf(b.map(x => x.h), '年次有給休暇管理簿_' + b.T + '.pdf'); }).then(() => { $('ym2').textContent = ''; }, x => { $('ym2').textContent = x.message; });
+    $('lkp').onclick = () => pdfOf(() => lk().then(b => { $('ym2').textContent = 'PDFを作っています…'; return b.map(x => x.h); }), '年次有給休暇管理簿_' + new Date().getFullYear() + pad(new Date().getMonth() + 1) + pad(new Date().getDate()) + '.pdf').then(() => { $('ym2').textContent = ''; }, x => { $('ym2').textContent = x.message; });
     $('lks').onclick = async () => { try { $('lks').disabled = true; const b = await lk(); $('ym2').textContent = 'Googleスプレッドシートに書いています…'; const r = await pay('ledgerSheet', { year: b.T.slice(0, 4), kind: 'leave', sheets: b.map(x => ({ name: x.e.name, rows: x.rows })) }); $('ym2').innerHTML = esc(r.name) + 'に ' + r.n + '人分を書きました（1人1シート）。<a href="' + esc(r.url) + '" target="_blank" rel="noopener">開く</a>'; window.open(r.url, '_blank', 'noopener'); } catch (x) { $('ym2').textContent = x.message; } $('lks').disabled = false; };
     $('lv').onclick = () => { const e = list.find(x => x.id === $('lp').value); $('lw').style.display = ''; $('lw').innerHTML = ledgerHtml(e, y, data); };   // PDFを作る前に画面で確かめる
     // 個人別：台帳2ページ（横）のあとに、その人の給与明細・賞与明細を月の順に（縦）。同じ月は給与の次に賞与（ユーザー決定 2026-11-04 案A）。
