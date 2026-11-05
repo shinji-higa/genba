@@ -77,13 +77,13 @@
 </header>
 <main id="m"></main>
 
-<script src="tax.js?v=Ver.20261105-14"></script>
-<script src="calc.js?v=Ver.20261105-14"></script>
+<script src="tax.js?v=Ver.20261105-15"></script>
+<script src="calc.js?v=Ver.20261105-15"></script>
 <script type="module">
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
 import { getFirestore, collection, doc, getDoc, getDocs, setDoc, deleteDoc, writeBatch, query, where } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
-const APP_VER = 'Ver.20261105-14';
+const APP_VER = 'Ver.20261105-15';
 const API = 'https://script.google.com/macros/s/AKfycbyW2hFHqIQuu-TsflPk_0zv7gquhoepspuvRG9-bMStPDSWSc2blcDFBtWs7MisP3f_/exec';
 const app = initializeApp({ apiKey: 'AIzaSyDVR4p4DO4s9h70uPlXUVlhNcMP9-YkQ5Q', authDomain: 'genba-portal-9077b.firebaseapp.com', projectId: 'genba-portal-9077b' });
 const auth = getAuth(app);
@@ -533,9 +533,9 @@ function pickFolder(title) {
       if (w.querySelector('[data-k="up"]')) w.querySelector('[data-k="up"]').onclick = () => { stack.pop(); draw(); };
       w.querySelector('[data-k="y"]').onclick = () => { try { localStorage.setItem('kyuyoFolder', JSON.stringify({ stack })); } catch (x) {} end({ id: cur.id, path }); };
       try {
-        const r = await pay('driveFolders', { parent: cur ? cur.id : '' }), box = w.querySelector('#pfl'); if (!box) return;
+        const r = await pay('driveFolders', { parent: cur ? cur.id : '', drive: !!(cur && cur.drive) }), box = w.querySelector('#pfl'); if (!box) return;
         box.innerHTML = (r.folders || []).map((f, i) => '<button class="b" data-i="' + i + '" style="display:block;width:100%;text-align:left;border:0;border-bottom:1px solid var(--line);border-radius:0;">📁 ' + esc(f.name) + (f.kind ? ' <span class="note">' + esc(f.kind) + '</span>' : '') + '</button>').join('') || '<div class="note" style="padding:10px;">この中にフォルダはありません。「このフォルダに書き出す」で、ここに書き出せます。</div>';
-        box.querySelectorAll('[data-i]').forEach(b => { b.onclick = () => { const f = r.folders[Number(b.dataset.i)]; stack.push({ id: f.id, name: f.name }); draw(); }; });
+        box.querySelectorAll('[data-i]').forEach(b => { b.onclick = () => { const f = r.folders[Number(b.dataset.i)]; stack.push({ id: f.id, name: f.name, drive: f.kind === '共有ドライブ' }); draw(); }; });
       } catch (x) { const box = w.querySelector('#pfl'); if (box) box.innerHTML = '<div class="msg" style="margin:8px;">' + esc(x.message) + '（前に選んだフォルダが消された・動かされたときは「上へ」で選び直してください）</div>'; }
     };
     draw();
