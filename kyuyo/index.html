@@ -77,13 +77,13 @@
 </header>
 <main id="m"></main>
 
-<script src="tax.js?v=Ver.20261105-04"></script>
-<script src="calc.js?v=Ver.20261105-04"></script>
+<script src="tax.js?v=Ver.20261105-05"></script>
+<script src="calc.js?v=Ver.20261105-05"></script>
 <script type="module">
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
 import { getFirestore, collection, doc, getDoc, getDocs, setDoc, deleteDoc, writeBatch, query, where } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
-const APP_VER = 'Ver.20261105-04';
+const APP_VER = 'Ver.20261105-05';
 const API = 'https://script.google.com/macros/s/AKfycbyW2hFHqIQuu-TsflPk_0zv7gquhoepspuvRG9-bMStPDSWSc2blcDFBtWs7MisP3f_/exec';
 const app = initializeApp({ apiKey: 'AIzaSyDVR4p4DO4s9h70uPlXUVlhNcMP9-YkQ5Q', authDomain: 'genba-portal-9077b.firebaseapp.com', projectId: 'genba-portal-9077b' });
 const auth = getAuth(app);
@@ -521,7 +521,7 @@ async function drawBonus() {
       $('bt').querySelectorAll('[data-b]').forEach(i => { i.onchange = () => { amt[i.dataset.b] = Number(i.value) || 0; paint(); }; });
       $('bt').querySelectorAll('[data-t]').forEach(i => { i.onchange = () => { if (i.value === '') delete taxM[i.dataset.t]; else taxM[i.dataset.t] = Number(i.value); paint(); }; });
     };
-    M.innerHTML = '<div class="card"><div class="row"><label class="f">賞与の月<br><input type="month" id="bym" value="' + ym + '"></label><span class="sp"></span>' + (done ? '<span class="tag ok">確定済み</span>' : '<button class="b" id="bs">保存</button><button class="b dark" id="bd">確定</button>') + (Object.keys(conf).length ? '<button class="b" id="bv">明細を画面で見る</button><button class="b" id="bp">明細（PDF）</button><button class="b dark" id="bm">明細をメールで送る</button><button class="b danger" id="bu">確定を解除</button>' : '') + '</div><div class="note">所得税の率は前月の給与（社会保険料を引いた額）で決まります。前月の給与を先に確定してください。アプリに切り替えて最初の賞与は、従業員の「切り替え前の前月の給与」を使います。所得税の欄は、空欄なら薄く出ている自動計算の額を使います。入れるとその額を使います。</div></div><div class="card wrapx"><table class="t" id="bt"></table></div>';
+    M.innerHTML = '<div class="card"><div class="row"><label class="f">賞与の月<br><input type="month" id="bym" value="' + ym + '"></label><span class="sp"></span>' + (done ? '<span class="tag ok">確定済み</span>' : '<button class="b" id="bs">保存</button><button class="b dark" id="bd">確定</button>') + (Object.keys(conf).length ? '<button class="b" id="bv">明細を画面で見る</button><button class="b" id="bp">明細（PDF）</button><button class="b dark" id="bm">明細をメールで送る</button><button class="b danger" id="bu">確定を解除</button>' : '') + '</div>' + (Object.keys(conf).length ? '<div class="note">確定日時：' + esc(r.list.filter(x => x.status === '確定').map(x => x.at || '').sort().pop() || '') + '</div>' : '') + '<div class="note">所得税の率は前月の給与（社会保険料を引いた額）で決まります。前月の給与を先に確定してください。アプリに切り替えて最初の賞与は、従業員の「切り替え前の前月の給与」を使います。所得税の欄は、空欄なら薄く出ている自動計算の額を使います。入れるとその額を使います。</div></div><div class="card wrapx"><table class="t" id="bt"></table></div>';
     paint();
     $('bym').onchange = e => { ST.bym = e.target.value; drawBonus(); };
     const save = async dn => {
