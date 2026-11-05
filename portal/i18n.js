@@ -337,6 +337,8 @@ Object.assign(I18N_ES, {
   '昭和の日': 'Día de Showa', '憲法記念日': 'Día de la Constitución', 'みどりの日': 'Día de la Naturaleza', 'こどもの日': 'Día de los Niños', '海の日': 'Día del Mar', '山の日': 'Día de la Montaña',
   '敬老の日': 'Día del Respeto a los Mayores', '秋分の日': 'Equinoccio de otoño', 'スポーツの日': 'Día del Deporte', '文化の日': 'Día de la Cultura', '勤労感謝の日': 'Día del Trabajo', '国民の休日': 'Feriado nacional', '振替休日': 'Feriado compensatorio'
 });
+// 日報の画面で訳が無かった言葉（2026-11-05 確認）と、有給の承認待ちの残り
+Object.assign(I18N_ES, { '入力する人': 'Quién registra', '夜間作業': 'Trabajo nocturno', '残り 読み込み中…': 'Saldo: cargando...', '残り：読み込めませんでした': 'Saldo: no se pudo cargar', '残り：給与アプリに未登録': 'Saldo: no registrado en nómina' });
 I18N_ES_RE.unshift(
   [/^記録 (\d+)日分　最新：(.*)$/, '$1 días registrados · Último: $2'],
   [/^(\d+)か月分$/, '$1 meses'],
