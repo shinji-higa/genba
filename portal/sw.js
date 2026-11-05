@@ -21,10 +21,11 @@ async function shell(req, ev) {
   const hit = await c.match(key, { ignoreSearch: true });
   const net = fetch(page ? './' : req.url, { cache: 'no-cache' }).then(async r => {
     if (r.ok) {
-      const old = hit && (hit.headers.get('etag') || hit.headers.get('last-modified'));
-      const now = r.headers.get('etag') || r.headers.get('last-modified');
+      // 新しい版かどうかは中身の版番号（APP_VER）で比べる。配信元によって日付・目印（ETag）が変わり、同じ中身でも知らせていた（2026-11-05）
+      const ver = t => ((t || '').match(/APP_VER = '([^']+)'/) || [])[1] || '';
+      const old = hit && page ? ver(await hit.clone().text()) : '', now = page ? ver(await r.clone().text()) : '';
       await c.put(key, r.clone());
-      if (hit && old && now && old !== now && page && req.mode === 'navigate') {
+      if (hit && old && now && old !== now && req.mode === 'navigate') {
         (await self.clients.matchAll({ type: 'window' })).forEach(w => w.postMessage({ type: 'portal-update' }));
       }
     }
@@ -56,6 +57,7 @@ self.addEventListener('fetch', e => {
   }
   if (u.hostname === 'www.gstatic.com' && u.pathname.startsWith('/firebasejs/')) { e.respondWith(cacheFirst(LIB, req)); return; }
   if (u.hostname === 'cdnjs.cloudflare.com' && u.pathname.includes('/pdf.js/')) { e.respondWith(cacheFirst(LIB, req)); return; }
+  if (u.hostname === 'cdn.jsdelivr.net' && u.pathname.startsWith('/npm/pdfjs-dist@')) { e.respondWith(cacheFirst(LIB, req)); return; }   // PDFの日本語の対応表
   if (u.hostname === 'firebasestorage.googleapis.com' && u.searchParams.get('alt') === 'media') { e.respondWith(cacheFirst(FILES, req, FILES_MAX)); return; }
 });
 

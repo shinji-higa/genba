@@ -2462,7 +2462,7 @@
       skRedraw();
     }
     function skUndo() { (ED.sketch || []).pop(); skRedraw(); refreshEd(); }
-    function skClear() { if ((ED.sketch || []).length && !confirm('手書きの線を全部消しますか？（写真は残ります）')) return; ED.sketch = []; skRedraw(); refreshEd(); }
+    function skClear() { var go = function () { ED.sketch = []; skRedraw(); refreshEd(); }; if (!(ED.sketch || []).length) { go(); return; } askYes('手書きの線を全部消しますか？（写真は残ります）').then(function (ok) { if (ok) go(); }); }
     function skPhotoDel() { ED.photo = ''; ED.photoId = ''; SK_IMG = null; openEditor(); }
     function skPhoto(inp) {   // 写真は長い辺 1000 に縮めて JPEG に（保存を軽くする）
       var file = inp.files && inp.files[0]; if (!file) return;
@@ -5711,7 +5711,8 @@
       body.innerHTML = '<div class="empty">保存先のフォルダを読み込んでいます…</div>';
       openSheet('pdfBg');
       // 保存とフォルダ一覧は同時に頼む（順番に待つと倍かかる。2026-10-30）
-      Promise.all([hostSaveNow().catch(noop), HOST.call('getDenpyoFolders', [HOST.site])]).then(function (a) {
+      // 返事が来ないまま止まらないよう、20秒で「やり直してください」を出す（2026-11-05 運用テスト No.11）
+      Promise.race([Promise.all([hostSaveNow().catch(noop), HOST.call('getDenpyoFolders', [HOST.site])]), new Promise(function (_, ng) { setTimeout(function () { ng({ message: '時間がかかりすぎています。電波を確かめて、もう一度「工場へ提出」を押してください。直らないときはページを開き直してください。' }); }, 20000); })]).then(function (a) {
         var r = a[1];
         var fs = r.folders || [], pick = fs.filter(function (f) { return f.id === S.pdfFolderId; })[0] || fs.filter(function (f) { return f.path === '製作伝票'; })[0];
         body.innerHTML =

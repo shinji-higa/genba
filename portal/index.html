@@ -141,7 +141,7 @@ storage.maxUploadRetryTime = 60000;   // 電波が切れたら1分で一度あ�
 const auth = getAuth(app);
 auth.languageCode = 'ja';   // パスワード再設定のメールと画面を日本語にする
 const db = initializeFirestore(app, { localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }) });
-const APP_VER = 'Ver.20261105-01';
+const APP_VER = 'Ver.20261105-02';
 
 /* ---------- 電波なしでも使う（今の現場管理と同じ考え方） ----------
    ・保存は押した瞬間に完了の形。電波が戻ったら自動で送る（データは Firestore が端末に貯める）
@@ -155,6 +155,37 @@ function fail(label, msg) {
   try { localStorage.setItem('portalFailures', JSON.stringify(failures)); } catch (e) {}
   badge();
 }
+/* 確認・入力・知らせは、ブラウザの小窓（alert/confirm/prompt）ではなく画面の中に出す（2026-11-05 運用テスト No.7）
+   uiAsk(文, { input: 初めの文字 | undefined, ok, cancel(null で1つだけ) }) → OK で true（入力ありは文字）、やめると false（入力ありは null） */
+function uiAsk(msg, o) {
+  o = o || {};
+  return new Promise(done => {
+    const back = document.createElement('div'), hasIn = o.input !== undefined, prev = document.activeElement;
+    back.style.cssText = 'position:fixed;inset:0;z-index:10000;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;padding:16px;';
+    back.innerHTML = '<div role="dialog" aria-modal="true" style="background:#fff;color:#111;border:1px solid #333;border-radius:8px;max-width:440px;width:100%;padding:18px 16px 14px;box-shadow:0 6px 24px rgba(0,0,0,.35);font:15px/1.6 -apple-system,BlinkMacSystemFont,\'Hiragino Sans\',Meiryo,sans-serif;">' +
+      '<div class="ua-msg" style="white-space:pre-wrap;font-weight:700;margin-bottom:12px;word-break:break-word;"></div>' +
+      (hasIn ? '<input type="text" class="ua-in" style="width:100%;box-sizing:border-box;font-size:16px;padding:10px;border:1px solid #555;border-radius:4px;margin-bottom:12px;">' : '') +
+      '<div style="display:flex;gap:8px;justify-content:flex-end;">' +
+      (o.cancel === null ? '' : '<button type="button" class="btn btn-sub ua-no" style="width:auto;padding:8px 18px;">' + esc(o.cancel || 'やめる') + '</button>') +
+      '<button type="button" class="btn btn-dark ua-ok" style="width:auto;padding:8px 22px;">' + esc(o.ok || 'OK') + '</button></div></div>';
+    back.querySelector('.ua-msg').textContent = msg;
+    const inp = back.querySelector('.ua-in');
+    if (inp) inp.value = o.input || '';
+    const end = v => { back.remove(); document.removeEventListener('keydown', key, true); try { prev && prev.focus && prev.focus(); } catch (e) {} done(v); };
+    const yes = () => end(hasIn ? inp.value : true), no = () => end(hasIn ? null : false);
+    const key = e => { if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); no(); } else if (e.key === 'Enter' && (inp ? document.activeElement === inp : true)) { e.preventDefault(); e.stopPropagation(); yes(); } };
+    back.querySelector('.ua-ok').onclick = yes;
+    if (back.querySelector('.ua-no')) back.querySelector('.ua-no').onclick = no;
+    back.onclick = e => { if (e.target === back && o.cancel !== null) no(); };
+    document.addEventListener('keydown', key, true);
+    document.body.appendChild(back);
+    (inp || back.querySelector('.ua-ok')).focus();
+    if (inp) inp.select();
+  });
+}
+const uiConfirm = (msg, ok) => uiAsk(msg, { ok: ok || 'OK' });
+const uiPrompt = (msg, def) => uiAsk(msg, { input: def || '' });
+const uiAlert = msg => uiAsk(msg, { cancel: null });
 /** 保存を始めて、結果を待たずに進む。断られたときだけ一覧に残す */
 function fire(p, label) {
   fireN++; badge();
@@ -222,20 +253,21 @@ function showUpdate() {
   };
   document.body.appendChild(b);
 }
-async function checkVer() {
-  if (navigator.onLine === false || document.hidden) return;
+/* 新しい版かどうかは、中身の版番号（APP_VER）だけで決める。保存係からの知らせも、ここで確かめてから出す（日付・目印の違いだけで出ていた。2026-11-05 運用テスト No.2） */
+async function checkVer(force) {
+  if (navigator.onLine === false || (document.hidden && force !== true)) return;
   try {
     const t = await fetch('./?check=' + Date.now(), { cache: 'no-store' }).then(r => r.ok ? r.text() : '');
     const m = t.match(/APP_VER = '([^']+)'/);
     if (m && m[1] !== APP_VER) showUpdate();
   } catch (e) {}
 }
-document.addEventListener('visibilitychange', checkVer);
-setInterval(checkVer, 600000);
-setTimeout(checkVer, 3000);
+document.addEventListener('visibilitychange', () => checkVer());
+setInterval(() => checkVer(), 600000);
+setTimeout(() => checkVer(), 3000);
 if ('serviceWorker' in navigator) {
   navigator.serviceWorker.register('sw.js').catch(() => {});
-  navigator.serviceWorker.addEventListener('message', e => { if (e.data && e.data.type === 'portal-update') showUpdate(); });
+  navigator.serviceWorker.addEventListener('message', e => { if (e.data && e.data.type === 'portal-update') checkVer(true); });
 }
 
 /* 写真・資料の貯め場所 */
@@ -712,7 +744,7 @@ function cmDraw(p) {
       (mine || me.isMaster ? '<button type="button" class="cm-del" data-del="' + esc(c.id) + '">削除</button>' : '') + '</div><div class="cm-bubble">' + trShow(c.text, (c.tr || {}).text, x => re ? esc(x).replace(re, '<span class="cm-mention">@$1</span>') : esc(x), mine) + '</div></div>';
   }).join('');
   list.querySelectorAll('[data-del]').forEach(b => {
-    b.onclick = () => { if (confirm('このコメントを削除しますか？')) fire(updateDoc(doc(xSub('comments'), b.dataset.del), { deleted: true, deletedAt: Date.now() }), 'コメントの削除'); };
+    b.onclick = async () => { if (await uiConfirm('このコメントを削除しますか？', '削除')) fire(updateDoc(doc(xSub('comments'), b.dataset.del), { deleted: true, deletedAt: Date.now() }), 'コメントの削除'); };
   });
   if (!list.dataset.shown) {
     const dv = list.querySelector('.cm-divider');
@@ -755,7 +787,7 @@ function cmPanel(k, id, root, label, draft) {
   const send = () => {
     const text = ta.value.trim();
     if (!text) return;
-    if (text.length > 2000) { alert('コメントは2000文字以内で入力してください。'); return; }
+    if (text.length > 2000) { uiAlert('コメントは2000文字以内で入力してください。'); return; }
     const mentions = (X.people || []).filter(u => text.includes('@' + u.name)).map(u => u.id);
     fire(setDoc(doc(xSub('comments')), { kind: k, target: id, label, text, by: me.uid, byName: me.name || me.uid, at: Date.now(), mentions, deleted: false }), 'コメント');
     notify(X.s, k, '「' + clip(label, 30) + '」にコメント：' + clip(text, 80), { mentions });
@@ -840,7 +872,7 @@ function sList() {
 }
 function sSubmit() {
   const ids = Object.keys(sPending).filter(k => sPending[k] !== ((sSite.roles || {})[k] || '担当なし'));
-  if (!ids.length) { alert('変更された権限はありません。'); return; }
+  if (!ids.length) { uiAlert('変更された権限はありません。'); return; }
   const roles = { ...(sSite.roles || {}) };
   let members = (sSite.members || []).slice(), managers = (sSite.managers || []).slice();
   ids.forEach(u => {
@@ -939,7 +971,9 @@ function rList() {
       : '<div style="margin-top:10px;"><div style="font-size:0.75rem; font-weight:700; color:var(--muted); margin-bottom:4px;">📷 添付写真</div><img src="' + esc(img.thumb) + '" data-open="' + esc(r.imageFile) + '" style="max-width:100%; max-height:220px; object-fit:cover; border-radius:4px; border:1px solid var(--border); cursor:pointer; display:block;"></div>';
     const docHtml = !r.docFile ? '' : '<div style="margin-top:10px;"><div style="font-size:0.75rem; font-weight:700; color:var(--muted); margin-bottom:4px;">📄 添付資料</div><a href="javascript:void(0)" data-open="' + esc(r.docFile) + '" style="color:var(--link-blue); font-size:0.85rem; text-decoration:underline; display:inline-block; word-break:break-all;">📄 ' + esc(r.docName || (docf && docf.name) || '添付ファイル') + 'を開く</a></div>';
     return '<div class="info-card" style="margin-bottom:10px;" data-r="' + esc(r.id) + '">' +
-      '<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px; font-size:0.8rem; color:var(--muted); border-bottom:1px solid #f0f0f0; padding-bottom:4px;"><div style="display:flex; align-items:center;"><span style="display:inline-block; font-size:0.78rem; font-weight:700; padding:2px 6px; border-radius:3px; background:#f0f0f2; color:#333; margin-right:6px;">' + esc(r.category) + '</span><span style="font-weight:700; color:var(--text);">' + esc(rWhen(r.at)) + '</span></div>' +
+      '<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px; font-size:0.8rem; color:var(--muted); border-bottom:1px solid #f0f0f0; padding-bottom:4px;"><div style="display:flex; align-items:center;"><span style="display:inline-block; font-size:0.78rem; font-weight:700; padding:2px 6px; border-radius:3px; background:#f0f0f2; color:#333; margin-right:6px;">' + esc(r.category) + '</span><span style="font-weight:700; color:var(--text);">' + esc(rWhen(r.at)) + '</span>' +
+        // 編集した報告には印と編集した日時を出す（2026-11-05 運用テスト No.21）
+        (r.editedAt ? '<span style="margin-left:6px; font-size:0.75rem; font-weight:700; color:#333; border:1px solid #777; border-radius:3px; padding:0 5px;">編集済み ' + esc(rWhen(r.editedAt).replace(/^\d{4}\//, '')) + '</span>' : '') + '</div>' +
       '<div style="display:flex; align-items:center;"><span>' + esc(r.byName) + '</span>' + (rMay(r) ? '<button type="button" class="btn btn-sub" data-e="1" style="padding:2px 8px; font-size:0.75rem; margin-left:8px;">✏️ 編集</button>' : '') + '</div></div>' +
       '<div class="r-view" style="font-size:0.9rem; line-height:1.5; white-space:pre-wrap; word-break:break-all;">' + trShow(r.content, (r.tr || {}).content, rLink) + '</div>' + imgHtml + docHtml + cmInline('report', r.id) + '</div>';
   }).join('');
@@ -947,7 +981,7 @@ function rList() {
   $('rBox').querySelectorAll('[data-open]').forEach(a => {
     a.onclick = () => {
       const f = fileOf(a.dataset.open);
-      if (!f) { alert('添付はまだ届いていません。'); return; }
+      if (!f) { uiAlert('添付はまだ届いていません。'); return; }
       viewerOpen([f], 0);
     };
   });
@@ -961,7 +995,7 @@ function rEdit(r, card) {
   const end = () => { X.rEdit = ''; rList(); };
   $('rEc').onclick = end;
   $('rEs').onclick = () => { const t = $('rEt').value.trim(); if (t) { fire(updateDoc(doc(xSub('reports'), r.id), { content: t, editedAt: Date.now() }), '報告'); notify(X.s, 'report', '報告を編集：' + clip(t, 80)); } end(); };
-  $('rEd').onclick = () => { if (!confirm('この報告を削除します。よろしいですか？')) return; fire(updateDoc(doc(xSub('reports'), r.id), { deleted: true, deletedAt: Date.now() }), '報告の削除'); end(); };
+  $('rEd').onclick = async () => { if (!await uiConfirm('この報告を削除します。よろしいですか？', '削除')) return; fire(updateDoc(doc(xSub('reports'), r.id), { deleted: true, deletedAt: Date.now() }), '報告の削除'); end(); };
 }
 
 function xOpen(s, kind) {
@@ -1000,25 +1034,25 @@ function xShell() {
   $('xAdd').onclick = xAdd;
   $('xFile').onchange = e => { const fs = [...e.target.files]; e.target.value = ''; if (fs.length) xUpload(X.kind, X.pending, fs); };
   $('xFAdd').onclick = async () => {
-    const name = (prompt('「' + xNameOf(X.active[X.kind]) + '」内に作成するフォルダ名を入力してください:') || '').trim();
+    const name = ((await uiPrompt('「' + xNameOf(X.active[X.kind]) + '」内に作成するフォルダ名を入力してください:')) || '').trim();
     if (name) xNewFolder(name, X.active[X.kind]);
   };
   $('xFMove').onclick = async () => {
-    if (!X.selF.size) { alert('移動するフォルダにチェックを入れてください。'); return; }
+    if (!X.selF.size) { uiAlert('移動するフォルダにチェックを入れてください。'); return; }
     const to = await xPick('移動先のフォルダを選んでください', true);
     if (to === null) return;
-    if ([...X.selF].some(id => id === to || xDescendants(id).includes(to))) { alert('自分の中には移動できません。'); return; }
+    if ([...X.selF].some(id => id === to || xDescendants(id).includes(to))) { uiAlert('自分の中には移動できません。'); return; }
     const b = writeBatch(db);
     X.selF.forEach(id => b.update(doc(xSub('folders'), id), { parent: to }));
     fire(b.commit(), 'フォルダの移動'); X.selF.clear();
   };
   $('xFDel').onclick = async () => {
-    if (!X.selF.size) { alert('削除するフォルダにチェックを入れてください。'); return; }
-    if (!confirm('選択中のフォルダを、中の' + xLabel(X.kind) + 'ごと削除します。よろしいですか？')) return;
+    if (!X.selF.size) { uiAlert('削除するフォルダにチェックを入れてください。'); return; }
+    if (!await uiConfirm('選択中のフォルダを、中の' + xLabel(X.kind) + 'ごと削除します。よろしいですか？', '削除')) return;
     const ids = new Set();
     X.selF.forEach(id => { ids.add(id); xDescendants(id).forEach(x => ids.add(x)); });
     const files = xFiles().filter(f => ids.has(f.folder));
-    if (files.some(f => !xMayRemove(f)) || [...ids].some(id => !xMayRemove(X.folders.find(f => f.id === id) || {}))) { alert('削除できるのは、マスター・現場管理者、または自分が追加したものだけです。'); return; }
+    if (files.some(f => !xMayRemove(f)) || [...ids].some(id => !xMayRemove(X.folders.find(f => f.id === id) || {}))) { uiAlert('削除できるのは、マスター・現場管理者、または自分が追加したものだけです。'); return; }
     xBatch([...[...ids].map(id => ['folders', id]), ...files.map(f => ['files', f.id])], { deleted: true });
     X.selF.clear();
     if (ids.has(X.active[X.kind])) X.active[X.kind] = '';
@@ -1110,6 +1144,8 @@ function xList() {
 /* ---------- 画面の中で開く（写真・PDF。今の現場管理の表示と同じ作り） ---------- */
 const PDFJS_URL = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js';
 const PDFJS_WORKER = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+/* 日本語の文字の対応表（cMap）と文字の形。cdnjs は置いていないので同じ版を jsDelivr から読む。無いと、画像でない日本語の文字が空白になる（2026-11-05 運用テスト No.13） */
+const PDF_OPTS = { cMapUrl: 'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/cmaps/', cMapPacked: true, standardFontDataUrl: 'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/standard_fonts/' };
 let VW = null, pdfjsP = null, pdfRepaintTimer = null;
 const isOffline = () => navigator.onLine === false || !!window.portalTestOffline;
 function xView(it) {
@@ -1213,7 +1249,7 @@ function viewerDoc(it) {
   body.innerHTML = '<div class="fv-msg">資料を読み込んでいます…</div>';
   const cur = VW;
   fetch(it.url).then(r => { if (!r.ok) throw new Error('資料を開けませんでした。'); return r.arrayBuffer(); })
-    .then(buf => loadPdfJs().then(lib => lib.getDocument({ data: new Uint8Array(buf) }).promise))
+    .then(buf => loadPdfJs().then(lib => lib.getDocument({ data: new Uint8Array(buf), ...PDF_OPTS }).promise))
     .then(pdf => { if (VW !== cur) { pdf.destroy(); return; } VW.pdf = pdf; pdfDraw(); })
     .catch(e => {
       if (VW !== cur) return;
@@ -1342,7 +1378,7 @@ function xPick(title, allowTop, allowNew) {
     const end = v => { o.remove(); done(v); };
     o.querySelectorAll('[data-p]').forEach(b => { b.onclick = () => end(b.dataset.p); });
     if (o.querySelector('[data-n]')) o.querySelector('[data-n]').onclick = async () => {
-      const name = (prompt('新しいフォルダ名を入力してください（' + xLabel(X.kind) + 'TOPの中に作ります）:') || '').trim();
+      const name = ((await uiPrompt('新しいフォルダ名を入力してください（' + xLabel(X.kind) + 'TOPの中に作ります）:')) || '').trim();
       if (name) end(xNewFolder(name, '')); else end(null);
     };
     o.querySelector('[data-x]').onclick = () => end(null);
@@ -1366,18 +1402,18 @@ async function xMove(ids) {
   xBatch(ids.map(id => ['files', id]), { folder: to });
   X.sel.clear(); X.selMode = false; xBulk();
 }
-function xEdit(it) {
-  const name = prompt('名前を入力してください:', it.name);
+async function xEdit(it) {
+  const name = await uiPrompt('名前を入力してください:', it.name);
   if (name === null || !name.trim()) return;
   const data = { name: name.trim() };
-  if (it.kind === 'photo') { const c = prompt('コメントを入力してください:', it.comment || ''); if (c !== null) data.comment = c; }
+  if (it.kind === 'photo') { const c = await uiPrompt('コメントを入力してください:', it.comment || ''); if (c !== null) data.comment = c; }
   fire(updateDoc(doc(xSub('files'), it.id), data), data.name);
 }
-function xRemove(ids) {
+async function xRemove(ids) {
   if (!ids.length) return;
   const list = xFiles().filter(f => ids.includes(f.id));
-  if (list.some(f => !xMayRemove(f))) { alert('削除できるのは、マスター・現場管理者、または自分が追加したものだけです。'); return; }
-  if (!confirm(list.length + '件を削除します。よろしいですか？')) return;
+  if (list.some(f => !xMayRemove(f))) { uiAlert('削除できるのは、マスター・現場管理者、または自分が追加したものだけです。'); return; }
+  if (!await uiConfirm(list.length + '件を削除します。よろしいですか？', '削除')) return;
   xBatch(ids.map(id => ['files', id]), { deleted: true });
   X.sel.clear(); X.selMode = false; xBulk();
 }
@@ -1407,7 +1443,7 @@ const UP_MAX = 200 * 1024 * 1024;   // 1つ200MBまで（ユーザー決定 2026
 async function xUpload(kind, folder, files, quiet) {
   let lastId = '', names = [];
   const over = [...files].filter(f => f.size > UP_MAX);
-  if (over.length) alert('1つ200MBを超えるファイルは追加できません：\n' + over.map(f => '・' + f.name + '（' + Math.round(f.size / 1048576) + 'MB）').join('\n'));
+  if (over.length) uiAlert('1つ200MBを超えるファイルは追加できません：\n' + over.map(f => '・' + f.name + '（' + Math.round(f.size / 1048576) + 'MB）').join('\n'));
   for (const file of [...files].filter(f => f.size <= UP_MAX)) {
     const p = await xPrepare(file, kind);
     const ref = doc(xSub('files')), siteId = X.s.id;
@@ -1554,7 +1590,7 @@ function showSiteForm(s) {
     }
   };
   if ($('delSite')) $('delSite').onclick = async () => {
-    if (!confirm('「' + s.siteName + '」を削除します。よろしいですか？')) return;
+    if (!await uiConfirm('「' + s.siteName + '」を削除します。よろしいですか？', '削除')) return;
     // 削除した現場は、サーバー（gas の archiveSites）が10分ごとにドライブへ全部写し、ポータルからは何も残さず消す（大きいファイルも分けて写す。2026-11-03）
     const b = writeBatch(db), { id, ...rest } = s;
     b.set(doc(db, 'endedSites', s.id), { ...rest, endedAt: Date.now(), endedBy: me.uid });
@@ -1708,9 +1744,10 @@ function oHost(s, k) {
         }
       }
     },
+    // フォルダの一覧は、3秒で返事がなければ端末の控えから読む（返事をしないまま止まることがあった。2026-11-05 運用テスト No.11）
     async getDenpyoFolders() {
       if (isOffline()) throw new Error('工場へ提出は、電波のある所で行ってください。入力した内容は保存されています。');
-      const fs = (await getDocs(col('folders'))).docs.map(d => ({ id: d.id, ...d.data() })).filter(f => f.kind === 'doc' && !f.deleted);
+      const fc = col('folders'), fs = (await oRead(() => getDocs(fc), () => getDocsFromCache(fc))).docs.map(d => ({ id: d.id, ...d.data() })).filter(f => f.kind === 'doc' && !f.deleted);
       const pathOf = f => { const p = [f.name]; let c = f; while (c.parent && (c = fs.find(x => x.id === c.parent))) p.unshift(c.name); return p.join(' / '); };
       return { folders: fs.map(f => ({ id: f.id, path: pathOf(f) })).sort((a, b) => a.path.localeCompare(b.path, 'ja')), rootName: '資料' };
     },
@@ -1764,7 +1801,7 @@ function oHost(s, k) {
     async ['save' + K.fn + 'Pdf'](site, dir, newName, b64, fileName, replaceId, rev, no) {
       if (isOffline()) throw new Error('工場へ提出は、電波のある所で行ってください。');
       let fid = dir, folder = '';
-      const fs = (await getDocs(col('folders'))).docs.map(d => ({ id: d.id, ...d.data() })).filter(f => f.kind === 'doc' && !f.deleted);
+      const fc = col('folders'), fs = (await oRead(() => getDocs(fc), () => getDocsFromCache(fc))).docs.map(d => ({ id: d.id, ...d.data() })).filter(f => f.kind === 'doc' && !f.deleted);
       if (newName) {
         const hit = fs.find(f => !f.parent && f.name === newName);
         if (hit) fid = hit.id;
@@ -1798,8 +1835,8 @@ function oHost(s, k) {
       if (!fns[fn]) throw new Error('この操作はまだ使えません（' + fn + '）。');
       return fns[fn](...(args || []));
     })().catch(e => { throw e && e.conflict ? e : { message: e && e.code === 'permission-denied' ? '権限がありません。' : (e && e.message) || String(e) }; }),
-    confirm: msg => Promise.resolve(window.confirm(msg)),
-    pdfjs: loadPdfJs,
+    confirm: msg => uiConfirm(msg),
+    pdfjs: loadPdfJs, pdfOpts: PDF_OPTS,
     close: oClose
   };
 }
@@ -1948,8 +1985,8 @@ function dOpen() {
   $('dSite').onkeydown = e => { if (e.key === 'Enter') { e.preventDefault(); dAddSite(); } };
   $('dSite').onchange = () => { const v = $('dSite').value.trim(); if (v && allSites.some(s => s.siteName === v)) dAddSite(); };
   $('dSave').onclick = dSave;
-  $('dDel').onclick = () => {
-    if (!confirm('この日の日報を削除しますか？')) return;
+  $('dDel').onclick = async () => {
+    if (!await uiConfirm('この日の日報を削除しますか？', '削除')) return;
     const e = D.entries[D.sel];
     if (e && e.kubun === '有給' && e.leave === '申請中') fire(deleteDoc(doc(db, 'leaveReqs', D.uid + '_' + dsId(D.sel))), '有給の取り下げ');
     dailyPush(fire(setDoc(doc(dCol(), dsId(D.sel)), { date: D.sel, deleted: true, at: Date.now(), by: D.uid }), '日報の削除'), D.uid);
@@ -2342,7 +2379,7 @@ function hCmDraw(id, root) {
   box.querySelector('button').onclick = () => {
     const text = ta.value.trim();
     if (!text) return;
-    if (text.length > 1000) { alert('コメントは1000文字以内で入力してください。'); return; }
+    if (text.length > 1000) { uiAlert('コメントは1000文字以内で入力してください。'); return; }
     fire(setDoc(doc(collection(db, 'health', id, 'comments')), { text, by: me.uid, byName: me.name || me.uid, at: Date.now() }), 'コメント');
     ta.value = '';
     const r = H.list.concat(H.team).find(x => x.id === id);
@@ -2360,7 +2397,7 @@ function hSave() {
   if (!v('hS1') || !v('hD1')) miss.push('血圧（上・下）');
   H_Q.forEach(q => { f[q.k] = q.summer && !summer ? '' : (H.ans[q.k] || ''); if (!f[q.k] && !(q.summer && !summer)) miss.push(q.label); });
   if (!H.sym.length) miss.push('気になる症状');
-  if (miss.length) { alert('まだ入力していない項目があります：' + miss.join('、')); return; }
+  if (miss.length) { uiAlert('まだ入力していない項目があります：' + miss.join('、')); return; }
   const num = (id, lo, hi, label) => { const s = v(id); if (!s) return ''; const x = Number(s); if (!(x % 1 === 0 && x >= lo && x <= hi)) throw new Error(label + 'の数字を確認してください（' + lo + '〜' + hi + '）。'); return x; };
   try {
     Object.assign(f, { sys1: num('hS1', 60, 260, '血圧（上）'), dia1: num('hD1', 30, 180, '血圧（下）'), pulse1: num('hP1', 30, 220, '脈拍'), sys2: H.second ? num('hS2', 60, 260, '2回目の血圧（上）') : '', dia2: H.second ? num('hD2', 30, 180, '2回目の血圧（下）') : '', pulse2: H.second ? num('hP2', 30, 220, '2回目の脈拍') : '' });
@@ -2368,7 +2405,7 @@ function hSave() {
     if ((f.sys2 === '') !== (f.dia2 === '')) throw new Error('2回目の血圧は、上と下の両方を入力してください。');
     if (f.sys2 !== '' && f.dia2 >= f.sys2) throw new Error('2回目の血圧の上と下が逆になっていないか確認してください。');
     if (f.sys2 === '' && f.pulse2 !== '') throw new Error('2回目の脈拍だけを入力することはできません。');
-  } catch (e) { alert(e.message); return; }
+  } catch (e) { uiAlert(e.message); return; }
   const avg = l => { const a = l.filter(x => x !== ''); return a.length ? Math.round(a.reduce((s, x) => s + x, 0) / a.length) : ''; };
   f.sys = avg([f.sys1, f.sys2]); f.dia = avg([f.dia1, f.dia2]); f.pulse = avg([f.pulse1, f.pulse2]);
   const j = hJudge(f, summer), prev = hTodayRec(), id = hId(today, me.uid);
@@ -2440,7 +2477,7 @@ function hTeamDraw() {
     try {
       const s = await getDocs(me.isMaster ? query(c, where('uid', '==', u)) : query(c, where('uid', '==', u), where('viewers', 'array-contains', me.uid)));
       H.person[u] = { list: s.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => a.date < b.date ? 1 : -1).slice(0, 30) };
-    } catch (e) { H.person[u] = null; alert('読み込めませんでした。'); }
+    } catch (e) { H.person[u] = null; uiAlert('読み込めませんでした。'); }
     hTeamDraw();
   }; });
   hCmWire(box);
@@ -2622,7 +2659,7 @@ async function bugList(view) {
         const d = await fetch(PORTAL_API, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ fn: 'bug', idToken, data: { id: b.dataset.bd } }) }).then(r => r.json());
         if (!d || !d.ok) throw new Error((d && d.m) || 'サーバーでエラーが発生しました。');
         bugList(view);
-      } catch (e) { b.disabled = false; b.textContent = '対応済みにする（ドライブへ記録して消す）'; alert('記録できませんでした：' + e.message); }
+      } catch (e) { b.disabled = false; b.textContent = '対応済みにする（ドライブへ記録して消す）'; uiAlert('記録できませんでした：' + e.message); }
     };
   });
   P.querySelectorAll('[data-bimg]').forEach(async h => {
@@ -2827,7 +2864,7 @@ $('btnFooterNotices').onclick = () => {
   $('panelNotices').querySelectorAll('[data-s]').forEach(b => { b.onclick = () => { if (b.dataset.s === 'date' && nSort === 'date') nAsc = !nAsc; nSort = b.dataset.s; nLimit = 30; nRender(); }; });
   $('nActor').onchange = () => { nActor = $('nActor').value; nLimit = 30; nRender(); };
   $('nAll').onclick = () => {
-    if (!nMine().some(it => !nIsRead(it))) { alert('未読のお知らせはありません。'); return; }
+    if (!nMine().some(it => !nIsRead(it))) { uiAlert('未読のお知らせはありません。'); return; }
     nReads = { all: Date.now(), ids: {} }; nSave(); nDraw();
   };
   nRender();
@@ -2976,7 +3013,7 @@ async function showUser(uid, note) {
       catch (e) { $('err').textContent = e.message; }
     };
     if ($('del')) $('del').onclick = async () => {
-      if (!confirm((d.name || uid) + ' を削除します。よろしいですか？')) return;
+      if (!await uiConfirm((d.name || uid) + ' を削除します。よろしいですか？', '削除')) return;
       $('err').textContent = '削除しています…';
       try {
         await admin('delete', { email: uid });

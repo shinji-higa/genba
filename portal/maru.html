@@ -1477,7 +1477,8 @@
       openSheet('pdfBg');
       SRV.dirty = true;
       // 保存とフォルダ一覧は同時に頼む（順番に待つと倍かかる。2026-10-30）
-      Promise.all([hostSaveNow().catch(noop), HOST.call('getDenpyoFolders', [HOST.site])]).then(function (a) {
+      // 返事が来ないまま止まらないよう、20秒で「やり直してください」を出す（2026-11-05 運用テスト No.11）
+      Promise.race([Promise.all([hostSaveNow().catch(noop), HOST.call('getDenpyoFolders', [HOST.site])]), new Promise(function (_, ng) { setTimeout(function () { ng({ message: '時間がかかりすぎています。電波を確かめて、もう一度「工場へ提出」を押してください。直らないときはページを開き直してください。' }); }, 20000); })]).then(function (a) {
         var r = a[1];
         var fs = r.folders || [], pick = fs.filter(function (f) { return f.id === S.pdfFolderId; })[0] || fs.filter(function (f) { return f.path === '丸ダクト注文書'; })[0];
         body.innerHTML =

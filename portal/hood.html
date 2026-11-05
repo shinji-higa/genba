@@ -849,7 +849,7 @@
       el.innerHTML = S.items.map(function (it, i) {
         var d = dims(it), bad = itemErrors(it).length;
         return '<div class="item' + (bad ? ' bad' : '') + '" onclick="openEdit(' + i + ')"><div class="item-ic">' + hoodSvg(it, 'thumb') + '</div><div class="item-b"><div class="item-t">' + circled(i + 1) + ' ' + esc(SHAPES[it.shape]) + (isDouble(it) ? '（' + menOf(it) + '）' : '') + '　' + esc(fmtN(num(it.L))) + '×' + esc(fmtN(num(it.W))) + '×' + esc(fmtN(num(it.H))) + (it.shape === 'HW' && menOf(it) === '4面体' && num(it.h) ? '（h' + esc(fmtN(num(it.h))) + '）' : '') + (splitList(it).length ? '　' + (splitList(it).length + 1) + '分割' : '') + '</div>' +
-          '<div class="item-s">' + esc(opsLine(it.ops, it) || '開口なし') + '<br>' + esc(it.mat) + ' ' + esc(it.fin) + '<br>' +
+          '<div class="item-s">' + esc(opsLine(it.ops, it) || (opHalf(it) ? '⚠ 開口の大きさが未入力' : '開口なし')) + '<br>' + esc(it.mat) + ' ' + esc(it.fin) + '<br>' +
           hangWord(it) + ' ' + (d.G ? esc(holeSum(it)) + (hkText(it) ? '　' + esc(hkText(it)) : '') : '未入力') + '<br>' +
           'フィルター ' + esc(mdlLine(mdlActive(it, 'gf')) || 'なし') + '<br>防火シャッター ' + esc(mdlLine(mdlActive(it, 'fd')) || 'なし') + (bad ? '<br><span style="color:#b3261e;font-weight:700;">⚠ 確認が必要です</span>' : '') + '</div></div>' +
           '<div class="item-q">' + esc(it.qty) + '台</div></div>';
@@ -876,7 +876,9 @@
     }
     function pickType(k) { closeSheet('pickerBg'); var it = blankItem(), last = S.items[S.items.length - 1]; it.shape = k; if (last) { it.mat = last.mat; it.fin = last.fin; } S.items.push(it); changed(); openEdit(S.items.length - 1); }
     function openEdit(i) { if (revLocked()) { lockedToast(); return; } ED = i; renderEdit(); openSheet('edBg'); }
-    function decideEdit() { var it = S.items[ED]; var m = it && tenOver(it); if (m) { toast(m); var eb = document.getElementById('edErr'); if (eb) eb.scrollIntoView({ block: 'nearest' }); return; } closeEdit(); }   // 天板のおまかせがはみ出すときは決定できない（ユーザー指示 2026-11-03）
+    // 大きさを途中までしか入れていない開口・短管があるときは決定しない（黙って「開口なし」になっていた。2026-11-05 運用テスト No.17）
+    function opHalf(it) { var bad = []; opsOf(it).forEach(function (o, i) { if (!opSized(o) && (num(o.a) || num(o.b))) bad.push((isTube(o) ? '短管' : '開口') + (i + 1)); }); return bad.length ? bad.join('・') + 'の大きさ（横・縦）を全部入れてください' : ''; }
+    function decideEdit() { var it = S.items[ED]; var m = it && (opHalf(it) || tenOver(it)); if (m) { toast(m); var eb = document.getElementById('edErr'); if (eb) eb.scrollIntoView({ block: 'nearest' }); return; } closeEdit(); }   // 天板のおまかせがはみ出すときは決定できない（ユーザー指示 2026-11-03）
     /* フードを上から見て右へ90°回す。平面の点（左から x・手前から y）は（y, L−x）へ。L と W、E と F、開口・吊り穴の位置、面の向きもいっしょに回す。分割は向きが変わるので消す */
     var ROT_FACE = { '正面': '左側面', '右側面': '正面', '背面': '右側面', '左側面': '背面' };
     function edRot() {
@@ -1365,7 +1367,8 @@
       body.innerHTML = '<div class="empty">保存先のフォルダを読み込んでいます…</div>';
       openSheet('pdfBg');
       SRV.dirty = true;
-      Promise.all([hostSaveNow().catch(noop), HOST.call('getDenpyoFolders', [HOST.site])]).then(function (a) {
+      // 返事が来ないまま止まらないよう、20秒で「やり直してください」を出す（2026-11-05 運用テスト No.11）
+      Promise.race([Promise.all([hostSaveNow().catch(noop), HOST.call('getDenpyoFolders', [HOST.site])]), new Promise(function (_, ng) { setTimeout(function () { ng({ message: '時間がかかりすぎています。電波を確かめて、もう一度「工場へ提出」を押してください。直らないときはページを開き直してください。' }); }, 20000); })]).then(function (a) {
         var r = a[1];
         var fs = r.folders || [], pick = fs.filter(function (f) { return f.id === S.pdfFolderId; })[0] || fs.filter(function (f) { return f.path === 'フード注文書'; })[0];
         body.innerHTML =
