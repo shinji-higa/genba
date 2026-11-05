@@ -142,7 +142,7 @@ storage.maxUploadRetryTime = 60000;   // 電波が切れたら1分で一度あ�
 const auth = getAuth(app);
 auth.languageCode = 'ja';   // パスワード再設定のメールと画面を日本語にする
 const db = initializeFirestore(app, { localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }) });
-const APP_VER = 'Ver.20261105-04';
+const APP_VER = 'Ver.20261105-05';
 
 /* ---------- 電波なしでも使う（今の現場管理と同じ考え方） ----------
    ・保存は押した瞬間に完了の形。電波が戻ったら自動で送る（データは Firestore が端末に貯める）
@@ -2343,7 +2343,7 @@ async function hGraphLoad(uid) {
   catch (e) { if (!shown) $('hGBox').innerHTML = banner('読み込めませんでした：' + ((e && e.message) || ''), true); }
 }
 /* 点は日付の間隔どおりに並べ、途中の日付も目盛りに出す。点を押すと、その日の数字を下に出す（2026-11-05 運用テスト No.19） */
-let hGList = [];
+let hGList = [], hGXs = [];
 const hGDay = ds => { const p = String(ds).split('/').map(Number); return new Date(p[0], (p[1] || 1) - 1, p[2] || 1).getTime(); };
 function hGraphSvg(list) {
   if (!list.length) return '<div style="text-align:center; color:var(--muted);">まだ記録がありません。</div>';
@@ -2357,19 +2357,25 @@ function hGraphSvg(list) {
   const ticks = span >= 4 * DAY ? [0, 1, 2, 3, 4].map(k => t0 + span * k / 4) : span ? [t0, t1] : [t0];
   const days = ticks.map((t, k) => { const px = L + (span ? (t - t0) / span * (W - L - R) : (W - L - R) / 2), an = ticks.length > 1 && k === 0 ? 'start' : ticks.length > 1 && k === ticks.length - 1 ? 'end' : 'middle';
     return '<line x1="' + px.toFixed(1) + '" x2="' + px.toFixed(1) + '" y1="' + (H_ - B) + '" y2="' + (H_ - B + 5) + '" stroke="#555" stroke-width="1"/><text x="' + px.toFixed(1) + '" y="' + (H_ - 14) + '" text-anchor="' + an + '" font-size="12" fill="#333">' + esc(md(t)) + '</text>'; }).join('');
-  // 押しやすいよう、点ごとに縦長の見えない当たりを置く
-  const hit = list.map((r, i) => { const px = x(i), w = Math.max(14, Math.min(40, list.length > 1 ? (W - L - R) / list.length : 40)); return '<rect data-hi="' + i + '" x="' + (px - w / 2).toFixed(1) + '" y="' + T + '" width="' + w.toFixed(1) + '" height="' + (H_ - T - B) + '" fill="transparent" style="cursor:pointer;"><title>' + esc(String(r.date).slice(5) + '　' + hBp(r)) + '</title></rect>'; }).join('');
+  // グラフのどこを押しても、押した所にいちばん近い日の点を選ぶ（日付の近い点どうしでも選び分けられる）
+  hGXs = list.map((r, i) => x(i));
+  const hit = '<rect x="' + (L - 10) + '" y="' + T + '" width="' + (W - L - R + 20) + '" height="' + (H_ - T - B) + '" fill="transparent" style="cursor:pointer;"/>';
   const key = (c, t, dash) => '<span style="display:inline-flex; align-items:center; gap:4px; margin-right:12px;"><svg width="26" height="8"><line x1="0" x2="26" y1="4" y2="4" stroke="' + c + '" stroke-width="2.5"' + (dash ? ' stroke-dasharray="6 4"' : '') + '/></svg>' + t + '</span>';
   const last = list[list.length - 1];
   return '<div style="font-size:0.85rem; margin-bottom:6px;">' + key('#111', '血圧（上）') + key('#666', '血圧（下）') + key('#333', '脈拍', true) + '</div><svg viewBox="0 0 ' + W + ' ' + H_ + '" style="width:100%; height:auto; display:block;" role="img" aria-label="血圧と脈拍のグラフ" onclick="hGPick(event)">' + grid + line('sys', '#111') + line('dia', '#666') + line('pulse', '#333', true) + days + '<g id="hGMark"></g>' + hit + '</svg>' +
     '<div id="hGInfo" style="min-height:1.6em; margin-top:6px; font-weight:700; font-size:0.95rem;">点を押すと、その日の数字が出ます。</div><div class="set-note">記録 ' + list.length + '日分　最新：' + esc(hBp(last)) + '</div>';
 }
 window.hGPick = e => {
-  const t = e.target.closest && e.target.closest('[data-hi]'), r = t && hGList[Number(t.dataset.hi)];
-  if (!r || !$('hGInfo')) return;
+  const svg = e.currentTarget, ctm = svg && svg.getScreenCTM && svg.getScreenCTM();
+  if (!ctm || !hGXs.length || !$('hGInfo')) return;
+  const p = svg.createSVGPoint(); p.x = e.clientX; p.y = e.clientY;
+  const sx = p.matrixTransform(ctm.inverse()).x;
+  let bi = 0; hGXs.forEach((v, i) => { if (Math.abs(v - sx) < Math.abs(hGXs[bi] - sx)) bi = i; });
+  const r = hGList[bi];
+  if (!r) return;
   const d = String(r.date).split('/').map(Number), dow = DOW[new Date(d[0], d[1] - 1, d[2]).getDay()];
   $('hGInfo').textContent = d[0] + '/' + d[1] + '/' + d[2] + '（' + dow + '）　血圧 ' + hBp(r);
-  const m = $('hGMark'), xx = Number(t.getAttribute('x')) + Number(t.getAttribute('width')) / 2;
+  const m = $('hGMark'), xx = hGXs[bi];
   if (m) m.innerHTML = '<line x1="' + xx.toFixed(1) + '" x2="' + xx.toFixed(1) + '" y1="12" y2="260" stroke="#111" stroke-width="1" stroke-dasharray="3 3"/>';
 };
 function hRender() {
