@@ -122,7 +122,7 @@
 <script type="module">
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
-import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager, collection, query, where, doc, getDoc, getDocs, getDocFromCache, getDocsFromCache, setDoc, updateDoc, writeBatch, onSnapshot, disableNetwork, enableNetwork, deleteDoc, deleteField, orderBy, limit, waitForPendingWrites, runTransaction } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
+import { initializeFirestore, persistentLocalCache, persistentSingleTabManager, collection, query, where, doc, getDoc, getDocs, getDocFromCache, getDocsFromCache, setDoc, updateDoc, writeBatch, onSnapshot, disableNetwork, enableNetwork, deleteDoc, deleteField, orderBy, limit, waitForPendingWrites, runTransaction } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
 import { getStorage, ref as stRef, uploadBytesResumable, getDownloadURL } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-storage.js';
 
@@ -141,11 +141,10 @@ const storage = getStorage(app);
 storage.maxUploadRetryTime = 60000;   // 電波が切れたら1分で一度あきらめ、端末に貯めたまま後で送り直す
 const auth = getAuth(app);
 auth.languageCode = 'ja';   // パスワード再設定のメールと画面を日本語にする
-// 確認用のスイッチ（2026-11-05）：端末に portalNet=lp を入れると、サーバーとのやりとりを細かく分けて受け取る形（ロングポーリング）にする。
-// 最新が届くまで20〜30秒かかることがあり、つながり方のせいかを比べるため。ふだんの人には関係しない
-const portalNet = (() => { try { return localStorage.getItem('portalNet') || ''; } catch (e) { return ''; } })();
-const db = initializeFirestore(app, Object.assign({ localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }) }, portalNet === 'lp' ? { experimentalForceLongPolling: true } : {}));
-const APP_VER = 'Ver.20261105-06';
+// 端末の控え（電波なしでも見られる）は1つのタブだけが持つ。2つ目からのタブは、開いている間だけの控えでサーバーと直接やりとりする。
+// 前は全部のタブで控えを分け合っていて、サーバーとやりとりするタブが裏にあると、ほかのタブに最新が届くまで約28秒待っていた（2026-11-05 確認）
+const db = initializeFirestore(app, { localCache: persistentLocalCache({ tabManager: persistentSingleTabManager() }) });
+const APP_VER = 'Ver.20261105-07';
 
 /* ---------- 電波なしでも使う（今の現場管理と同じ考え方） ----------
    ・保存は押した瞬間に完了の形。電波が戻ったら自動で送る（データは Firestore が端末に貯める）
