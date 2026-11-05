@@ -121,6 +121,9 @@
     const dedTotal = d.health + d.pension + d.emp + d.tax + d.resident + d.yearEnd + d.otherDed;
     if (base <= 0) warns.push('基本給が入っていません');
     if (ins && !std) warns.push('標準報酬月額が入っていません');
+    // 料率の表にその月の行がないと、保険料が黙って0円になっていた（2026-11-05 運用テスト：3月分は保険の月が2月で、表は3月から）。確定を止める
+    if (ins && !(Number(r.health) > 0 && Number(r.pension) > 0)) warns.push('保険の月（' + insYm.slice(0, 4) + '年' + Number(insYm.slice(5)) + '月）の健康保険・厚生年金の料率が、設定の料率の表にありません');
+    if (emp2 && !(Number(rateAt(cfg.rates, ym).emp) > 0)) warns.push('給与の月（' + ym.slice(0, 4) + '年' + Number(ym.slice(5)) + '月）の雇用保険の料率が、設定の料率の表にありません');
     // notes は知らせるだけ（warns と違って確定は止めない）
     const notes = over60 > 0 ? ['時間外が月60時間を超えています（' + h60 + '時間、超えた分 ' + over60 + '時間）。超えた平日の ' + w60 + '時間に割増を足しました。'] : [];
     hr.notes.forEach(x => notes.push(x));
