@@ -19,13 +19,15 @@ async function shell(req, ev) {
   const c = await caches.open(SHELL);
   const path = new URL(req.url).pathname, page = /\/portal\/(index\.html)?$/.test(path), key = page ? './' : path;
   const hit = await c.match(key, { ignoreSearch: true });
+  // 控えは画面へ渡すと中身を読めなくなるので、版番号を比べる分を先に写しておく（写さないと比べるところで止まり、新しい版が端末に入らなかった。2026-11-05）
+  const hitCopy = hit && page ? hit.clone() : null;
   // 配信元（GitHub）の中継が最大10分ほど古い版を返すので、毎回ちがう印（?sw=）を付けて最新を受け取る（2026-11-05）
   const fresh = new URL(page ? './' : req.url, self.location.href); fresh.searchParams.set('sw', Date.now());
   const net = fetch(fresh.href, { cache: 'no-store' }).then(async r => {
     if (r.ok) {
       // 新しい版かどうかは中身の版番号（APP_VER）で比べる。配信元によって日付・目印（ETag）が変わり、同じ中身でも知らせていた（2026-11-05）
       const ver = t => ((t || '').match(/APP_VER = '([^']+)'/) || [])[1] || '';
-      const old = hit && page ? ver(await hit.clone().text()) : '', now = page ? ver(await r.clone().text()) : '';
+      const old = hitCopy ? ver(await hitCopy.text()) : '', now = page ? ver(await r.clone().text()) : '';
       await c.put(key, r.clone());
       if (hit && old && now && old !== now && req.mode === 'navigate') {
         (await self.clients.matchAll({ type: 'window' })).forEach(w => w.postMessage({ type: 'portal-update' }));
