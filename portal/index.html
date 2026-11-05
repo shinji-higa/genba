@@ -144,7 +144,7 @@ auth.languageCode = 'ja';   // パスワード再設定のメールと画面を�
 // 端末の控え（電波なしでも見られる）は1つのタブだけが持つ。2つ目からのタブは、開いている間だけの控えでサーバーと直接やりとりする。
 // 前は全部のタブで控えを分け合っていて、サーバーとやりとりするタブが裏にあると、ほかのタブに最新が届くまで約28秒待っていた（2026-11-05 確認）
 const db = initializeFirestore(app, { localCache: persistentLocalCache({ tabManager: persistentSingleTabManager() }) });
-const APP_VER = 'Ver.20261105-17';
+const APP_VER = 'Ver.20261105-18';
 
 /* ---------- 電波なしでも使う（今の現場管理と同じ考え方） ----------
    ・保存は押した瞬間に完了の形。電波が戻ったら自動で送る（データは Firestore が端末に貯める）
@@ -3080,16 +3080,20 @@ function showAddUser() {
     '<div class="form-group"><label>名前</label><input type="text" id="n"></div>' +
     '<div class="form-group"><label>アカウントID（ログインIDになります）</label><input type="text" id="e" inputmode="email"></div>' +
     '<div class="form-group"><label>最初のパスワード（6文字以上）</label><input type="text" id="p" autocomplete="off"></div>' +
+    // 会社（グループ）は必ず選ぶ。空欄のまま作るとエクスケアの人として扱われ、協力会社の人がエクスケア全員に見えてしまうため（2026-11-05 ユーザー指示 案A）
+    '<div class="form-group"><label>会社（グループ） <span class="req">*</span></label><select id="g">' + ['', 'エクスケア社員', 'エクスケア', 'マルトク', 'NAFA'].map(g => '<option value="' + g + '">' + (g || '選んでください') + '</option>').join('') + '</select></div>' +
     '<label class="check-row"><input id="m" type="checkbox">マスターにする</label>' +
     '<button type="button" id="save" class="btn btn-dark" style="margin-top: 14px;">追加する</button><div id="err" style="margin-top: 8px; font-size:0.85rem;"></div></div>';
   $('save').onclick = async () => {
     const email = $('e').value.trim().toLowerCase(), name = $('n').value.trim();
+    const g = $('g').value;
     if (!name || !email) { $('err').textContent = '名前とアカウントIDを入れてください。'; return; }
+    if (!g) { $('err').textContent = '会社（グループ）を選んでください。'; return; }
     $('save').disabled = true; $('err').textContent = '追加しています…';
     try {
       await admin('create', { email, password: $('p').value });
       // ログインはできたあとで人の情報の保存に失敗したときは、もう一度押せば続きから入る（サーバー側で同じメールを受け付ける。2026-11-04 不具合）
-      try { await setDoc(doc(db, 'users', email), { name, isMaster: $('m').checked, group: '', home: 'エクスケア' }); }
+      try { await setDoc(doc(db, 'users', email), { name, isMaster: $('m').checked, group: g, home: (g === 'マルトク' || g === 'NAFA') ? g : 'エクスケア' }); }
       catch (e2) { throw new Error('ログインは作れましたが、人の情報を保存できませんでした（' + (e2.message || e2) + '）。もう一度「追加する」を押してください。'); }
       showUser(email, '追加しました。担当現場を選んで保存してください。');
     } catch (e) { $('save').disabled = false; $('err').textContent = e.message; }
