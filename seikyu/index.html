@@ -101,11 +101,13 @@
   .stk.k, .stkbox.k { background: #fbdcec; border-color: #d4508f; color: #5e1438; }
   /* 承認の欄 */
   .apv { display: flex; gap: 0; }
-  .apv .bx { border: 1.5px solid var(--ink); width: 130px; text-align: center; background: #fff; }
+  .apv .bx { border: 1.5px solid var(--ink); width: 130px; text-align: center; background: #fff; display: flex; flex-direction: column; }
   .apv .bx + .bx { border-left: 0; }
   .apv .bx .h { background: var(--accent2); border-bottom: 1.5px solid var(--ink); font-weight: 700; padding: 2px 0; }
-  .apv .bx .s { height: 74px; display: flex; align-items: center; justify-content: center; flex-direction: column; font-size: .84rem; }
-  .apv .bx .s img { height: 52px; }
+  .apv .bx .s { flex: 1; min-height: 104px; padding: 6px 4px; box-sizing: border-box; display: flex; align-items: center; justify-content: flex-start; flex-direction: column; gap: 3px; font-size: .84rem; }   /* 印・日付・ボタンが欄からはみ出さないように（2026-11-06） */
+  .apv .bx .s img { width: 54px; height: 54px; object-fit: contain; display: block; margin-top: 2px; }
+  .apv .bx .s > .note:only-child { margin: auto 0; }   /* 印がない欄の名前は真ん中 */
+  .apv .bx .s img.higa { width: 44px; height: 54px; }   /* 比嘉の印は紙と同じく代表者印より小さく */
   .ltl { font-size: .88rem; font-weight: 700; color: var(--sub); }
   .ltl select { margin-left: 4px; }
   table.ed td { vertical-align: top; }
@@ -125,12 +127,12 @@
 <main id="m"></main>
 <div id="busy"></div>
 
-<script src="calc.js?v=Ver.請求20261106-15"></script>
+<script src="calc.js?v=Ver.請求20261106-16"></script>
 <script type="module">
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
 import { getFirestore, collection, doc, getDoc, getDocs, setDoc, deleteDoc, writeBatch, runTransaction } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
-const APP_VER = 'Ver.請求20261106-15';   // 版の名前は「Ver.請求YYYYMMDD-NN」（ユーザー指示 2026-11-06）
+const APP_VER = 'Ver.請求20261106-16';   // 版の名前は「Ver.請求YYYYMMDD-NN」（ユーザー指示 2026-11-06）
 const API = 'https://script.google.com/macros/s/AKfycbzpJgqJOqQz5180PQF2S3kVN7TWg0c1dnyUUUNuCZtzy5_pmKEhAkw5w3gqSj31EEA1/exec';   // Apps Script「請求管理」（ポータル・給与とは別）
 /* ログインは給与アプリと同じ（ユーザー指示 2026-11-05）：ポータルの Firebase、メールとパスワード。入れるのはマスターと「請求管理」の権限（users.canInvoice）がある人 */
 const app = initializeApp({ apiKey: 'AIzaSyDVR4p4DO4s9h70uPlXUVlhNcMP9-YkQ5Q', authDomain: 'genba-portal-9077b.firebaseapp.com', projectId: 'genba-portal-9077b' });
@@ -467,7 +469,7 @@ async function drawInvList() {
     (P.per === 'close' ? fySel('id="cm"', P.cm) : '') +
     (P.per === 'range' ? '<input type="date" id="rf1" value="' + esc(P.from || (y0 + '-01-01')) + '">〜<input type="date" id="rf2" value="' + esc(P.to || today()) + '"><button class="b sm" id="rgo">この期間で出す</button>' : '') +
     '<select id="fl"><option value="all">すべて</option><option value="open">入金がまだの物</option><option value="late">期日超え</option><option value="paid">入金済み</option><option value="apv">未承認の物</option><option value="cancel">取消</option></select>' +
-    '<input id="q" placeholder="さがす（番号・得意先・件名・付箋）" style="width:240px;" value="' + esc(ST.q) + '"><span class="sp"></span><button class="b dark" id="nw">＋ 新しい請求書</button></div>' +
+    '<input id="q" placeholder="さがす（番号・得意先・件名・金額・付箋）" style="width:240px;" value="' + esc(ST.q) + '"><span class="sp"></span><button class="b dark" id="nw">＋ 新しい請求書</button></div>' +
     '<div id="ltb"></div>' + (stkLegend() ? '<div style="margin-top:6px;font-size:.9rem;"><b style="margin-right:6px;">付箋の色</b>' + stkLegend() + '</div>' : '') + '<div class="note" style="margin-top:6px;">入金がまだの請求書は、期間に関係なく「入金」の画面にも出ます。行を押すと開きます。月ごとに区切って出します。</div></div><div class="card" id="lst">読み込んでいます…</div>';
   $('fl').value = ST.filt;
   $('yr').onchange = () => { P.per = $('yr').value; if (/^\d{4}$/.test(P.per)) ST.year = P.per; drawInvList(); };
@@ -490,7 +492,9 @@ async function drawInvList() {
       if (ST.filt === 'paid' && x.st !== '入金済み') return false;
       if (ST.filt === 'cancel' && x.st !== '取消') return false;
       if (ST.filt === 'apv' && approved(x.i)) return false;
-      if (q && ![x.i.no, x.name, x.i.title, (x.i.to || {}).person, (stickyOf(x.i) || {}).t].join(' ').includes(q)) return false;
+      // 金額でも探せる（ユーザー指示 2026-11-06：電子帳簿保存法の「金額で探せる」。カンマ・円・¥はあってもなくてもよい。合計・税抜・消費税のどれかに入っていれば当たり）
+      const qn = q.replace(/[,，¥￥円\s]/g, ''), byAmt = /^\d+$/.test(qn) && [x.c.total, x.c.sub, x.c.tax].some(v => String(Math.round(Number(v) || 0)).includes(qn));
+      if (q && !byAmt && ![x.i.no, x.name, x.i.title, (x.i.to || {}).person, (stickyOf(x.i) || {}).t].join(' ').includes(q)) return false;
       return true;
     }));
     const sumOf = a => a.filter(x => x.st !== '取消').reduce((s, x) => s + x.c.total, 0);
@@ -556,7 +560,7 @@ function apvCard(inv) {
   const A = ST.cfg.approvers || [], ap = inv.approvals || {};
   return '<div class="card"><div class="row" style="align-items:flex-start;"><div><b>承認</b><div class="note" style="margin-top:4px;">' + (approved(inv) ? '<span class="tag ok">承認済み。印刷・PDFができます</span>' : '<span class="tag org">未承認：' + esc(apvLeft(inv).join('・')) + '</span><br>全部済むと印刷・PDFができます') + '</div></div><span class="sp"></span><div class="apv">' +
     A.map((a, k) => { const r = ap[k], img = r && ST.stamps[r.stamp || a.stamp], mine = a.uid && a.uid === ST.me.uid;
-      return '<div class="bx"><div class="h">' + esc(a.label || '承認') + '</div><div class="s">' + (r ? (img ? '<img src="' + img + '">' : '<b>' + esc(r.name) + '</b>') + '<span class="note">' + esc(String(r.at || '').slice(5, 16)) + '</span>' : '<span class="note">' + esc(a.name || '（人を決めていない）') + '</span>') +
+      return '<div class="bx"><div class="h">' + esc(a.label || '承認') + '</div><div class="s">' + (r ? (img ? '<img src="' + img + '"' + ((r.stamp || a.stamp) === 'higa' ? ' class="higa"' : '') + '>' : '<b>' + esc(r.name) + '</b>') + '<span class="note">' + esc(String(r.at || '').slice(5, 16)) + '</span>' : '<span class="note">' + esc(a.name || '（人を決めていない）') + '</span>') +
         (mine ? (r ? '<button class="b sm" data-apv="' + k + '" data-on="0">取り消す</button>' : '<button class="b sm dark" data-apv="' + k + '" data-on="1">承認する</button>') : '') + '</div></div>'; }).join('') + '</div></div></div>';
 }
 function drawInvEdit() {
