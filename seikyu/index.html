@@ -129,12 +129,12 @@
 <main id="m"></main>
 <div id="busy"></div>
 
-<script src="calc.js?v=Ver.請求20261106-27"></script>
+<script src="calc.js?v=Ver.請求20261106-28"></script>
 <script type="module">
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
 import { getFirestore, collection, doc, getDoc, getDocs, setDoc, deleteDoc, writeBatch, runTransaction } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
-const APP_VER = 'Ver.請求20261106-27';   // 版の名前は「Ver.請求YYYYMMDD-NN」（ユーザー指示 2026-11-06）
+const APP_VER = 'Ver.請求20261106-28';   // 版の名前は「Ver.請求YYYYMMDD-NN」（ユーザー指示 2026-11-06）
 const API = 'https://script.google.com/macros/s/AKfycbzpJgqJOqQz5180PQF2S3kVN7TWg0c1dnyUUUNuCZtzy5_pmKEhAkw5w3gqSj31EEA1/exec';   // Apps Script「請求管理」（ポータル・給与とは別）
 /* ログインは給与アプリと同じ（ユーザー指示 2026-11-05）：ポータルの Firebase、メールとパスワード。入れるのはマスターと「請求管理」の権限（users.canInvoice）がある人 */
 const app = initializeApp({ apiKey: 'AIzaSyDVR4p4DO4s9h70uPlXUVlhNcMP9-YkQ5Q', authDomain: 'genba-portal-9077b.firebaseapp.com', projectId: 'genba-portal-9077b' });
@@ -609,7 +609,7 @@ function drawInvEdit() {
       '<td>' + '<textarea data-f="memo" rows="' + Math.min(6, Math.max(1, Math.ceil(wlen(l.memo || '') / 12))) + '"' + (ro ? ' disabled' : '') + '>' + esc(l.memo || '') + '</textarea>' + '</td><td style="white-space:nowrap;">' + (ro ? '' : '<button class="b sm" data-a="up">↑</button><button class="b sm" data-a="dn">↓</button><button class="b sm danger" data-a="rm">×</button>') + '</td></tr>';
   const pays = inv.payments || [], paid = SK.paid(inv);
   M.innerHTML = '<div class="card"><div class="row"><button class="b" id="back">← 一覧へ</button><b style="font-size:1.1rem;">請求書 ' + esc(inv.no || '（新しい請求書・保存すると番号が付きます）') + '</b>' + stTag(st) + (inv.state === '取消' ? '' : '') + '<span class="sp"></span>' +
-    (ro ? '' : '<button class="b dark" id="sv">保存</button>') + '<button class="b" id="pr">' + (wantCover(inv) ? '印刷（送り状つき）' : '印刷') + '</button><button class="b" id="pdf">PDFで保存</button><button class="b" id="see">紙を見る</button></div>' +
+    (ro ? '' : '<button class="b dark" id="sv">保存</button>') + (inv.state === '取消' ? '' : '<button class="b" id="pr">' + (wantCover(inv) ? '印刷（送り状つき）' : '印刷') + '</button><button class="b" id="pdf">PDFで保存</button>') + '<button class="b" id="see">紙を見る</button></div>' +
     (ro ? '<div class="note" style="margin-top:8px;">販売らくだから写した請求書です。中身は直せません（入金は入れられます）。同じ中身で新しく作るときは「複製」を押してください。</div>' : '') + '</div>' +
     (inv.isNew ? '' : stkPanel(inv, 'stkE')) + apvCard(inv) +
     '<div class="card"><div class="grid3" style="align-items:start;">' +
@@ -685,7 +685,7 @@ function drawInvEdit() {
   };
   $('see').onclick = preview;
   const needApproved = async () => { if (approved(inv)) return true; await okBox('印刷・PDFは、承認が全部済んでからできます。\nまだの人：' + apvLeft(inv).join('・') + '\n（「紙を見る」は見本として見られます）', 'OK', true); return false; };
-  $('pr').onclick = async () => {
+  if ($('pr')) $('pr').onclick = async () => {
     readForm(); if (!(await needSaved()) || !(await needApproved())) return;
     let cv = null;
     if (wantCover(inv)) { cv = await coverForm(inv); if (cv === undefined) return; }   // 紙で送るときは、毎回 送り状の画面で中身を入れてから印刷（ユーザー指示 2026-11-06）
@@ -693,7 +693,7 @@ function drawInvEdit() {
     if (cv) { if (inv.sentAt !== cv.date) { try { await freshen(C.inv, inv, null, '請求書'); } catch (e) { return alert(e.message); } inv.sentAt = cv.date; try { await saveInv(inv, '送った日（送り状の日付）'); drawInvEdit(); } catch (e) { alert('送った日を保存できませんでした：' + e.message); } } }   // 送り状の日付＝送った日（ユーザー指示 2026-11-06）
     else if (!inv.sentAt || inv.sentAt === '不明') { if (await okBox('印刷しました。送った日を今日（' + dShort(today()) + '）にしますか？', '今日にする')) { inv.sentAt = today(); try { await saveInv(inv, '送った日'); drawInvEdit(); } catch (e) { alert(e.message); } } }
   };
-  $('pdf').onclick = async () => { readForm(); if (!(await needSaved()) || !(await needApproved())) return; try { await pdfOf(invPages(inv, null), '請求書_' + inv.no + '_' + (inv.to.name || '') + '.pdf', { lock: true }); } catch (e) { alert(e.message); } };   // 取引先に渡す物だけ書き換え禁止
+  if ($('pdf')) $('pdf').onclick = async () => { readForm(); if (!(await needSaved()) || !(await needApproved())) return; try { await pdfOf(invPages(inv, null), '請求書_' + inv.no + '_' + (inv.to.name || '') + '.pdf', { lock: true }); } catch (e) { alert(e.message); } };   // 取引先に渡す物だけ書き換え禁止
   if ($('stkE')) $('stkE').onclick = async () => { if (await saveInvSticky(inv)) { readForm(); const d = ST.dirty; drawInvEdit(); ST.dirty = d; } };
   M.querySelectorAll('[data-apv]').forEach(b => b.onclick = async () => {
     if (ST.dirty) return alert('先に保存してください（直した中身が保存されていません）。');
@@ -828,7 +828,8 @@ function invPages(inv, cover, opt) {   // cover：送り状の中身（coverForm
   pages.forEach((pl, p) => {
     const last = p === N - 1;
     let h = tblCss;
-    if (sample) h += '<div style="position:absolute;left:0;right:0;top:4mm;text-align:center;font-size:12pt;font-weight:700;color:#b3261e;letter-spacing:.2em;">見本（承認がまだです）</div>';
+    if (inv.state === '取消') h += '<div style="position:absolute;left:0;right:0;top:120mm;text-align:center;font-size:60pt;font-weight:700;color:rgba(179,38,30,.25);letter-spacing:.5em;transform:rotate(-20deg);">取消</div>';   // 取消の請求書（2026-11-06）
+    else if (sample) h += '<div style="position:absolute;left:0;right:0;top:4mm;text-align:center;font-size:12pt;font-weight:700;color:#b3261e;letter-spacing:.2em;">見本（承認がまだです）</div>';
     h += '<div style="position:absolute;right:15mm;top:' + (p === 0 ? 26.5 : 13) + 'mm;text-align:right;font-size:10pt;line-height:1.8;">No.　' + esc(inv.no) + '<br>' + dJp(inv.date) + (N > 1 ? '<br>' + (p + 1) + ' / ' + N + ' ページ' : '') + '</div>';
     if (p === 0) {
       h += '<div style="position:absolute;left:15mm;top:13mm;width:100mm;font-size:10pt;line-height:1.65;">' + (to.zip ? '〒' + esc(to.zip) + '<br>' : '') + esc(to.addr1) + (to.addr2 ? '<br>' + esc(to.addr2) : '') +
