@@ -125,12 +125,12 @@
 <main id="m"></main>
 <div id="busy"></div>
 
-<script src="calc.js?v=Ver.請求20261106-14"></script>
+<script src="calc.js?v=Ver.請求20261106-15"></script>
 <script type="module">
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
 import { getFirestore, collection, doc, getDoc, getDocs, setDoc, deleteDoc, writeBatch, runTransaction } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
-const APP_VER = 'Ver.請求20261106-14';   // 版の名前は「Ver.請求YYYYMMDD-NN」（ユーザー指示 2026-11-06）
+const APP_VER = 'Ver.請求20261106-15';   // 版の名前は「Ver.請求YYYYMMDD-NN」（ユーザー指示 2026-11-06）
 const API = 'https://script.google.com/macros/s/AKfycbzpJgqJOqQz5180PQF2S3kVN7TWg0c1dnyUUUNuCZtzy5_pmKEhAkw5w3gqSj31EEA1/exec';   // Apps Script「請求管理」（ポータル・給与とは別）
 /* ログインは給与アプリと同じ（ユーザー指示 2026-11-05）：ポータルの Firebase、メールとパスワード。入れるのはマスターと「請求管理」の権限（users.canInvoice）がある人 */
 const app = initializeApp({ apiKey: 'AIzaSyDVR4p4DO4s9h70uPlXUVlhNcMP9-YkQ5Q', authDomain: 'genba-portal-9077b.firebaseapp.com', projectId: 'genba-portal-9077b' });
@@ -210,6 +210,7 @@ async function gas(action, data) {
   if (LOCAL) {
     if (action === 'importRead') return fetch('../移行/seikyu_import.json', { cache: 'no-store' }).then(r => r.json());
     if (action === 'year') return (await fetch('../移行/seikyu_import.json', { cache: 'no-store' }).then(r => r.json())).invoices.filter(i => String(i.date).slice(0, 4) === String(data.year)).map(i => Object.assign(i, { fromSheet: true }));
+    if (action === 'hist') return [];
     if (action === 'range') return (await fetch('../移行/seikyu_import.json', { cache: 'no-store' }).then(r => r.json())).invoices.filter(i => i.date >= data.from && i.date <= data.to).map(i => Object.assign(i, { fromSheet: true }));
     if (action === 'importWrite') return { customers: 0, invoices: 0, note: '試し（スプレッドシートには書いていません）' };
     return { at: nowStr() };
@@ -373,9 +374,11 @@ async function boot() {
   } catch (e) { M.innerHTML = '<div class="card"><div class="msg">' + esc(e.message) + '</div></div>'; }
   busy('');
 }
+const OFF_ON = false;   // 相殺伝票を使うか（2026-11-06 ユーザー：今は使わない。要るときに true）
 const TABS = [['inv', '請求書'], ['pay', '入金'], ['rcp', '領収書'], ['off', '相殺伝票'], ['cust', '得意先'], ['sub', '提出データ'], ['cfg', '設定']];
 function draw() {
-  $('nav').innerHTML = TABS.map(t => '<button data-t="' + t[0] + '" class="' + (ST.tab === t[0] ? 'on' : '') + '">' + t[1] + '</button>').join('');
+  if (ST.tab === 'off' && !OFF_ON) ST.tab = 'inv';
+  $('nav').innerHTML = TABS.map(t => '<button data-t="' + t[0] + '" class="' + (ST.tab === t[0] ? 'on' : '') + '"' + (t[0] === 'off' && !OFF_ON ? ' disabled title="相殺伝票は今は使いません" style="opacity:.35;cursor:not-allowed;"' : '') + '>' + t[1] + '</button>').join('');
   $('nav').querySelectorAll('button').forEach(b => b.onclick = async () => { if (ST.dirty && !(await okBox('保存していない変更があります。捨てて移りますか？', '捨てて移る'))) return; ST.dirty = false; ST.tab = b.dataset.t; ST.rcpOpen = null; draw(); });
   ({ inv: drawInvList, pay: drawPay, rcp: drawRcp, off: drawOff, cust: drawCust, sub: drawSub, cfg: drawCfg })[ST.tab]();
   window.scrollTo(0, 0);
@@ -582,7 +585,7 @@ function drawInvEdit() {
     '</div><details style="margin-top:10px;"' + (inv.isNew ? '' : '') + '><summary style="cursor:pointer;font-weight:700;">宛名（' + esc([to.name, to.dept, to.person].filter(Boolean).join('　') || '未入力') + '　' + esc(to.honor || '') + '）を直す</summary><div class="grid3" style="margin-top:8px;">' +
     [['name', '会社名'], ['dept', '部署'], ['person', '担当者'], ['zip', '郵便番号'], ['addr1', '住所1'], ['addr2', '住所2（ビル名など）']].map(f => '<div><label class="f">' + f[1] + '</label><input data-to="' + f[0] + '" value="' + esc(to[f[0]] || '') + '"' + (ro ? ' disabled' : '') + '></div>').join('') +
     '<div><label class="f">敬称</label><select data-to="honor"' + (ro ? ' disabled' : '') + '>' + ['様', '御中', '殿'].map(o => '<option' + (o === (to.honor || '様') ? ' selected' : '') + '>' + o + '</option>').join('') + '</select></div></div><div class="note">ここを直しても、この請求書だけが変わります（得意先の台帳は変わりません）。</div></details></div>' +
-    '<div class="card"><h2>明細</h2><div class="wrapx"><table class="ed"><thead><tr><th>品名</th><th style="width:70px;">数量</th><th style="width:64px;">単位</th><th style="width:110px;">単価</th><th style="width:120px;">金額</th><th style="width:110px;">税</th><th style="width:170px;">備考</th><th style="width:110px;"></th></tr></thead><tbody id="ln">' +
+    '<div class="card"><h2>明細</h2><div class="note" style="margin:-4px 0 8px;padding:6px 10px;background:#fff8e1;border-left:4px solid #e0b100;border-radius:4px;font-size:.92rem;"><b>月ごとにまとめた請求のときは、品名の右の「備考」に「○月分」「○月分出来高」のように書いてください。</b>（インボイスの決まりの「取引年月日」を示すため）</div><div class="wrapx"><table class="ed"><thead><tr><th>品名</th><th style="width:70px;">数量</th><th style="width:64px;">単位</th><th style="width:110px;">単価</th><th style="width:120px;">金額</th><th style="width:110px;">税</th><th style="width:170px;">備考</th><th style="width:110px;"></th></tr></thead><tbody id="ln">' +
     (inv.lines || []).map(lineRow).join('') + '</tbody></table></div><datalist id="units">' + ['式', '一式', 'm', '㎡', '台', '箇所', '本', '個', '枚', '人工', '時間', '日', 'kg', 'セット'].map(u => '<option value="' + u + '">').join('') + '</datalist>' +
     (ro ? '' : '<div class="row" style="margin-top:8px;"><button class="b sm" id="addL">＋ 行を足す</button><button class="b sm" id="addT">＋ 文字だけの行</button></div>') +
     '<div class="row" style="margin-top:12px;align-items:flex-start;"><div style="flex:1;min-width:260px;"><label class="f">備考（請求書の下に出ます）</label><textarea id="nt"' + (ro ? ' disabled' : '') + '>' + esc(inv.note || '') + '</textarea></div><div class="tot">' +
@@ -592,7 +595,7 @@ function drawInvEdit() {
     (inv.isNew ? '' : '<div class="card"><div class="row"><h2 style="margin:0;">入金</h2>' + stTag(st) + '<span class="note">入金済み ' + yen(paid) + ' 円 ／ 残り ' + yen(Math.max(0, c.total - paid)) + ' 円</span><span class="sp"></span><button class="b dark" id="addP">入金を入れる</button></div>' +
       (pays.length ? '<table class="t" style="margin-top:8px;"><thead><tr><th>入金日</th><th class="n">入金額</th><th class="n">振込手数料</th><th>方法</th><th>メモ</th><th>入れた人</th><th></th></tr></thead><tbody>' + pays.map((p, k) => '<tr><td>' + (p.date ? dShort(p.date) : '不明') + '</td><td class="n">' + yen(p.amount) + '</td><td class="n">' + yen(p.fee) + '</td><td>' + esc(p.how) + '</td><td>' + esc(p.memo) + '</td><td class="note">' + esc(p.by) + ' ' + esc(String(p.at || '').slice(0, 16)) + '</td><td><button class="b sm danger" data-pr="' + k + '">消す</button></td></tr>').join('') + '</tbody></table>' : '<div class="note" style="margin-top:6px;">まだ入金はありません。</div>') + '</div>') +
     '<div class="card"><div class="row"><span class="note">' + (inv.createdAt ? '作成 ' + esc(inv.createdAt) + ' ' + esc(inv.createdBy || '') : '') + (inv.updatedAt ? '　最後に保存 ' + esc(inv.updatedAt) + ' ' + esc(inv.updatedBy || '') : '') + (inv.sentAt ? '　送った日 ' + esc(inv.sentAt === '不明' ? '不明' : dShort(inv.sentAt)) : '') + '</span><span class="sp"></span>' +
-    (inv.isNew ? '' : '<button class="b" id="sent">送った日を入れる</button><button class="b" id="dup">複製</button><button class="b" id="mkR">領収書を作る</button><button class="b" id="mkO">相殺伝票を作る</button>' + (inv.state === '取消' ? '<button class="b" id="unc">取消をやめる</button>' : '<button class="b danger" id="cnl">取消にする</button>')) + '</div></div>';
+    (inv.isNew ? '' : '<button class="b" id="sent">送った日を入れる</button><button class="b" id="dup">複製</button><button class="b" id="hist">直した記録</button><button class="b" id="mkR">領収書を作る</button><button class="b" id="mkO"' + (OFF_ON ? '' : ' disabled title="相殺伝票は今は使いません" style="opacity:.4;cursor:not-allowed;"') + '>相殺伝票を作る</button>' + (inv.state === '取消' ? '<button class="b" id="unc">取消をやめる</button>' : '<button class="b danger" id="cnl">取消にする</button>')) + '</div></div>';
 
   const mark = () => { ST.dirty = true; };
   const re = () => { readForm(); drawInvEdit(); ST.dirty = true; };
@@ -671,13 +674,14 @@ function drawInvEdit() {
       inv.payments.splice(+b.dataset.pr, 1); try { await saveInv(inv, '入金を消した'); drawInvEdit(); } catch (e) { alert(e.message); }
     });
     $('sent').onclick = async () => { const r = await formBox('送った日', [{ k: 'd', label: '送った日', type: 'date', value: inv.sentAt && inv.sentAt !== '不明' ? inv.sentAt : today() }]); if (!r) return; readForm(); inv.sentAt = r.d; try { await saveInv(inv, '送った日'); ST.dirty = false; drawInvEdit(); } catch (e) { alert(e.message); } };
+    $('hist').onclick = () => showHist(inv, '請求書');
     $('dup').onclick = () => {
       const n = newInv(custOf(inv.custId)); if (!custOf(inv.custId)) n.to = plain(inv.to);   // 承認・付箋は写さない   // 宛名は今の得意先台帳の物（会社名が変わった得意先のため） n.title = inv.title; n.taxMode = inv.taxMode; n.note = inv.fixed ? '' : inv.note;
       n.lines = plain(inv.lines).map(l => { delete l.rate; delete l.inTax; if (inv.fixed && l.type === 'item') { if (l.qty == null || l.price == null) l.amountFix = l.amountFix; else delete l.amountFix; } return l; });
       openInv(n); ST.dirty = true; alert('複製しました。発行日・明細を確かめて保存してください。');
     };
     $('mkR').onclick = () => { ST.tab = 'rcp'; draw(); newReceipt(inv); };
-    if ($('mkO')) $('mkO').onclick = () => { ST.tab = 'off'; draw(); newOffset(inv); };
+    if ($('mkO') && OFF_ON) $('mkO').onclick = () => { ST.tab = 'off'; draw(); newOffset(inv); };
     if ($('cnl')) $('cnl').onclick = async () => { if (!(await okBox('この請求書を「取消」にしますか？（消さずに取消の印を付けます。番号は使ったままになります）', '取消にする'))) return; readForm(); inv.state = '取消'; try { await saveInv(inv, '取消'); ST.dirty = false; drawInvEdit(); } catch (e) { alert(e.message); } };
     if ($('unc')) $('unc').onclick = async () => { readForm(); inv.state = '発行済み'; try { await saveInv(inv, '取消をやめた'); ST.dirty = false; drawInvEdit(); } catch (e) { alert(e.message); } };
   }
@@ -903,6 +907,19 @@ function rcpPages(r) {
   };
   return [pgWrap(half(false) + '<div style="border-top:.3mm dashed #8a958e;margin:0 8mm;height:0;position:relative;"><span style="position:absolute;left:50%;top:-2.2mm;transform:translateX(-50%);background:#fff;padding:0 3mm;font-size:8pt;color:#8a958e;">切り取り線</span></div>' + half(true), false)];
 }
+/* 直した記録（保存した日時・人・操作と、そのときの中身の紙） */
+async function showHist(o, kind) {
+  let h; busy('直した記録を読んでいます…');
+  try { h = await gas('hist', { id: o.id }); } catch (e) { busy(''); return alert('読めませんでした：' + e.message); } finally { busy(''); }
+  const w = document.createElement('div'); w.id = 'ask';
+  w.innerHTML = '<div class="card" style="max-width:820px;"><div class="row"><h2 style="margin:0;">直した記録（' + esc(kind) + ' ' + esc(o.no || '') + '）</h2><span class="sp"></span><button class="b dark" id="hx">閉じる</button></div>' +
+    '<div class="note" style="margin:6px 0 10px;">保存するたびに、そのときの中身をまるごとスプレッドシート「直した記録」に残しています（消したり直したりはしません）。「紙を見る」でそのときの紙が見られます。</div>' +
+    (h && h.length ? '<div class="wrapx"><table class="t"><thead><tr><th>日時</th><th>人</th><th>操作</th><th>状態</th><th class="n">金額</th><th></th></tr></thead><tbody>' + h.map((x, k) => '<tr><td style="white-space:nowrap;">' + esc(x.at) + '</td><td>' + esc(String(x.who).replace(/（.*）$/, '')) + '</td><td>' + esc(x.why) + '</td><td>' + esc(x.state) + '</td><td class="n">' + yen(x.total) + '</td><td><button class="b sm" data-hv="' + k + '">紙を見る</button></td></tr>').join('') + '</tbody></table></div>'
+      : '<div class="note">まだ記録がありません（この仕組みを入れた 2026-11-06 より前の保存は残っていません）。</div>') + '</div>';
+  document.body.appendChild(w);
+  w.querySelector('#hx').onclick = () => w.remove();
+  w.querySelectorAll('[data-hv]').forEach(b => b.onclick = () => { let d; try { d = JSON.parse(h[+b.dataset.hv].data); } catch (e) { return alert('この記録は長すぎて、紙にできません（スプレッドシートで見てください）。'); } showPaper(kind === '請求書' ? invPages(tidyInv(d), null) : rcpPages(d), { title: kind + '（' + h[+b.dataset.hv].at + ' の中身）' }); });
+}
 /* 画面で紙を見る */
 function showPaper(pages, opt) {
   opt = opt || {};
@@ -1092,7 +1109,7 @@ function drawRcpEdit() {
   const S = (k, v, opts) => '<select data-r="' + k + '"' + (gone ? ' disabled' : '') + ' style="width:100%;">' + (opts.includes(v) || !v ? opts : opts.concat([v])).map(o => '<option' + (o === v ? ' selected' : '') + '>' + esc(o) + '</option>').join('') + '</select>';
   const duty = SK.stampDuty(r.amount);
   M.innerHTML = '<div class="card"><div class="row"><button class="b" id="rBack">← 一覧へ</button><b style="font-size:1.1rem;">' + K.name + ' ' + esc(r.no) + '</b>' + (gone ? '<span class="tag">取消</span>' : '<span class="tag ok">発行済み</span>') +
-    '<span class="sp"></span>' + (gone ? '' : '<button class="b dark" id="rSave">保存</button><button class="b" id="rPrint">印刷</button><button class="b" id="rPdf">PDFで保存</button>') + '<button class="b" id="rSee">紙を見る</button>' + (gone ? '' : '<button class="b danger" id="rCancel">取消</button>') + '</div>' +
+    '<span class="sp"></span>' + (gone ? '' : '<button class="b dark" id="rSave">保存</button><button class="b" id="rPrint">印刷</button><button class="b" id="rPdf">PDFで保存</button>') + '<button class="b" id="rSee">紙を見る</button><button class="b" id="rHist">直した記録</button>' + (gone ? '' : '<button class="b danger" id="rCancel">取消</button>') + '</div>' +
     (gone ? '<div class="note" style="margin-top:6px;">取消にした' + K.name + 'です。中身は直せません。</div>' : '') + (off ? '<div class="note" style="margin-top:6px;">相殺伝票は紙を作るだけで、請求書の入金には入りません。</div>' : '') + '</div>' +
     stkPanel(r, 'stkR') +
     '<div class="card"><div class="grid3" style="align-items:start;">' +
@@ -1123,6 +1140,7 @@ function drawRcpEdit() {
   if ($('rPrint')) $('rPrint').onclick = async () => { if (await ready()) printPages(rcpPages(ST.rcpOpen)); };
   if ($('rPdf')) $('rPdf').onclick = async () => { if (!(await ready())) return; const x = ST.rcpOpen; try { await pdfOf(rcpPages(x), fname(x)); } catch (e) { alert(e.message); } };
   $('rSee').onclick = () => showPaper(rcpPages(gone ? r : val()), { title: K.name });
+  $('rHist').onclick = () => showHist(r, K.name);
   if ($('rCancel')) $('rCancel').onclick = async () => { if (!(await okBox(K.name + ' ' + r.no + ' を取消にしますか？\n（取消にすると中身は直せなくなります）', '取消にする'))) return; const o = Object.assign({}, r, { state: '取消' }); try { await saveRcp(o); ST.dirty = false; ST.rcpOpen = plain(o); drawRcpEdit(); } catch (e) { alert(e.message); } };
   if ($('stkR')) $('stkR').onclick = async () => { const v = await stkEdit(r); if (v === undefined) return; const o = Object.assign({}, r, { sticky: v }); try { await saveRcp(o); r.sticky = v; const d = ST.dirty; drawRcpEdit(); ST.dirty = d; } catch (e) { alert('付箋を保存できませんでした：' + e.message); } };
 }
