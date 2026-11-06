@@ -88,6 +88,10 @@
   .stk.g, .stkbox.g { background: #d9f1d4; border-color: #3a9a3a; color: #173d17; }
   .stk.b, .stkbox.b { background: #d8e7fb; border-color: #3b74c4; color: #12305a; }
   .stk.r, .stkbox.r { background: #fbdad6; border-color: #c8372d; color: #5c1410; }
+  .stkbox.stk0 { background: #fff; border: 1.5px dashed #9aa79f; border-left-width: 1.5px; color: var(--sub); font-weight: 700; }
+  td.stkc { cursor: pointer; min-width: 60px; }
+  td.stkc:hover { background: #fffbe0; }
+  .stk0s { color: #b9c4bd; font-weight: 800; padding: 0 6px; }
   .stk.p, .stkbox.p { background: #e9dcf7; border-color: #7b4bb7; color: #36175c; }
   .stk.k, .stkbox.k { background: #fbdcec; border-color: #d4508f; color: #5e1438; }
   /* 承認の欄 */
@@ -99,7 +103,10 @@
   .apv .bx .s img { height: 52px; }
   .ltl { font-size: .88rem; font-weight: 700; color: var(--sub); }
   .ltl select { margin-left: 4px; }
-  table.ed textarea { min-height: 0; padding: 4px 5px; resize: vertical; line-height: 1.4; }
+  table.ed td { vertical-align: top; }
+  table.ed input, table.ed select, table.ed textarea { display: block; width: 100%; height: 34px; padding: 5px 6px; line-height: 1.45; box-sizing: border-box; margin: 0; }
+  table.ed textarea { height: auto; min-height: 34px; resize: vertical; }
+  table.ed td:last-child { white-space: nowrap; }
   .paperView { background: #8a9a90; padding: 14px; border-radius: 8px; overflow: auto; }
   .paperView .pg { margin: 0 auto 14px; box-shadow: 0 2px 10px rgba(0,0,0,.35); }
 </style>
@@ -108,17 +115,17 @@
 <header id="hd" style="display:none;">
   <b>請求管理</b>
   <nav id="nav"></nav>
-  <span class="who"><span id="who"></span>　<a href="#" id="out">ログアウト</a></span>
+  <span class="who"><span id="loadAt"></span>　<a href="#" id="reload">読み込み直す</a>　<span id="who"></span>　<a href="#" id="out">ログアウト</a></span>
 </header>
 <main id="m"></main>
 <div id="busy"></div>
 
-<script src="calc.js?v=Ver.20261106-03"></script>
+<script src="calc.js?v=Ver.請求20261106-04"></script>
 <script type="module">
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
 import { getFirestore, collection, doc, getDoc, getDocs, setDoc, deleteDoc, writeBatch, runTransaction } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
-const APP_VER = 'Ver.20261106-03';
+const APP_VER = 'Ver.請求20261106-04';   // 版の名前は「Ver.請求YYYYMMDD-NN」（ユーザー指示 2026-11-06）
 const API = 'https://script.google.com/macros/s/AKfycbzpJgqJOqQz5180PQF2S3kVN7TWg0c1dnyUUUNuCZtzy5_pmKEhAkw5w3gqSj31EEA1/exec';   // Apps Script「請求管理」（ポータル・給与とは別）
 /* ログインは給与アプリと同じ（ユーザー指示 2026-11-05）：ポータルの Firebase、メールとパスワード。入れるのはマスターと「請求管理」の権限（users.canInvoice）がある人 */
 const app = initializeApp({ apiKey: 'AIzaSyDVR4p4DO4s9h70uPlXUVlhNcMP9-YkQ5Q', authDomain: 'genba-portal-9077b.firebaseapp.com', projectId: 'genba-portal-9077b' });
@@ -170,11 +177,13 @@ function formBox(title, fields, okLabel) {
   });
 }
 
-/* 新しい版の知らせ（給与と同じ） */
+/* 新しい版（ユーザー指示 2026-11-06：給与と同じように 知らせ・自動・ボタン で入れ替えられる）。
+   知らせ：画面の上に「新しいVerがあります」。自動：入力の途中（保存していない変更・開いている小窓）でなければ、見つけたときにそのまま入れ替える。ボタン：設定のいちばん上 */
 async function refreshApp() {
-  try { const r = await fetch('./?check=' + Date.now(), { cache: 'no-store' }); if (r.ok && window.caches) await (await caches.open('seikyu-shell-v3')).put('./', r); } catch (e) {}
+  try { if (window.caches) { const c = await caches.open('seikyu-shell-v3'); await Promise.all(['./', 'calc.js', 'manifest.json'].map(async u => { const r = await fetch(u + '?check=' + Date.now(), { cache: 'no-store' }); if (r.ok) await c.put(u, r); })); } } catch (e) {}
   location.reload();
 }
+const canAutoUpd = () => !ST.dirty && !document.querySelector('#ask') && $('busy').style.display !== 'flex';
 function showUpdate() {
   if ($('upd')) return;
   const b = document.createElement('button'); b.id = 'upd'; b.textContent = '新しいVerがあります（押すと入れ替え）';
@@ -183,7 +192,10 @@ function showUpdate() {
 }
 async function checkVer() {
   if (LOCAL || navigator.onLine === false || document.hidden) return;
-  try { const t = await fetch('./?check=' + Date.now(), { cache: 'no-store' }).then(r => r.ok ? r.text() : ''); const m = t.match(/APP_VER = '([^']+)'/); if (m && m[1] !== APP_VER) showUpdate(); } catch (e) {}
+  try {
+    const t = await fetch('./?check=' + Date.now(), { cache: 'no-store' }).then(r => r.ok ? r.text() : ''); const m = t.match(/APP_VER = '([^']+)'/);
+    if (m && m[1] !== APP_VER) { ST.newVer = m[1]; if (canAutoUpd()) { showUpdate(); $('upd').textContent = '新しいVer（' + m[1] + '）に入れ替えています…'; refreshApp(); } else showUpdate(); }
+  } catch (e) {}
 }
 document.addEventListener('visibilitychange', checkVer); setInterval(checkVer, 600000); setTimeout(checkVer, 3000);
 if ('serviceWorker' in navigator && !LOCAL) navigator.serviceWorker.register('sw.js').catch(() => {});
@@ -234,12 +246,21 @@ function stickyOf(o) {
   return null;
 }
 const stkChip = o => { const s = stickyOf(o); return s ? '<span class="stk ' + (s.c || 'y') + '" title="' + esc(s.t) + '">' + (esc(s.t) || '　') + '</span>' : ''; };
-function stkPanel(o, id) {
+function stkPanel(o, id) {   // 付箋を押すと書ける（ボタンは置かない。ユーザー指示 2026-11-06）
   const s = stickyOf(o);
   return '<div class="card"><div class="row" style="align-items:flex-start;"><b style="white-space:nowrap;padding-top:6px;">付箋メモ</b>' +
-    (s ? '<div class="stkbox ' + (s.c || 'y') + '" style="flex:1;">' + (esc(s.t) || '（文字なし）') + '</div>' : '<div class="note" style="flex:1;padding-top:6px;">付箋はありません。</div>') +
-    '<button class="b" id="' + id + '">' + (s ? '付箋を直す' : '付箋を貼る') + '</button></div></div>';
+    (s ? '<div class="stkbox ' + (s.c || 'y') + '" id="' + id + '" style="flex:1;cursor:pointer;" title="押すと直せます">' + (esc(s.t) || '（文字なし）') + '</div>' : '<div class="stkbox stk0" id="' + id + '" style="flex:1;cursor:pointer;">＋ 付箋を貼る（押すと書けます）</div>') + '</div></div>';
 }
+/* 一覧の付箋の欄。押すと書ける（行を開かない） */
+const stkCell = (o, key) => '<td class="stkc" data-stk="' + esc(o.id) + '" data-sk="' + key + '" title="押すと付箋を書けます">' + (stkChip(o) || '<span class="stk0s">＋</span>') + '</td>';
+/* 請求書の付箋だけを保存する（入力中の中身は保存しない） */
+async function saveInvSticky(inv) {
+  const v = await stkEdit(inv); if (v === undefined) return false;
+  const base = plain([...ST.invs, ...Object.values(ST.yearData).flat()].find(x => x.id === inv.id) || inv);
+  base.sticky = v;
+  try { await saveInv(base, '付箋'); inv.sticky = v; return true; } catch (e) { alert('付箋を保存できませんでした：' + e.message); return false; }
+}
+function wireStk(root, find, after) { root.querySelectorAll('[data-stk]').forEach(td => td.onclick = async ev => { ev.stopPropagation(); const o = find(td.dataset.stk); if (o && await after(o)) ; }); }
 async function stkEdit(o) {   // 付箋の画面。OK なら新しい sticky、やめたら undefined
   const s = stickyOf(o) || { c: 'y', t: '' };
   const r = await formBox('付箋メモ', [{ k: 'c', label: '色', type: 'select', opts: STK.map(x => x[1]).concat(['（付箋をはがす）']), value: (STK.find(x => x[0] === s.c) || STK[0])[1] }, { k: 't', label: 'メモ', type: 'area', value: s.t }], '貼る');
@@ -331,6 +352,8 @@ async function boot() {
     old.forEach(x => store.del(C.inv, x.id).catch(() => {}));   // 期限が過ぎた写しを消す（スプレッドシートには残っている）
     rs.filter(x => x.expireAt && x.expireAt < now).forEach(x => store.del(C.rcp, x.id).catch(() => {}));
     $('hd').style.display = ''; $('who').textContent = ST.me.name + (LOCAL ? '（試し・端末の中だけ）' : '');
+    ST.loadAt = new Date(); $('loadAt').textContent = '最終読み込み ' + dShort(SK.ymd(ST.loadAt)) + ' ' + pad(ST.loadAt.getHours()) + ':' + pad(ST.loadAt.getMinutes());   // アプリ内の最終読み込み日時（ユーザー指示 2026-11-06）
+    $('reload').onclick = async e => { e.preventDefault(); if (ST.dirty && !(await okBox('保存していない変更があります。捨てて読み込み直しますか？', '読み込み直す'))) return; ST.dirty = false; ST.yearData = {}; boot(); };
     if (!ST.hasCfg && !ST.custs.length) ST.tab = 'cfg';
     draw();
   } catch (e) { M.innerHTML = '<div class="card"><div class="msg">' + esc(e.message) + '</div></div>'; }
@@ -383,9 +406,10 @@ async function drawInvList() {
     const sum = rows.filter(x => x.st !== '取消').reduce((s, x) => s + x.c.total, 0);
     $('lst').innerHTML = rows.length ? '<div class="wrapx"><table class="t"><thead><tr><th>番号</th><th>発行日</th><th>得意先</th><th>件名・品名</th><th class="n">合計</th><th>入金予定日</th><th>入金</th><th>承認</th><th>送り方</th><th>付箋メモ</th></tr></thead><tbody>' +
       rows.map(x => '<tr class="link" data-id="' + esc(x.i.id) + '"><td><b>' + esc(x.i.no || '（番号なし）') + '</b></td><td>' + dShort(x.i.date) + '</td><td>' + esc(x.name) + '</td><td>' + esc(x.i.title || ((x.i.lines || []).find(l => l.name) || {}).name || '') + '</td><td class="n">' + yen(x.c.total) + '</td><td>' + dShort(x.i.due) + '</td><td>' + stTag(x.st) + '</td>' +
-        '<td>' + (!needApv(x.i) ? '' : approved(x.i) ? '<span class="tag ok">済み</span>' : '<span class="tag mid">まだ</span>') + '</td><td>' + esc(x.i.sentBy || '') + (x.i.sentAt && x.i.sentAt !== '不明' ? ' <span class="note">' + dShort(x.i.sentAt) + '</span>' : '') + (!x.i.sentAt && x.i.sentBy !== '不明' && x.st !== '取消' ? ' <span class="tag mid">まだ送っていない</span>' : '') + '</td><td>' + stkChip(x.i) + '</td></tr>').join('') +
+        '<td>' + (!needApv(x.i) ? '' : approved(x.i) ? '<span class="tag ok">済み</span>' : '<span class="tag mid">まだ</span>') + '</td><td>' + esc(x.i.sentBy || '') + (x.i.sentAt && x.i.sentAt !== '不明' ? ' <span class="note">' + dShort(x.i.sentAt) + '</span>' : '') + (!x.i.sentAt && x.i.sentBy !== '不明' && x.st !== '取消' ? ' <span class="tag mid">まだ送っていない</span>' : '') + '</td>' + stkCell(x.i, 'inv') + '</tr>').join('') +
       '</tbody><tfoot><tr><td colspan="4">' + rows.length + ' 枚（取消を除いた合計）</td><td class="n">' + yen(sum) + '</td><td colspan="5"></td></tr></tfoot></table></div>' : '<div class="note">当てはまる請求書はありません。</div>';
     $('lst').querySelectorAll('tr.link').forEach(tr => tr.onclick = () => openInv(plain(list.find(i => i.id === tr.dataset.id))));
+    wireStk($('lst'), id => list.find(i => i.id === id), async i => { if (await saveInvSticky(i)) { const k = list.findIndex(x => x.id === i.id); list[k] = Object.assign(list[k], { sticky: i.sticky }); fill(); } });
   }
   fill();
 }
@@ -524,7 +548,13 @@ function drawInvEdit() {
     $('sb').onchange = () => { readForm(); ST.dirty = true; drawInvEdit(); };
   }
   const needSaved = async () => { if (inv.isNew || ST.dirty) { await okBox('先に保存してください。', 'OK', true); return false; } return true; };
-  $('see').onclick = () => { readForm(); showPaper(invPages(inv, String(inv.sentBy).includes('紙') ? coverDef(inv) : null)); };
+  const preview = () => {   // 紙を見る：送り状も出す（ユーザー指示 2026-11-06）。備考は紙の上で押すと書ける
+    readForm();
+    const pages = invPages(inv, coverDef(inv), { preview: !ro });
+    showPaper(pages, { title: '送り状（' + (String(inv.sentBy).includes('紙') ? '紙で送るので一緒に印刷します' : '送り方が「' + (inv.sentBy || '') + '」なので印刷しません') + '）＋ 請求書 ' + (pages.length - 1) + 'ページ',
+      onNote: ro ? null : async w => { const r = await formBox('備考（請求書のいちばん下に出ます）', [{ k: 'n', label: '備考', type: 'area', value: inv.note || '' }], 'これにする'); if (!r) return; inv.note = r.n; $('nt').value = r.n; ST.dirty = true; w.remove(); preview(); } });
+  };
+  $('see').onclick = preview;
   const needApproved = async () => { if (approved(inv)) return true; await okBox('印刷・PDFは、承認が全部済んでからできます。\nまだの人：' + apvLeft(inv).join('・') + '\n（「紙を見る」は見本として見られます）', 'OK', true); return false; };
   $('pr').onclick = async () => {
     readForm(); if (!(await needSaved()) || !(await needApproved())) return;
@@ -535,11 +565,7 @@ function drawInvEdit() {
     else if (!inv.sentAt || inv.sentAt === '不明') { if (await okBox('印刷しました。送った日を今日（' + dShort(today()) + '）にしますか？', '今日にする')) { inv.sentAt = today(); try { await saveInv(inv, '送った日'); drawInvEdit(); } catch (e) { alert(e.message); } } }
   };
   $('pdf').onclick = async () => { readForm(); if (!(await needSaved()) || !(await needApproved())) return; try { await pdfOf(invPages(inv, null), '請求書_' + inv.no + '_' + (inv.to.name || '') + '.pdf'); } catch (e) { alert(e.message); } };
-  if ($('stkE')) $('stkE').onclick = async () => {
-    const v = await stkEdit(inv); if (v === undefined) return;
-    const base = plain([...ST.invs, ...Object.values(ST.yearData).flat()].find(x => x.id === inv.id) || inv);   // 付箋だけを保存する（入力中の中身は保存しない）
-    base.sticky = v; try { await saveInv(base, '付箋'); inv.sticky = v; const d = ST.dirty; drawInvEdit(); ST.dirty = d; } catch (e) { alert('付箋を保存できませんでした：' + e.message); }
-  };
+  if ($('stkE')) $('stkE').onclick = async () => { if (await saveInvSticky(inv)) { readForm(); const d = ST.dirty; drawInvEdit(); ST.dirty = d; } };
   M.querySelectorAll('[data-apv]').forEach(b => b.onclick = async () => {
     if (ST.dirty) return alert('先に保存してください（直した中身が保存されていません）。');
     const k = +b.dataset.apv, a = ST.cfg.approvers[k], on = b.dataset.on === '1';
@@ -626,7 +652,7 @@ function apvBoxes(inv) {
       '<div style="height:16mm;display:flex;align-items:center;justify-content:center;">' + (r ? (img ? '<img src="' + img + '" style="width:' + (key === 'higa' ? 11 : 14.5) + 'mm;opacity:.92;">' : '<span style="font-size:7pt;">' + esc(r.name) + '</span>') : '') + '</div></div>';
   }).join('') + '</div>';
 }
-function invPages(inv, cover) {   // cover：送り状の中身（coverForm で入れた物）。無ければ送り状なし
+function invPages(inv, cover, opt) {   // cover：送り状の中身（coverForm で入れた物）。無ければ送り状なし。opt.preview：画面で見るとき（備考を押して書ける）
   const c = calcOf(inv), to = SK.addrLines(inv.to), lines = (inv.lines || []).filter(l => l.type === 'text' ? String(l.name || '').trim() : true);
   const hasMemo = lines.some(l => l.memo), hasRed = c.groups.some(g => g.kind === 'red'), co = fromOf(inv);
   // 列の幅（mm）。日付の列は出さない（ユーザー指示 2026-11-06）
@@ -634,8 +660,8 @@ function invPages(inv, cover) {   // cover：送り状の中身（coverForm で�
   const W = { name: Math.floor((nameW - 4) / 3.35), memo: hasMemo ? Math.floor((memoW - 3) / 3.0) : 0, text: Math.floor((180 - 11 - memoW - 6) / 3.35) };
   // 最後のページの下の欄（合計・振込先・備考）の高さを見積もる
   const nRows = c.groups.reduce((a, g) => a + (g.rate ? 2 : 1), 0) + 3;
-  const right = nRows * 6.3 + 3 + (co.bank ? 9 + nLines(co.bank, 25) * 5.2 : 0);
-  const left = (hasRed ? 5.5 : 0) + (inv.note ? 3 + nLines(inv.note, 27) * 5.2 : 0);
+  const right = nRows * 6.3 + 3;
+  const left = (hasRed ? 5.5 : 0) + (co.bank ? 9 + nLines(co.bank, 27) * 5.2 : 0) + (inv.note ? 3 + nLines(inv.note, 30) * 5.2 : (opt && opt.preview ? 8 : 0));
   const Hb = Math.max(right, left) + 30;
   const p1 = 297 - 118 - 9, pn = 297 - 36 - 9;
   const pages = paginate(lines, W, p1 - 20, Math.max(20, p1 - Hb), pn - 20, Math.max(30, pn - Hb)), N = pages.length;
@@ -668,15 +694,16 @@ function invPages(inv, cover) {   // cover：送り状の中身（coverForm で�
     h += '<div style="position:absolute;left:15mm;right:15mm;top:' + (p === 0 ? 118 : 36) + 'mm;"><table class="it"><thead><tr>' + cols + '</tr></thead><tbody>' + pl.map(row).join('') + '</tbody></table>' + (last ? '' : '<div style="text-align:right;font-size:8.5pt;margin-top:1.5mm;">次のページへ続きます</div>') + '</div>';
     if (p > 0) h += '<div style="position:absolute;left:15mm;top:15mm;font-size:11pt;">' + esc(to.name) + '　御請求書（つづき）</div>';
     if (last) {
-      // 合計の表は振込先の上（ユーザー指示 2026-11-06）
-      h += '<div style="position:absolute;left:15mm;right:15mm;bottom:22mm;display:flex;gap:6mm;align-items:flex-end;">' +
+      // 下の並びは初めの形（左に振込先・備考、右に合計の表）。枠は透かして紙のデザインが見える（ユーザー指示 2026-11-06）
+      const noteHtml = inv.note ? '<div' + (opt && opt.preview ? ' data-note="1" style="margin-top:1.5mm;white-space:pre-wrap;word-break:break-all;cursor:pointer;outline:.3mm dashed #9ab0a2;" title="押すと備考を直せます"' : ' style="margin-top:1.5mm;white-space:pre-wrap;word-break:break-all;"') + '>' + esc(inv.note) + '</div>'
+        : (opt && opt.preview ? '<div data-note="1" style="margin-top:1.5mm;color:#b3bdb6;border:.3mm dashed #b3bdb6;padding:1.5mm 3mm;cursor:pointer;">＋ 備考を追加（押すと書けます。この文字は印刷されません）</div>' : '');
+      h += '<div style="position:absolute;left:15mm;right:15mm;bottom:22mm;display:flex;gap:8mm;align-items:flex-end;">' +
         '<div style="flex:1;font-size:9.5pt;line-height:1.6;">' + (hasRed ? '<div>※は軽減税率（8%）の対象です。</div>' : '') +
-        (inv.note ? '<div style="margin-top:1.5mm;white-space:pre-wrap;word-break:break-all;">' + esc(inv.note) + '</div>' : '') + '</div>' +
-        '<div style="width:88mm;flex:none;margin-left:auto;"><table class="sm" style="border-collapse:collapse;width:100%;font-size:9.5pt;">' +
+        (co.bank ? '<div style="margin-top:1.5mm;border:.3mm solid #8aa595;padding:2mm 3mm;border-radius:1.2mm;"><b>お振込先</b><br>' + esc(co.bank).replace(/\n/g, '<br>') + '</div>' : '') + noteHtml + '</div>' +
+        '<table class="sm" style="border-collapse:collapse;width:82mm;flex:none;font-size:9.5pt;">' +
         c.groups.map(g => '<tr><td>' + esc(SK.groupLabel(g)) + '対象</td><td style="text-align:right;">' + yen(g.base) + '</td></tr>' + (g.rate ? '<tr><td>　消費税（' + g.rate + '%）</td><td style="text-align:right;">' + yen(g.tax) + '</td></tr>' : '')).join('') +
         '<tr><td>税抜合計</td><td style="text-align:right;">' + yen(c.sub) + '</td></tr><tr><td>消費税合計</td><td style="text-align:right;">' + yen(c.tax) + '</td></tr>' +
-        '<tr style="font-weight:700;font-size:11pt;"><td style="border-top:.5mm solid #1a6b3c;">合計</td><td style="text-align:right;border-top:.5mm solid #1a6b3c;">¥' + yen(c.total) + '</td></tr></table>' +
-        (co.bank ? '<div style="margin-top:3mm;border:.3mm solid #8aa595;padding:2mm 3mm;border-radius:1.2mm;font-size:9.5pt;line-height:1.6;"><b>お振込先</b><br>' + esc(co.bank).replace(/\n/g, '<br>') + '</div>' : '') + '</div></div>';
+        '<tr style="font-weight:700;font-size:11pt;"><td style="border-top:.5mm solid #1a6b3c;">合計</td><td style="text-align:right;border-top:.5mm solid #1a6b3c;">¥' + yen(c.total) + '</td></tr></table></div>';
     }
     out.push(pgWrap(h, true));
   });
@@ -711,7 +738,8 @@ async function coverForm(inv) {
     w.innerHTML = '<div class="card" style="max-width:760px;"><h2>送り状（' + esc(inv.no) + '）</h2><div class="note">ここで入れた中身で、送り状と請求書を一緒に印刷します。宛名は窓付き封筒の窓に出る所です。送り状の日付が「送った日」になります。</div>' +
       '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px 14px;margin-top:10px;">' +
       '<div><label class="f">送った日（送り状の日付）</label><input data-k="date" type="date" value="' + esc(v.date) + '" style="width:100%;"></div>' +
-      '<div><label class="f">送る人（担当）</label><select data-k="person" style="width:100%;">' + P.map(n => '<option' + (n === v.person ? ' selected' : '') + '>' + esc(n) + '</option>').join('') + '</select></div>' +
+      '<div><label class="f">送る人（担当）</label><select data-k="personSel" style="width:100%;">' + P.map(n => '<option' + (n === v.person ? ' selected' : '') + '>' + esc(n) + '</option>').join('') + '</select>' +
+      '<input data-k="personOther" placeholder="ほかの人のときはここに名前（入れるとこちらが出ます）" style="width:100%;margin-top:4px;"></div>' +
       '<div style="grid-column:1/-1;margin-top:6px;"><b>宛名（封筒の窓に出る所）</b></div>' +
       I('zip', '郵便番号') + '<div></div>' + I('addr1', '住所1', '', true) + I('addr2', '住所2（ビル名など）', '', true) + I('l5', '会社名（担当者の名前を入れるときは 会社名＋部署）', '', true) + I('l6', '「様」の前の名前（担当者・部署・会社名）') + I('honor', '敬称') +
       '<div style="grid-column:1/-1;margin-top:6px;"><b>中身</b></div>' +
@@ -719,7 +747,7 @@ async function coverForm(inv) {
       A('items', '記の下の文面（送る書類など。1行ずつ）', CV_ITEM_LINES + ' 行まで、1行 ' + CV_ITEM_W + ' 字ほどまで。', 150) +
       '</div><div class="msg" id="cvMsg" style="font-size:1.05rem;"></div><div class="row" style="margin-top:12px;"><button class="b" data-x="see">紙を見る</button><span class="sp"></span><button class="b" data-x="n">やめる</button><button class="b" data-x="no">送り状なしで印刷</button><button class="b dark" data-x="y">印刷</button></div></div>';
     document.body.appendChild(w);
-    const val = () => { const o = {}; w.querySelectorAll('[data-k]').forEach(e => { o[e.dataset.k] = e.value; }); return o; };
+    const val = () => { const o = {}; w.querySelectorAll('[data-k]').forEach(e => { o[e.dataset.k] = e.value; }); o.person = (o.personOther || '').trim() || o.personSel; delete o.personSel; delete o.personOther; return o; };
     const show = () => { const x = val(), m = coverCheck(x); w.querySelector('#cvMsg').textContent = m; w.querySelector('[data-n="text"]').textContent = '「敬具」は最後に自動で付きます。いま紙で ' + nLines(x.text, CV_TEXT_W) + ' 行（' + CV_TEXT_LINES + ' 行まで）。'; w.querySelector('[data-n="items"]').textContent = 'いま ' + String(x.items || '').split('\n').length + ' 行（' + CV_ITEM_LINES + ' 行まで、1行 ' + CV_ITEM_W + ' 字ほどまで）。'; return m; };
     w.querySelectorAll('textarea').forEach(e => e.addEventListener('input', show)); show();
     const end = r => { w.remove(); done(r); };
@@ -766,10 +794,12 @@ function rcpPages(r) {
   return [pgWrap(half(false) + '<div style="border-top:.3mm dashed #888;margin:0 8mm;text-align:center;font-size:8pt;color:#888;">切り取り線</div>' + half(true), false)];
 }
 /* 画面で紙を見る */
-function showPaper(pages) {
+function showPaper(pages, opt) {
+  opt = opt || {};
   const w = document.createElement('div'); w.id = 'ask';
-  w.innerHTML = '<div class="card" style="max-width:880px;padding-top:0;"><div class="row" style="position:sticky;top:0;z-index:5;background:#fff;padding:12px 0 10px;border-bottom:1px solid var(--line);"><b>紙の見え方（' + pages.length + 'ページ）</b><span class="sp"></span><button class="b dark" id="pvX">閉じる</button></div><div class="paperView" style="margin-top:10px;">' + pages.join('') + '</div></div>';
+  w.innerHTML = '<div class="card" style="max-width:880px;padding-top:0;"><div class="row" style="position:sticky;top:0;z-index:5;background:#fff;padding:12px 0 10px;border-bottom:1px solid var(--line);"><b>紙の見え方（' + esc(opt.title || pages.length + 'ページ') + '）</b><span class="sp"></span><button class="b dark" id="pvX">閉じる</button></div>' + (opt.onNote ? '<div class="note" style="margin-top:6px;">請求書のいちばん下の備考は、紙の上で押すと書けます。</div>' : '') + '<div class="paperView" style="margin-top:10px;">' + pages.join('') + '</div></div>';
   document.body.appendChild(w); w.querySelector('#pvX').onclick = () => w.remove();
+  if (opt.onNote) w.querySelectorAll('[data-note]').forEach(e => e.onclick = () => opt.onNote(w));
 }
 /* 印刷：見えない枠に紙を並べてブラウザの印刷の画面を出す。窓付き封筒に合わせるため、倍率100%・余白なしで印刷する */
 function printPages(pages) {
@@ -847,9 +877,10 @@ function drawPay() {
   function fill() {
     const rows = ltApply('pay', base), tot = rows.reduce((a, x) => a + x.amt, 0);
     $('pl').innerHTML = rows.length ? '<div class="wrapx"><table class="t"><thead><tr><th>状態</th><th>入金予定日</th><th>番号</th><th>発行日</th><th>得意先</th><th class="n">請求額</th><th class="n">入金済み</th><th class="n">残り</th><th>付箋メモ</th><th></th></tr></thead><tbody>' +
-      rows.map(x => '<tr' + (late(x) ? ' style="background:#fff6f5;"' : '') + '><td>' + stTag(x.st) + '</td><td>' + (x.i.due ? dShort(x.i.due) : '<span class="tag ng">予定日なし</span>') + (late(x) ? ' <span class="note" style="color:var(--warn);font-weight:700;">' + Math.round((SK.parse(t0) - SK.parse(x.i.due)) / 86400000) + '日過ぎ</span>' : '') + '</td><td><a href="#" data-o="' + esc(x.i.id) + '"><b>' + esc(x.i.no) + '</b></a></td><td>' + dShort(x.i.date) + '</td><td>' + esc(x.name) + '</td><td class="n">' + yen(x.c.total) + '</td><td class="n">' + yen(SK.paid(x.i)) + '</td><td class="n"><b>' + yen(x.amt) + '</b></td><td>' + stkChip(x.i) + '</td><td style="white-space:nowrap;"><button class="b sm dark" data-p="' + esc(x.i.id) + '">入金を入れる</button></td></tr>').join('') +
+      rows.map(x => '<tr' + (late(x) ? ' style="background:#fff6f5;"' : '') + '><td>' + stTag(x.st) + '</td><td>' + (x.i.due ? dShort(x.i.due) : '<span class="tag ng">予定日なし</span>') + (late(x) ? ' <span class="note" style="color:var(--warn);font-weight:700;">' + Math.round((SK.parse(t0) - SK.parse(x.i.due)) / 86400000) + '日過ぎ</span>' : '') + '</td><td><a href="#" data-o="' + esc(x.i.id) + '"><b>' + esc(x.i.no) + '</b></a></td><td>' + dShort(x.i.date) + '</td><td>' + esc(x.name) + '</td><td class="n">' + yen(x.c.total) + '</td><td class="n">' + yen(SK.paid(x.i)) + '</td><td class="n"><b>' + yen(x.amt) + '</b></td>' + stkCell(x.i, 'pay') + '<td style="white-space:nowrap;"><button class="b sm dark" data-p="' + esc(x.i.id) + '">入金を入れる</button></td></tr>').join('') +
       '</tbody><tfoot><tr><td colspan="7">' + rows.length + ' 枚</td><td class="n">' + yen(tot) + '</td><td colspan="2"></td></tr></tfoot></table></div>' : '<div class="note">当てはまる請求書はありません。</div>';
     $('pl').querySelectorAll('[data-p]').forEach(b => b.onclick = () => addPayment(ST.invs.find(i => i.id === b.dataset.p), drawPay));
+    wireStk($('pl'), id => ST.invs.find(i => i.id === id), async i => { if (await saveInvSticky(i)) drawPay(); });
     $('pl').querySelectorAll('[data-o]').forEach(a => a.onclick = e => { e.preventDefault(); ST.tab = 'inv'; draw(); openInv(plain(ST.invs.find(i => i.id === a.dataset.o))); });
   }
   ltWire('pay', fill); fill();
@@ -865,10 +896,10 @@ function drawRcp() {
   function fill() {
     const rows = ltApply('rcp', base);
     $('rl').innerHTML = rows.length ? '<div class="wrapx"><table class="t"><thead><tr><th>番号</th><th>発行日</th><th>宛名</th><th class="n">金額</th><th>但し書き</th><th>請求書</th><th>収入印紙</th><th>付箋メモ</th><th></th></tr></thead><tbody>' +
-      rows.map(x => { const r = x.r; return '<tr><td><b>' + esc(r.no) + '</b>' + (r.state === '取消' ? ' <span class="tag">取消</span>' : '') + '</td><td>' + dShort(r.date) + '</td><td>' + esc(r.toName) + '</td><td class="n">' + yen(r.amount) + '</td><td>' + esc(r.purpose) + '</td><td>' + esc(r.invNo || '') + '</td><td>' + (SK.stampDuty(r.amount) == null ? '<span class="tag ng">要確認</span>' : SK.stampDuty(r.amount) ? yen(SK.stampDuty(r.amount)) + '円' : '不要') + '</td><td>' + stkChip(r) + '</td>' +
-        '<td style="white-space:nowrap;"><button class="b sm" data-s="' + esc(r.id) + '">付箋</button><button class="b sm" data-v="' + esc(r.id) + '">紙を見る</button><button class="b sm" data-pr="' + esc(r.id) + '">印刷</button><button class="b sm" data-pdf="' + esc(r.id) + '">PDF</button>' + (r.state === '取消' ? '' : '<button class="b sm danger" data-c="' + esc(r.id) + '">取消</button>') + '</td></tr>'; }).join('') + '</tbody></table></div>' : '<div class="note">当てはまる領収書はありません。</div>';
+      rows.map(x => { const r = x.r; return '<tr><td><b>' + esc(r.no) + '</b>' + (r.state === '取消' ? ' <span class="tag">取消</span>' : '') + '</td><td>' + dShort(r.date) + '</td><td>' + esc(r.toName) + '</td><td class="n">' + yen(r.amount) + '</td><td>' + esc(r.purpose) + '</td><td>' + esc(r.invNo || '') + '</td><td>' + (SK.stampDuty(r.amount) == null ? '<span class="tag ng">要確認</span>' : SK.stampDuty(r.amount) ? yen(SK.stampDuty(r.amount)) + '円' : '不要') + '</td>' + stkCell(r, 'rcp') +
+        '<td style="white-space:nowrap;"><button class="b sm" data-v="' + esc(r.id) + '">紙を見る</button><button class="b sm" data-pr="' + esc(r.id) + '">印刷</button><button class="b sm" data-pdf="' + esc(r.id) + '">PDF</button>' + (r.state === '取消' ? '' : '<button class="b sm danger" data-c="' + esc(r.id) + '">取消</button>') + '</td></tr>'; }).join('') + '</tbody></table></div>' : '<div class="note">当てはまる領収書はありません。</div>';
     const Q = a => $('rl').querySelectorAll(a);
-    Q('[data-s]').forEach(b => b.onclick = async () => { const r = R(b.dataset.s), v = await stkEdit(r); if (v === undefined) return; r.sticky = v; try { await saveRcp(r); drawRcp(); } catch (e) { alert('付箋を保存できませんでした：' + e.message); } });
+    wireStk($('rl'), R, async r => { const v = await stkEdit(r); if (v === undefined) return; r.sticky = v; try { await saveRcp(r); drawRcp(); } catch (e) { alert('付箋を保存できませんでした：' + e.message); } });
     Q('[data-v]').forEach(b => b.onclick = () => showPaper(rcpPages(R(b.dataset.v))));
     Q('[data-pr]').forEach(b => b.onclick = () => printPages(rcpPages(R(b.dataset.pr))));
     Q('[data-pdf]').forEach(b => b.onclick = async () => { const r = R(b.dataset.pdf); try { await pdfOf(rcpPages(r), '領収書_' + r.no + '_' + r.toName + '.pdf'); } catch (e) { alert(e.message); } });
@@ -914,11 +945,20 @@ function drawCust() {
   M.innerHTML = '<div class="card"><div class="row"><b>得意先</b><input id="cq" placeholder="さがす" value="' + esc(q) + '" style="width:220px;"><label><input type="checkbox" id="co"' + (only ? ' checked' : '') + '> 要確認だけ</label><span class="note">要確認 ' + ST.custs.filter(c => c.termsCheck).length + ' 社</span><span class="sp"></span><button class="b dark" id="nc">＋ 新しい得意先</button></div>' +
     '<div class="note" style="margin-top:6px;">「要確認」は販売らくだに支払いの決まりが入っていなかった（または締め日だけだった）ので、仮に「月末締め・翌月末払い」などを入れた得意先です。確かめて保存すると消えます。</div></div>' +
     '<div class="card"><div class="wrapx"><table class="t"><thead><tr><th>コード</th><th>会社名</th><th>部署・担当</th><th>支払いの決まり</th><th>送り方</th><th>付箋メモ</th><th></th></tr></thead><tbody>' +
-    list.map(c => '<tr class="link" data-id="' + esc(c.id) + '"' + (c.active === false ? ' style="opacity:.55;"' : '') + '><td>' + esc(c.code) + '</td><td>' + esc(c.name) + '</td><td>' + esc([c.dept, c.person].filter(Boolean).join('　')) + '</td><td>' + esc(SK.termsLabel(c.terms)) + (c.termsCheck ? ' <span class="tag mid">要確認</span>' : '') + '</td><td>' + esc(c.sendBy || '') + '</td><td>' + stkChip(c) + '</td><td>' + (c.active === false ? '<span class="tag">使わない</span>' : '') + '</td></tr>').join('') + '</tbody></table></div></div>';
+    list.map(c => '<tr class="link" data-id="' + esc(c.id) + '"' + (c.active === false ? ' style="opacity:.55;"' : '') + '><td>' + esc(c.code) + '</td><td>' + esc(c.name) + '</td><td>' + esc([c.dept, c.person].filter(Boolean).join('　')) + '</td><td>' + esc(SK.termsLabel(c.terms)) + (c.termsCheck ? ' <span class="tag mid">要確認</span>' : '') + '</td><td>' + esc(c.sendBy || '') + '</td>' + stkCell(c, 'cust') + '<td>' + (c.active === false ? '<span class="tag">使わない</span>' : '') + '</td></tr>').join('') + '</tbody></table></div></div>';
   $('cq').oninput = () => { ST.cq = $('cq').value; drawCust(); $('cq').focus(); $('cq').setSelectionRange(99, 99); };
   $('co').onchange = () => { ST.conly = $('co').checked; drawCust(); };
   $('nc').onclick = () => { const mx = Math.max(0, ...ST.custs.map(c => Number(c.code) || 0)); editCust({ id: newId('c'), code: String(mx + 1).padStart(4, '0'), name: '', honor: '様', terms: plain(ST.cfg.defTerms), sendBy: '紙', active: true, isNew: true }); };
   M.querySelectorAll('tr.link').forEach(tr => tr.onclick = () => editCust(plain(ST.custs.find(c => c.id === tr.dataset.id))));
+  wireStk(M, id => plain(ST.custs.find(c => c.id === id)), async c => { if (await saveCustSticky(c)) drawCust(); });
+}
+/* 得意先の付箋だけを保存する */
+async function saveCustSticky(c) {
+  const v = await stkEdit(c); if (v === undefined) return false;
+  const b = plain(ST.custs.find(x => x.id === c.id) || c); b.sticky = v;
+  busy('保存しています…');
+  try { await gas('saveCust', { c: b }); await store.put(C.cust, b.id, b); ST.custs = ST.custs.filter(x => x.id !== b.id).concat([b]).sort((x, y) => String(x.code).localeCompare(String(y.code))); c.sticky = v; return true; }
+  catch (e) { alert('付箋を保存できませんでした：' + e.message); return false; } finally { busy(''); }
 }
 function editCust(c) {
   const t = c.terms || {}, sel = (id, opts, v) => '<select id="' + id + '" style="width:100%;">' + opts.map(o => '<option value="' + o[0] + '"' + (String(v) === o[0] ? ' selected' : '') + '>' + o[1] + '</option>').join('') + '</select>';
@@ -947,13 +987,7 @@ function editCust(c) {
   };
   if ($('mk')) $('mk').onclick = () => { ST.tab = 'inv'; draw(); openInv(newInv(c)); ST.dirty = true; };
   if ($('cp2')) $('cp2').onclick = () => { const mx = Math.max(0, ...ST.custs.map(x => Number(x.code) || 0)); const n = plain(ST.custs.find(x => x.id === c.id) || c); delete n.legacy; delete n.sticky; Object.assign(n, { id: newId('c'), code: String(mx + 1).padStart(4, '0'), person: '', isNew: true }); editCust(n); alert('写しました。担当者を入れて「保存」してください（コード ' + n.code + '）。'); };
-  if ($('stkC')) $('stkC').onclick = async () => {
-    const v = await stkEdit(c); if (v === undefined) return;
-    const b = plain(ST.custs.find(x => x.id === c.id) || c); b.sticky = v;   // 付箋だけを保存する
-    busy('保存しています…');
-    try { await gas('saveCust', { c: b }); await store.put(C.cust, b.id, b); ST.custs = ST.custs.filter(x => x.id !== b.id).concat([b]).sort((x, y) => String(x.code).localeCompare(String(y.code))); c.sticky = v; busy(''); editCust(c); }
-    catch (e) { busy(''); alert('付箋を保存できませんでした：' + e.message); }
-  };
+  if ($('stkC')) $('stkC').onclick = async () => { if (await saveCustSticky(c)) editCust(c); };
 }
 
 /* ===== 提出データ（税理士さん。ユーザー決定 2026-11-05：月ごとに 請求書のPDF・入金分のPDF・Excel。アプリで作って保存し、送るのはユーザー） ===== */
@@ -1003,6 +1037,7 @@ function drawCfg() {
   const rateRows = (g.rates || []).map((r, k) => '<tr data-k="' + k + '"><td><select data-r="kind"><option value="std"' + (r.kind === 'std' ? ' selected' : '') + '>標準税率</option><option value="red"' + (r.kind === 'red' ? ' selected' : '') + '>軽減税率</option></select></td><td><input data-r="rate" value="' + esc(r.rate) + '" style="width:70px;text-align:right;"> %</td><td><input data-r="from" type="date" value="' + esc(r.from) + '"></td><td><button class="b sm danger" data-rm="' + k + '">消す</button></td></tr>').join('');
   const empty = !ST.hasCfg && !ST.custs.length;
   M.innerHTML = (empty ? '<div class="card" style="border-color:var(--accent);"><h2>はじめに：販売らくだのデータを読み込む</h2><div class="note">PC で販売らくだの写しから作った「seikyu_import.json」（請求システム／移行）を読み込み、スプレッドシート（請求管理DB）と画面の写しを作ります。販売らくだには触りません。</div><div class="row" style="margin-top:10px;"><button class="b dark" id="imp">読み込む</button></div></div>' : '') +
+    '<div class="card" style="border-color:var(--accent);"><div class="row"><span>アプリの版：<b>' + APP_VER + '</b>' + (ST.newVer ? '　<span class="tag mid">新しい版があります：' + esc(ST.newVer) + '</span>' : '') + '</span><span class="sp"></span><button class="b dark" id="rf">最新の版にする</button></div><div class="note" style="margin-top:4px;">新しい版が出ると、画面の上に知らせが出ます。入力の途中でなければ自動で入れ替わります。このボタンでも入れ替えられます。</div></div>' +
     '<div class="card"><div class="row"><h2 style="margin:0;">設定</h2><span class="sp"></span><button class="b dark" id="sv">保存</button></div>' +
     S('会社名', I('c_name', co.name), 'これから作る請求書・領収書と送り状に出ます。前に作った請求書・領収書は、作ったときの会社名・住所・振込先のままです。') + S('郵便番号', I('c_zip', co.zip), '') + S('住所', I('c_addr', co.addr), '2026-11-05 ユーザー決定：戸ノ内町5丁目10-16。') +
     S('TEL', I('c_tel', co.tel), '') + S('FAX', I('c_fax', co.fax), '') + S('登録番号', I('c_reg', co.regNo), '適格請求書発行事業者の登録番号（T＋13けた）。請求書に必ず出します。') +
@@ -1026,7 +1061,7 @@ function drawCfg() {
     S('担当', I('cp', g.coverPerson), '送り状の画面の「担当（送り主）」の初めの値です。印刷のたびに変えられます。') +
     S('本文', '<textarea id="ct" style="min-height:110px;">' + esc(g.coverText) + '</textarea>', '送り状の画面の「送り文」の初めの値です。印刷のたびに変えられます。') +
     '</div><div class="card"><h2>税理士さんへのメモ</h2><textarea id="mt" style="min-height:90px;">' + esc(g.memoTax) + '</textarea><div class="note">提出データの画面のボタンで見られます（送り方・締め切りなど）。</div></div>' +
-    '<div class="card"><div class="row"><span>アプリの版：<b>' + APP_VER + '</b></span><span class="sp"></span><button class="b" id="rf">最新の版にする</button></div></div>';
+    '';
   $('rf').onclick = refreshApp;
   const readRates = () => [...$('rt').querySelectorAll('tr')].map(tr => ({ kind: tr.querySelector('[data-r="kind"]').value, rate: num(tr.querySelector('[data-r="rate"]').value), from: tr.querySelector('[data-r="from"]').value }));
   $('addR').onclick = () => { g.rates = readRates().concat([{ kind: 'std', rate: 10, from: '' }]); const keep = readAll(); drawCfg(); Object.assign(ST.cfg, keep, { rates: g.rates }); ST.dirty = true; };
