@@ -130,12 +130,12 @@
 <main id="m"></main>
 <div id="busy"></div>
 
-<script src="calc.js?v=Ver.請求20261106-29"></script>
+<script src="calc.js?v=Ver.請求20261106-30"></script>
 <script type="module">
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
 import { getFirestore, collection, doc, getDoc, getDocs, setDoc, deleteDoc, writeBatch, runTransaction, onSnapshot } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
-const APP_VER = 'Ver.請求20261106-29';   // 版の名前は「Ver.請求YYYYMMDD-NN」（ユーザー指示 2026-11-06）
+const APP_VER = 'Ver.請求20261106-30';   // 版の名前は「Ver.請求YYYYMMDD-NN」（ユーザー指示 2026-11-06）
 const API = 'https://script.google.com/macros/s/AKfycbzpJgqJOqQz5180PQF2S3kVN7TWg0c1dnyUUUNuCZtzy5_pmKEhAkw5w3gqSj31EEA1/exec';   // Apps Script「請求管理」（ポータル・給与とは別）
 /* ログインは給与アプリと同じ（ユーザー指示 2026-11-05）：ポータルの Firebase、メールとパスワード。入れるのはマスターと「請求管理」の権限（users.canInvoice）がある人 */
 const app = initializeApp({ apiKey: 'AIzaSyDVR4p4DO4s9h70uPlXUVlhNcMP9-YkQ5Q', authDomain: 'genba-portal-9077b.firebaseapp.com', projectId: 'genba-portal-9077b' });
@@ -253,6 +253,7 @@ async function qRun() {
       try { r = await gas('batch', { items: batch.map(x => ({ k: x.k, action: x.action, data: x.data })) }); }
       catch (e) { Q.err = e.message || String(e); Q.fail++; qShow(); await new Promise(ok => setTimeout(ok, Math.min(60000, 3000 * Math.pow(2, Q.fail)))); continue; }   // 通信・ログイン切れ・混み合い：消さずにやり直す
       Q.err = ''; Q.fail = 0;
+      yearRevBump(batch.filter(x => x.action === 'saveInv').flatMap(x => [String((x.data.inv || {}).date || '').slice(0, 4), String(x.data.prevDate || '').slice(0, 4)]));
       const done = new Set(batch.map(x => x.k));
       qSet(qGet().filter(x => !done.has(x.k)));
       ((r && r.ng) || []).forEach(n => { const x = batch.find(b => b.k === n.k) || {}; Q.ng.push(n); okBox('スプレッドシートに書けませんでした（' + (x.label || '') + '）：\n' + n.m + '\n\n画面の写しとスプレッドシートが違っています。上の「読み込み直す」を押して中身を確かめ、もう一度保存してください。', 'OK', true); });
@@ -447,6 +448,7 @@ function liveOn() {
     });
     if (ch) { apvBadge(); liveRedraw(); }
   };
+  ST.unsub.push(onSnapshot(doc(db, C.cfg, 'main'), s => { if (!s.exists()) return; const v = s.data(); ST.cfg.yearRev = v.yearRev || {}; ['invNo', 'rcpNo', 'offNo'].forEach(k => { if (v[k]) ST.cfg[k] = v[k]; }); }, () => {}));
   ST.unsub.push(onSnapshot(collection(db, C.inv), apply('invs'), () => {}));
   ST.unsub.push(onSnapshot(collection(db, C.rcp), apply('rcps'), () => {}));
   ST.unsub.push(onSnapshot(collection(db, C.cust), apply('custs'), () => {}));
@@ -505,18 +507,35 @@ const IDB = {
   async get(k) { try { const d = await this.open(); return await new Promise(ok => { const q = d.transaction('years').objectStore('years').get(k); q.onsuccess = () => ok(q.result || null); q.onerror = () => ok(null); }); } catch (e) { return null; } },
   async put(k, v) { try { const d = await this.open(); await new Promise(ok => { const t = d.transaction('years', 'readwrite'); t.objectStore('years').put(v, k); t.oncomplete = ok; t.onerror = ok; }); } catch (e) {} }
 };
+/* 年ごとの「変わった印」は画面の写しの seikyuCfg/main の yearRev（年ごとに1つの値を上書きするだけ。溜まらない）。
+   スプレッドシートに書けたあとで印を変える（書く前に印を変えると、ほかの人が古い中身を覚えてしまう） */
+const fbRev = y => String(((ST.cfg || {}).yearRev || {})[y] || '');
+async function yearRevBump(ys) {
+  ys = [...new Set(ys.map(String).filter(y => /^\d{4}$/.test(y) && !liveYear(y)))];
+  if (LOCAL || !ys.length) return;
+  const v = 'r' + Date.now(), o = {}; ys.forEach(y => { o[y] = v; });
+  try { await setDoc(doc(db, C.cfg, 'main'), { yearRev: o }, { merge: true }); ST.cfg.yearRev = Object.assign({}, ST.cfg.yearRev || {}, o); } catch (e) {}
+}
+async function yearRevBase(ys) {   // まだ印が無い年に、初めの印を付ける（あれば変えない）
+  ys = ys.filter(y => !fbRev(y)); if (LOCAL || !ys.length) return;
+  try {
+    const ref = doc(db, C.cfg, 'main');
+    const got = await runTransaction(db, async t => { const s = await t.get(ref), cur = (s.exists() && s.data().yearRev) || {}, o = {}; ys.forEach(y => { if (!cur[y]) o[y] = 'b' + Date.now(); }); if (Object.keys(o).length) t.set(ref, { yearRev: o }, { merge: true }); return Object.assign({}, cur, o); });
+    ST.cfg.yearRev = Object.assign({}, ST.cfg.yearRev || {}, got);
+  } catch (e) {}
+}
 async function sheetYears(years) {
   const need = years.map(String).filter(y => !ST.yearData[y]);
   if (!need.length) return;
   if (LOCAL) { for (const y of need) ST.yearData[y] = (await gas('year', { year: y })).map(tidyInv); return; }
-  const have = {}, cached = {};
-  for (const y of need) { const c = await IDB.get('y' + y); if (c) { cached[y] = c; have[y] = c.rev; } }
-  busy((need.length > 1 ? need[0] + '〜' + need[need.length - 1] : need[0]) + '年の請求書を読んでいます…');
-  let r; try { r = await gas('years', { years: need, have }); } finally { busy(''); }
-  for (const y of need) {
-    if (r.data && r.data[y]) { ST.yearData[y] = r.data[y].map(tidyInv); IDB.put('y' + y, { rev: r.revs[y], list: r.data[y] }); }
-    else ST.yearData[y] = cached[y] ? cached[y].list.map(tidyInv) : [];
-  }
+  const rest = [];
+  for (const y of need) { const c = await IDB.get('y' + y); if (c && c.fb && c.fb === fbRev(y)) ST.yearData[y] = c.list.map(tidyInv); else rest.push(y); }
+  if (!rest.length) return;   // 全部この PC に覚えていた（スプレッドシートには聞かない）
+  await yearRevBase(rest);
+  const fb = {}; rest.forEach(y => { fb[y] = fbRev(y); });   // 読む前の印（読んでいる間に変わったら、次は読み直す）
+  busy((rest.length > 1 ? rest[0] + '〜' + rest[rest.length - 1] : rest[0]) + '年の請求書をスプレッドシートから読んでいます…');
+  let r; try { r = await gas('years', { years: rest, have: {} }); } finally { busy(''); }
+  for (const y of rest) { const L = (r.data && r.data[y]) || []; ST.yearData[y] = L.map(tidyInv); if (fb[y]) IDB.put('y' + y, { fb: fb[y], list: L }); }
 }
 async function invsOfYear(y) {
   y = String(y);
@@ -717,7 +736,8 @@ async function saveInv(inv, why) {
   if (!inv.createdAt) { inv.createdAt = nowStr(); inv.createdBy = ST.me.name; }
   inv.updatedAt = nowStr(); inv.updatedBy = ST.me.name;
   const d = plain(inv); delete d.isNew; delete d.fromSheet;
-  const sheetData = { inv: plain(d), calc: { sub: c.sub, tax: c.tax, total: c.total, groups: c.groups, payState: stateOf(d) }, why: why || '', at: nowStr() };
+  const prevI = [...ST.invs, ...Object.values(ST.yearData).flat()].find(x => x.id === d.id);
+  const sheetData = { prevDate: prevI ? prevI.date : '', inv: plain(d), calc: { sub: c.sub, tax: c.tax, total: c.total, groups: c.groups, payState: stateOf(d) }, why: why || '', at: nowStr() };
   if (!ST.hold) busy('保存しています…');
   try {
     d.expireAt = expireOf(d);
@@ -1740,7 +1760,7 @@ function drawCfg() {
     const nextNoTxt = v.invNo.prefix + String(v.invNo.next).padStart(v.invNo.digits, '0');
     if (used.includes(nextNoTxt) && !(await okBox('次の請求書の番号 ' + nextNoTxt + ' は、もう使われています。このまま保存しますか？', '保存する'))) return;
     busy('保存しています…');
-    try { await gas('saveCfg', { cfg: v }); await store.put(C.cfg, 'main', Object.assign({}, ST.cfg, v)); Object.assign(ST.cfg, v); ST.hasCfg = true; ST.dirty = false; alert('保存しました。'); drawCfg(); }
+    try { await gas('saveCfg', { cfg: v }); { const w = Object.assign({}, ST.cfg, v); delete w.yearRev; await store.put(C.cfg, 'main', w); ST.cfg.yearRev = {}; } Object.assign(ST.cfg, v); ST.hasCfg = true; ST.dirty = false; alert('保存しました。'); drawCfg(); }
     catch (e) { alert('保存できませんでした：' + e.message); } finally { busy(''); }
   };
   if ($('imp')) $('imp').onclick = importRaku;
