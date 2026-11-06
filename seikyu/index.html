@@ -128,12 +128,12 @@
 <main id="m"></main>
 <div id="busy"></div>
 
-<script src="calc.js?v=Ver.請求20261106-19"></script>
+<script src="calc.js?v=Ver.請求20261106-20"></script>
 <script type="module">
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
 import { getFirestore, collection, doc, getDoc, getDocs, setDoc, deleteDoc, writeBatch, runTransaction } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
-const APP_VER = 'Ver.請求20261106-19';   // 版の名前は「Ver.請求YYYYMMDD-NN」（ユーザー指示 2026-11-06）
+const APP_VER = 'Ver.請求20261106-20';   // 版の名前は「Ver.請求YYYYMMDD-NN」（ユーザー指示 2026-11-06）
 const API = 'https://script.google.com/macros/s/AKfycbzpJgqJOqQz5180PQF2S3kVN7TWg0c1dnyUUUNuCZtzy5_pmKEhAkw5w3gqSj31EEA1/exec';   // Apps Script「請求管理」（ポータル・給与とは別）
 /* ログインは給与アプリと同じ（ユーザー指示 2026-11-05）：ポータルの Firebase、メールとパスワード。入れるのはマスターと「請求管理」の権限（users.canInvoice）がある人 */
 const app = initializeApp({ apiKey: 'AIzaSyDVR4p4DO4s9h70uPlXUVlhNcMP9-YkQ5Q', authDomain: 'genba-portal-9077b.firebaseapp.com', projectId: 'genba-portal-9077b' });
@@ -330,7 +330,7 @@ const DEF_CFG = {
   invNo: { prefix: 'S', digits: 5, next: 1 }, rcpNo: { prefix: 'R', digits: 5, next: 1 },
   defTerms: { close: 31, months: 1, day: 31 }, greeting: '下記の通りご請求申し上げます。',
   coverPerson: '比嘉 美紀', coverText: '拝啓　時下ますますご清栄のことと心よりお喜び申し上げます。平素は格別のお引き立てを賜り、厚く御礼を申し上げます。\n　さて、早速ではございますが下記の書類をお送りいたします。よろしくご査収くださいますよう、お願い申し上げます。',
-  stamps: true, rcpPurpose: 'ダクト工事代として', memoTax: '', approvers: DEF_APV, fyEnd: 2, stkRules: {}, offNo: { prefix: 'K', digits: 5, next: 1 }, offPurpose: '請求代金との相殺'
+  stamps: true, rcpPurpose: 'ダクト工事代として', memoTax: '', approvers: DEF_APV, fyEnd: 2, stkRules: {}, offNo: { prefix: 'K', digits: 5, next: 1 }, offPurpose: '請求代金との相殺', cov2Person: '比嘉 美紀', cov2Title: '書類送付のご案内', cov2Text: '拝啓　時下ますますご清栄のことと心よりお喜び申し上げます。平素は格別のお引き立てを賜り、厚く御礼を申し上げます。\n　さて、早速ではございますが下記の書類をお送りいたします。よろしくご査収くださいますよう、お願い申し上げます。'
 };
 const ST = { stamps: {}, me: null, cfg: plain(DEF_CFG), custs: [], invs: [], rcps: [], tab: 'inv', year: String(new Date().getFullYear()), yearData: {}, q: '', filt: 'all' };
 const cfgMerge = c => { const o = Object.assign(plain(DEF_CFG), c || {}); if (!o.offNo || !o.offNo.prefix) o.offNo = plain(DEF_CFG.offNo); o.company = Object.assign(plain(DEF_CFG.company), (c || {}).company || {}); if (!Array.isArray(o.approvers) || o.approvers.length !== 3) o.approvers = plain(DEF_APV); return o; };
@@ -937,7 +937,7 @@ async function drawCov() {
   const from = s.per === 'close' ? cr.from : s.per === 'range' ? (s.from || '2000-01-01') : '2000-01-01', to = s.per === 'close' ? cr.to : s.per === 'range' ? (s.to || '2099-12-31') : '2099-12-31';
   M.innerHTML = '<div class="card"><div class="row"><b style="font-size:1.1rem;">送り状</b><span class="sp"></span><button class="b" id="cvRe">読み込み直す</button><button class="b dark" id="cvNew">＋ 新しい送り状</button></div>' +
     '<div class="row lt" style="margin-top:8px;">' + perBar('cov', '日付') + '</div>' +
-    '<div class="note" style="margin-top:6px;">請求書を付けずに、送り状だけを作って印刷します。作った送り状はスプレッドシート「請求管理DB」の「送り状」に残り、この一覧は開いたときに読み込みます。行を押すと開いて、直して保存・もう一度印刷できます。請求書と一緒に送るときは、請求書の画面の「印刷（送り状つき）」を使ってください。</div></div>' +
+    '<div class="note" style="margin-top:6px;">請求書を付けずに、送り状だけを作って印刷します。作った送り状はスプレッドシート「請求管理DB」の「送り状」に残り、この一覧は開いたときに読み込みます。行を押すと開いて、直して保存・もう一度印刷できます。この送り状は、請求書に付ける送り状とは別です（初めの値は設定の「送り状（送り状タブ）」）。</div></div>' +
     '<div class="card" id="cvl"><div class="note">読み込んでいます…</div></div>';
   ltWire('cov', drawCov);
   $('cvNew').onclick = () => coverEdit(null);
@@ -957,7 +957,7 @@ async function coverEdit(c) {
   await loadPeople();
   const custs = ST.custs.filter(x => !x.deleted && x.active !== false).sort((a, b) => String(a.code).localeCompare(String(b.code)));
   const fromCust = cu => { const d = coverDef({ to: { name: cu.name || '', dept: cu.dept || '', person: cu.person || '', honor: cu.honor || '様', zip: cu.zip || '', addr1: cu.addr1 || '', addr2: cu.addr2 || '' }, no: '' }); return { zip: d.zip, addr1: d.addr1, addr2: d.addr2, l5: d.l5, l6: d.l6, honor: d.honor }; };
-  const v = Object.assign({ id: '', custId: '', custCode: '', date: today(), zip: '', addr1: '', addr2: '', l5: '', l6: '', honor: '様', person: ST.cfg.coverPerson || '', title: '書類送付のご案内', text: ST.cfg.coverText || '', items: '' }, c || {});
+  const v = Object.assign({ id: '', custId: '', custCode: '', date: today(), zip: '', addr1: '', addr2: '', l5: '', l6: '', honor: '様', person: ST.cfg.cov2Person || '', title: ST.cfg.cov2Title || '', text: ST.cfg.cov2Text || '', items: '' }, c || {});   // 初めの値は設定の「送り状（送り状タブ）」
   const P = (ST.people || []).map(p => p.name); if (v.person && !P.includes(v.person)) P.unshift(v.person);
   return new Promise(done => {
     const w = document.createElement('div'); w.id = 'ask';
@@ -1407,9 +1407,12 @@ function drawCfg() {
     S('相殺伝票の内容', I('op', g.offPurpose), '新しい相殺伝票の「内容」の初めの値。') +
     '</div><div class="card"><h2>付箋の色の決まり</h2><div class="note">色ごとに、何に使うかを書いておけます。付箋を貼る画面の色の選び方と、請求書の一覧の上に出ます。空の色は出しません。</div>' +
     STK.map(x => S('<span class="stk ' + x[0] + '">' + x[1] + '</span>', '<input data-sr="' + x[0] + '" value="' + esc(((g.stkRules || {})[x[0]]) || '') + '" placeholder="例：入金の確認がいる">', '')).join('') +
-    '</div><div class="card"><h2>送り状</h2>' +
+    '</div><div class="card"><h2>送り状（請求書に付ける物）</h2>' +
     S('担当', I('cp', g.coverPerson), '送り状の画面の「担当（送り主）」の初めの値です。印刷のたびに変えられます。') +
     SW('本文', '<textarea id="ct" class="paperw" style="width:44.8em;max-width:calc(100% - 22px);min-height:9em;">' + esc(g.coverText) + '</textarea>', '送り状の画面の「送り文」の初めの値です。印刷のたびに変えられます。欄の幅は紙の1行（' + CV_TEXT_W + ' 字）と同じです。改行した所は紙でも改行します。') +
+    '</div><div class="card"><h2>送り状（送り状タブ）</h2><div class="note">上の「送り状」は請求書に付ける物、こちらは送り状タブで送り状だけを作るときの初めの値です（別々に持ちます）。</div>' +
+    S('送り主', I('c2p', g.cov2Person), '送り状タブの「送り主」の初めの値。') + S('表題', I('c2t', g.cov2Title), '') +
+    SW('本文', '<textarea id="c2x" class="paperw" style="width:44.8em;max-width:calc(100% - 22px);min-height:9em;">' + esc(g.cov2Text) + '</textarea>', '欄の幅は紙の1行（' + CV_TEXT_W + ' 字）と同じです。') +
     '</div><div class="card"><h2>税理士さんへのメモ</h2><textarea id="mt" style="min-height:90px;">' + esc(g.memoTax) + '</textarea><div class="note">提出データの画面のボタンで見られます（送り方・締め切りなど）。</div></div>' +
     '';
   $('rf').onclick = refreshApp;
@@ -1422,7 +1425,7 @@ function drawCfg() {
       company: { name: $('c_name').value.trim(), zip: $('c_zip').value.trim(), addr: $('c_addr').value.trim(), tel: $('c_tel').value.trim(), fax: $('c_fax').value.trim(), regNo: $('c_reg').value.trim() },
       bank: $('bank').value.trim(), greeting: $('greet').value, stamps: $('stp').checked, rates: readRates(), taxRound: $('tr').value, amtRound: $('ar').value,
       invNo: { prefix: $('in_p').value.trim(), digits: num($('in_d').value) || 5, next: num($('in_n').value) || 1 }, rcpNo: { prefix: $('rn_p').value.trim(), digits: num($('rn_d').value) || 5, next: num($('rn_n').value) || 1 },
-      defTerms: { close: Number($('dc').value), months: Number($('dm').value), day: Number($('dd').value) }, rcpPurpose: $('rp').value, offNo: { prefix: $('on_p').value.trim() || 'K', digits: num($('on_d').value) || 5, next: num($('on_n').value) || 1 }, offPurpose: $('op').value, coverPerson: $('cp').value, coverText: $('ct').value, memoTax: $('mt').value, fyEnd: Number($('oc').value) || 2, stkRules: Object.fromEntries([...M.querySelectorAll('[data-sr]')].map(e => [e.dataset.sr, e.value.trim()])),
+      defTerms: { close: Number($('dc').value), months: Number($('dm').value), day: Number($('dd').value) }, rcpPurpose: $('rp').value, offNo: { prefix: $('on_p').value.trim() || 'K', digits: num($('on_d').value) || 5, next: num($('on_n').value) || 1 }, offPurpose: $('op').value, coverPerson: $('cp').value, cov2Person: $('c2p').value, cov2Title: $('c2t').value, cov2Text: $('c2x').value, coverText: $('ct').value, memoTax: $('mt').value, fyEnd: Number($('oc').value) || 2, stkRules: Object.fromEntries([...M.querySelectorAll('[data-sr]')].map(e => [e.dataset.sr, e.value.trim()])),
       approvers: [...M.querySelectorAll('[data-apk]')].map(tr => { const u = tr.querySelector('[data-ap="uid"]'), uid = u.value, p = (ST.people || []).find(x => x.uid === uid); return { label: tr.querySelector('[data-ap="label"]').value.trim() || '承認', uid, name: uid ? (p ? p.name : (u.selectedOptions[0] || {}).textContent || uid) : '', stamp: tr.querySelector('[data-ap="stamp"]').value }; })
     };
   }
