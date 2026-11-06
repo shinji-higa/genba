@@ -125,12 +125,12 @@
 <main id="m"></main>
 <div id="busy"></div>
 
-<script src="calc.js?v=Ver.請求20261106-07"></script>
+<script src="calc.js?v=Ver.請求20261106-08"></script>
 <script type="module">
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
 import { getFirestore, collection, doc, getDoc, getDocs, setDoc, deleteDoc, writeBatch, runTransaction } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
-const APP_VER = 'Ver.請求20261106-07';   // 版の名前は「Ver.請求YYYYMMDD-NN」（ユーザー指示 2026-11-06）
+const APP_VER = 'Ver.請求20261106-08';   // 版の名前は「Ver.請求YYYYMMDD-NN」（ユーザー指示 2026-11-06）
 const API = 'https://script.google.com/macros/s/AKfycbzpJgqJOqQz5180PQF2S3kVN7TWg0c1dnyUUUNuCZtzy5_pmKEhAkw5w3gqSj31EEA1/exec';   // Apps Script「請求管理」（ポータル・給与とは別）
 /* ログインは給与アプリと同じ（ユーザー指示 2026-11-05）：ポータルの Firebase、メールとパスワード。入れるのはマスターと「請求管理」の権限（users.canInvoice）がある人 */
 const app = initializeApp({ apiKey: 'AIzaSyDVR4p4DO4s9h70uPlXUVlhNcMP9-YkQ5Q', authDomain: 'genba-portal-9077b.firebaseapp.com', projectId: 'genba-portal-9077b' });
@@ -405,7 +405,7 @@ function perBar(key, label) {
     (s.per === 'range' ? '<input type="date" data-lt="from" value="' + esc(s.from || '') + '">〜<input type="date" data-lt="to" value="' + esc(s.to || '') + '">' : '');
 }
 /* 自社の締め（期）。ユーザー指示 2026-11-06：自社の締めは 3/1〜2月末。設定の「決算の月」の月末で締める（初めは2月）。
-   期の名前は締める年（2026/3/1〜2027/2/28 は「2027年2月期」） */
+   画面の呼び方は始まる年の「○○年度」（2026/3/1〜2027/2/28 は「2026年度」。ユーザー指示 2026-11-06）。中の番号は締める年 */
 const fyEnd = () => Math.min(12, Math.max(1, Number(ST.cfg.fyEnd) || 2));
 const mEnd = (y, m) => new Date(y, m, 0).getDate();
 function closeRange(fy) {   // fy（締める年 '2027'）の期 { from, to }
@@ -417,8 +417,9 @@ function closeYm(d) {   // その日が入る期（締める年）
   const y = +d.slice(0, 4), m = +d.slice(5, 7);
   return String(m > fyEnd() ? y + 1 : y);
 }
-const closeName = fy => { const r = closeRange(fy); return fy + '年' + fyEnd() + '月期（' + dShort(r.from) + '〜' + dShort(r.to) + '）'; };
-const closeOpt = sel => '<option value="close"' + (sel ? ' selected' : '') + '>期ごと（' + (fyEnd() % 12 + 1) + '/1〜' + fyEnd() + '月末）</option>';
+const fyLabel = fy => closeRange(fy).from.slice(0, 4) + '年度';
+const closeName = fy => { const r = closeRange(fy); return fyLabel(fy) + '（' + dShort(r.from) + '〜' + dShort(r.to) + '）'; };
+const closeOpt = sel => '<option value="close"' + (sel ? ' selected' : '') + '>年度ごと（' + (fyEnd() % 12 + 1) + '/1〜' + fyEnd() + '月末）</option>';
 function fySel(attr, cur) {   // 期を選ぶ欄
   const now = +closeYm(today()), out = []; for (let y = now + 1; y >= 2011; y--) out.push(String(y));
   cur = cur || String(now);
@@ -716,7 +717,8 @@ function paginate(lines, W, first, firstLast, next, nextLast) {
   return pages;
 }
 /* 会社の欄の上の位置（mm）。ロゴの上を「下記の通りご請求申し上げます。」の文字の上に合わせる（ユーザー指示 2026-11-06） */
-let CO_TOP = 73.1;   // 文字の上（72.9mm＋字の中の余白）とロゴの絵の上（画像の上の余白 0.1mm）をそろえた値
+const HEAD_TOP = 61;   // 「下記の通り〜」と自社の欄の枠の上（mm）。承認の欄を自社の欄の下に入れたので上げた（2026-11-06）
+let CO_TOP = 62.1;   // 文字の上（72.9mm＋字の中の余白）とロゴの絵の上（画像の上の余白 0.1mm）をそろえた値
 /* 会社の欄。角印は会社名の横・高さの真ん中（ユーザー指示 2026-11-06）。個人の印は承認の欄に押す */
 function companyBlock(withStamp, d) {
   const co = fromOf(d), us = isUs(co);   // 登録番号は、その書類に入っていた時だけ出す
@@ -732,10 +734,10 @@ function companyBlock(withStamp, d) {
 /* 承認の欄（3つ。ユーザー指示 2026-11-06：承認の印を押す。印刷・PDFは2人の承認が済んでから） */
 function apvBoxes(inv) {
   const A = ST.cfg.approvers || [], ap = inv.approvals || {};
-  return '<div style="position:absolute;right:15mm;top:37mm;display:flex;">' + A.map((a, k) => {
+  return '<div style="display:flex;margin-top:2mm;">' + A.map((a, k) => {
     const r = ap[k], key = r ? (r.stamp || a.stamp) : '', img = r && ST.cfg.stamps && ST.stamps[key];
     return '<div style="width:17mm;border:.3mm solid #1d1d1d;' + (k ? 'border-left:0;' : '') + 'background:#fff;"><div style="font-size:7.5pt;text-align:center;border-bottom:.3mm solid #1d1d1d;line-height:4.4mm;">' + esc(a.label || '承認') + '</div>' +
-      '<div style="height:16mm;display:flex;align-items:center;justify-content:center;">' + (r ? (img ? '<img src="' + img + '" style="width:' + (key === 'higa' ? 11 : 14.5) + 'mm;opacity:.92;">' : '<span style="font-size:7pt;">' + esc(r.name) + '</span>') : '') + '</div></div>';
+      '<div style="height:13.5mm;display:flex;align-items:center;justify-content:center;">' + (r ? (img ? '<img src="' + img + '" style="width:' + (key === 'higa' ? 10 : 12.5) + 'mm;opacity:.92;">' : '<span style="font-size:7pt;">' + esc(r.name) + '</span>') : '') + '</div></div>';
   }).join('') + '</div>';
 }
 function invPages(inv, cover, opt) {   // cover：送り状の中身（coverForm で入れた物）。無ければ送り状なし。opt.preview：画面で見るとき（備考を押して書ける）
@@ -770,12 +772,13 @@ function invPages(inv, cover, opt) {   // cover：送り状の中身（coverForm
       h += '<div style="position:absolute;left:15mm;top:13mm;width:100mm;font-size:10pt;line-height:1.65;">' + (to.zip ? '〒' + esc(to.zip) + '<br>' : '') + esc(to.addr1) + (to.addr2 ? '<br>' + esc(to.addr2) : '') +
         '<div style="margin-top:3mm;font-size:13pt;font-weight:700;">' + esc(to.name) + '</div>' + (to.person ? '<div style="font-size:11.5pt;">' + esc(to.person) + '</div>' : '') +
         '<div style="border-bottom:.4mm solid #1d1d1d;margin-top:1mm;"></div>' + ((inv.to || {}).code ? '<div style="font-size:8.5pt;margin-top:1mm;">お客様番号　' + esc(inv.to.code) + '</div>' : '') + '</div>';
-      if (needApv(inv)) h += apvBoxes(inv);
       h += '<div style="position:absolute;left:0;right:0;top:50mm;text-align:center;font-size:24pt;font-weight:700;letter-spacing:.6em;padding-left:.6em;">請求書</div>';
-      h += '<div style="position:absolute;left:15mm;top:72mm;width:100mm;font-size:10pt;">' + esc(ST.cfg.greeting) + (inv.title ? '<div style="margin-top:1.5mm;">件名：' + esc(inv.title) + '</div>' : '') +
+      // 左（あいさつ〜お支払期限）と右（自社の欄＋承認の欄）を1つの枠に入れ、上と下をそろえる。左は上下に広げる
+      h += '<div style="position:absolute;left:15mm;top:' + HEAD_TOP + 'mm;width:183mm;display:flex;align-items:stretch;">' +
+        '<div style="width:100mm;font-size:10pt;display:flex;flex-direction:column;justify-content:space-between;"><div>' + esc(ST.cfg.greeting) + (inv.title ? '<div style="margin-top:1.5mm;">件名：' + esc(inv.title) + '</div>' : '') + '</div>' +
         '<div style="margin-top:2.5mm;border:.5mm solid #1a6b3c;border-radius:1.5mm;padding:2.5mm 4mm;display:flex;justify-content:space-between;align-items:baseline;"><span style="font-size:11pt;font-weight:700;">今回ご請求額</span><span style="font-size:19pt;font-weight:700;">¥' + yen(c.total) + '<span style="font-size:9pt;">（税込）</span></span></div>' +
-        (inv.due ? '<div style="margin-top:1.5mm;">お支払期限：' + dJp(inv.due) + '</div>' : '') + '</div>';
-      h += '<div style="position:absolute;left:122mm;top:' + CO_TOP + 'mm;width:76mm;">' + companyBlock(true, inv) + '</div>';
+        (inv.due ? '<div style="margin-top:1.5mm;margin-bottom:-.9mm;line-height:1.2;">お支払期限：' + dJp(inv.due) + '</div>' : '') + '</div>' +
+        '<div style="margin-left:7mm;width:76mm;padding-top:' + (CO_TOP - HEAD_TOP).toFixed(1) + 'mm;">' + companyBlock(true, inv) + (needApv(inv) ? apvBoxes(inv) : '') + '</div></div>';
     }
     h += '<div style="position:absolute;left:15mm;right:15mm;top:' + (p === 0 ? 118 : 36) + 'mm;"><table class="it"><thead><tr>' + cols + '</tr></thead><tbody>' + pl.map(row).join('') + '</tbody></table>' + (last ? '' : '<div style="text-align:right;font-size:8.5pt;margin-top:1.5mm;">次のページへ続きます</div>') + '</div>';
     if (p > 0) h += '<div style="position:absolute;left:15mm;top:15mm;font-size:11pt;">' + esc(to.name) + '　御請求書（つづき）</div>';
@@ -1097,7 +1100,7 @@ async function drawSub() {
   const P = ST.sub = ST.sub || { mode: 'close', ym: def, from: d.getFullYear() + '-01-01', to: SK.ymd(new Date(d.getFullYear(), d.getMonth(), 0)) };
   M.innerHTML = '<div class="card"><div class="row"><b style="font-size:1.1rem;">提出データ（税理士さん）</b>' +
     '<label class="ltl"><input type="radio" name="sm" value="mon"' + (P.mode === 'mon' ? ' checked' : '') + '> 月ごと</label><label class="ltl"><input type="radio" name="sm" value="range"' + (P.mode === 'range' ? ' checked' : '') + '> いつからいつまで</label>' +
-    '<label class="ltl"><input type="radio" name="sm" value="close"' + (P.mode === 'close' ? ' checked' : '') + '> 期ごと（' + (fyEnd() % 12 + 1) + '/1〜' + fyEnd() + '月末）</label>' +
+    '<label class="ltl"><input type="radio" name="sm" value="close"' + (P.mode === 'close' ? ' checked' : '') + '> 年度ごと（' + (fyEnd() % 12 + 1) + '/1〜' + fyEnd() + '月末）</label>' +
     (P.mode === 'close' ? fySel('id="cm"', P.cm) : P.mode === 'mon' ? '<input type="month" id="ym" value="' + esc(P.ym) + '">' : '<input type="date" id="f1" value="' + esc(P.from) + '">〜<input type="date" id="f2" value="' + esc(P.to) + '"><button class="b sm" id="go">この期間で出す</button>') +
     '<span class="sp"></span>' + (ST.cfg.memoTax ? '<button class="b" id="memo">税理士さんへのメモ</button>' : '') + '</div><div class="note" style="margin-top:6px;">月か期間を選んで、PDF と Excel を作ってダウンロードします（保存先を選べます）。メールに付けて送るか、印刷して渡してください。</div></div><div class="card" id="sb">読み込んでいます…</div>';
   M.querySelectorAll('[name="sm"]').forEach(r => r.onchange = () => { P.mode = r.value; drawSub(); });
@@ -1109,7 +1112,7 @@ async function drawSub() {
   const from = P.mode === 'close' ? cr.from : P.mode === 'mon' ? P.ym + '-01' : P.from, to = P.mode === 'close' ? cr.to : P.mode === 'mon' ? SK.ymd(new Date(+P.ym.slice(0, 4), +P.ym.slice(5, 7), 0)) : P.to;
   let md; try { md = await rangeData(from, to); } catch (e) { $('sb').innerHTML = '<div class="msg">' + esc(e.message) + '</div>'; return; }
   const tot = a => a.reduce((s, i) => s + calcOf(i).total, 0);
-  const lab = P.mode === 'mon' ? P.ym.replace('-', '年') + '月' : P.mode === 'close' ? (P.cm || closeYm(today())) + '年' + fyEnd() + '月期' : from.replace(/-/g, '') + '-' + to.replace(/-/g, ''), labJ = P.mode === 'mon' ? lab : P.mode === 'close' ? closeName(P.cm || closeYm(today())) : dJp(from) + '〜' + dJp(to);
+  const lab = P.mode === 'mon' ? P.ym.replace('-', '年') + '月' : P.mode === 'close' ? fyLabel(P.cm || closeYm(today())) : from.replace(/-/g, '') + '-' + to.replace(/-/g, ''), labJ = P.mode === 'mon' ? lab : P.mode === 'close' ? closeName(P.cm || closeYm(today())) : dJp(from) + '〜' + dJp(to);
   $('sb').innerHTML = '<div class="note" style="margin-bottom:8px;">期間：<b>' + esc(labJ) + '</b></div><table class="t"><tbody>' +
     '<tr><td><b>請求書（PDF）</b><div class="note">' + esc(labJ) + 'に出した請求書（取消を除く）。印鑑つき、1枚ずつ。</div></td><td class="n">' + md.issued.length + ' 枚　' + yen(tot(md.issued)) + ' 円</td><td><button class="b dark" id="p1"' + (md.issued.length ? '' : ' disabled') + '>PDFをダウンロード</button></td></tr>' +
     '<tr><td><b>入金分（PDF）</b><div class="note">' + esc(labJ) + 'に入金があった請求書。</div></td><td class="n">' + md.paidIn.length + ' 枚</td><td><button class="b dark" id="p2"' + (md.paidIn.length ? '' : ' disabled') + '>PDFをダウンロード</button></td></tr>' +
@@ -1158,7 +1161,7 @@ function drawCfg() {
     '</div><div class="card"><h2>番号・初めの値</h2>' +
     S('請求書の番号', '<span class="row" style="gap:4px;flex-wrap:nowrap;">' + I('in_p', g.invNo.prefix) + I('in_d', g.invNo.digits, 1) + I('in_n', g.invNo.next, 1) + '</span>', '頭の字・けた数・次の番号。次に保存する新しい請求書は「' + esc(g.invNo.prefix + String(g.invNo.next).padStart(g.invNo.digits, '0')) + '」。') +
     S('領収書の番号', '<span class="row" style="gap:4px;flex-wrap:nowrap;">' + I('rn_p', g.rcpNo.prefix) + I('rn_d', g.rcpNo.digits, 1) + I('rn_n', g.rcpNo.next, 1) + '</span>', '次は「' + esc(g.rcpNo.prefix + String(g.rcpNo.next).padStart(g.rcpNo.digits, '0')) + '」。') +
-    S('自社の締め（決算）', '<select id="oc">' + Array.from({ length: 12 }, (_, k) => k + 1).map(m => '<option value="' + m + '"' + (fyEnd() === m ? ' selected' : '') + '>' + m + '月末で締める（' + (m % 12 + 1) + '/1〜' + m + '月末）</option>').join('') + '</select>', '1年の締め。請求書・入金・領収書の一覧と提出データで「期ごと」を選べます（2026-11-06 ユーザー：3/1〜2月末）。') +
+    S('自社の締め（決算）', '<select id="oc">' + Array.from({ length: 12 }, (_, k) => k + 1).map(m => '<option value="' + m + '"' + (fyEnd() === m ? ' selected' : '') + '>' + m + '月末で締める（' + (m % 12 + 1) + '/1〜' + m + '月末）</option>').join('') + '</select>', '1年の締め。請求書・入金・領収書の一覧と提出データで「年度ごと」を選べます（2026-11-06 ユーザー：3/1〜2月末）。') +
     S('支払いの決まりの初め', '<span class="row" style="gap:4px;flex-wrap:nowrap;"><select id="dc">' + CLOSES.map(o => '<option value="' + o[0] + '"' + (String(Math.min(31, g.defTerms.close)) === o[0] ? ' selected' : '') + '>' + o[1] + '</option>').join('') + '</select><select id="dm">' + PMS.map(o => '<option value="' + o[0] + '"' + (String(g.defTerms.months) === o[0] ? ' selected' : '') + '>' + o[1] + '</option>').join('') + '</select><select id="dd">' + PDAYS.map(o => '<option value="' + o[0] + '"' + (String(Math.min(31, g.defTerms.day)) === o[0] ? ' selected' : '') + '>' + o[1] + '</option>').join('') + '</select></span>', '新しい得意先の初めの値。') +
     S('領収書の但し書き', I('rp', g.rcpPurpose), '新しい領収書の初めの値。') +
     '</div><div class="card"><h2>送り状</h2>' +
