@@ -125,12 +125,12 @@
 <main id="m"></main>
 <div id="busy"></div>
 
-<script src="calc.js?v=Ver.請求20261106-06"></script>
+<script src="calc.js?v=Ver.請求20261106-07"></script>
 <script type="module">
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
 import { getFirestore, collection, doc, getDoc, getDocs, setDoc, deleteDoc, writeBatch, runTransaction } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
-const APP_VER = 'Ver.請求20261106-06';   // 版の名前は「Ver.請求YYYYMMDD-NN」（ユーザー指示 2026-11-06）
+const APP_VER = 'Ver.請求20261106-07';   // 版の名前は「Ver.請求YYYYMMDD-NN」（ユーザー指示 2026-11-06）
 const API = 'https://script.google.com/macros/s/AKfycbzpJgqJOqQz5180PQF2S3kVN7TWg0c1dnyUUUNuCZtzy5_pmKEhAkw5w3gqSj31EEA1/exec';   // Apps Script「請求管理」（ポータル・給与とは別）
 /* ログインは給与アプリと同じ（ユーザー指示 2026-11-05）：ポータルの Firebase、メールとパスワード。入れるのはマスターと「請求管理」の権限（users.canInvoice）がある人 */
 const app = initializeApp({ apiKey: 'AIzaSyDVR4p4DO4s9h70uPlXUVlhNcMP9-YkQ5Q', authDomain: 'genba-portal-9077b.firebaseapp.com', projectId: 'genba-portal-9077b' });
@@ -290,7 +290,8 @@ const SORTS = { dateD: '日付の新しい順', dateA: '日付の古い順', nam
 function lt(key, def) { ST.lt = ST.lt || {}; return (ST.lt[key] = ST.lt[key] || { sort: def, mon: '', name: '' }); }
 /* rows：[{ date, name, amt, due, ... }]。dateLabel：月で分けるときの日付の名前 */
 function ltBar(key, rows, sorts, dateLabel) {
-  const s = lt(key), mons = [...new Set(rows.map(r => String(r.mon || r.date || '').slice(0, 7)).filter(Boolean))].sort().reverse(), names = [...new Set(rows.map(r => r.name).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'ja'));
+  const s = lt(key); if (!s.sort || !sorts.includes(s.sort)) s.sort = sorts[0];   // 並べ方の欄と実際の並びをそろえる
+  const mons = [...new Set(rows.map(r => String(r.mon || r.date || '').slice(0, 7)).filter(Boolean))].sort().reverse(), names = [...new Set(rows.map(r => r.name).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'ja'));
   return '<div class="row lt" style="margin-top:8px;">' +
     '<label class="ltl">並べ方 <select data-lt="sort">' + sorts.map(k => '<option value="' + k + '"' + (s.sort === k ? ' selected' : '') + '>' + SORTS[k] + '</option>').join('') + '</select></label>' +
     '<label class="ltl">' + esc(dateLabel) + 'の月 <select data-lt="mon"><option value="">すべての月</option>' + mons.map(m => '<option value="' + m + '"' + (s.mon === m ? ' selected' : '') + '>' + m.slice(0, 4) + '年' + Number(m.slice(5)) + '月</option>').join('') + '</select></label>' +
@@ -329,7 +330,10 @@ const custOf = id => ST.custs.find(c => c.id === id);
 /* 発行元（自社の名前・住所・振込先・登録番号）は書類ごとに保存したときの物を残す。設定を変えても前の書類は変わらない（ユーザー指示 2026-11-05：古い請求書が自動で今の会社名にならないように）。
    販売らくだから写した請求書は、販売らくだが1枚ごとに持っていた当時の自社情報（比嘉板工の時期・前の住所・前の振込先など） */
 const curFrom = () => { const co = ST.cfg.company; return { name: co.name, person: '', zip: co.zip, addr: co.addr, tel: co.tel, fax: co.fax, regNo: co.regNo || '', bank: ST.cfg.bank || '' }; };
-const fromOf = d => (d && d.from) || curFrom();
+/* 振込先は、字が今の設定と同じ（空白・改行だけ違う）なら、今の設定の改行で出す（ユーザー指示 2026-11-06：保存より前の請求書にも改行を反映）。
+   銀行・口座が違う昔の振込先（比嘉板工の時期など）はそのまま */
+const bankKey = s => String(s || '').replace(/[\s　]/g, '');
+const fromOf = d => { const f = (d && d.from) || curFrom(), b = ST.cfg.bank || ''; return f.bank && b && f.bank !== b && bankKey(f.bank) === bankKey(b) ? Object.assign({}, f, { bank: b }) : f; };
 const isUs = f => String(f.name || '').replace(/[\s　]/g, '') === String(ST.cfg.company.name || '').replace(/[\s　]/g, '');   // 今の会社と同じ名前か（ロゴ・角印はそのときだけ）
 function expireOf(inv) {
   const st = stateOf(inv);
@@ -450,7 +454,7 @@ async function doApprove(inv, k, on) {
 
 async function drawInvList() {
   const y0 = new Date().getFullYear(), years = []; for (let y = y0 + 1; y >= 2011; y--) years.push(String(y));
-  const P = lt('invPer', ''); P.per = P.per || ST.year;   // 年（2026 など）・all（すべての時期）・range（いつからいつまで）
+  const P = lt('invPer', ''); P.per = P.per || 'close';   // 初めは今の期（ユーザー指示 2026-11-06：どの画面も初めは期ごと）。年（2026 など）・all（すべての時期）・range（いつからいつまで）
   M.innerHTML = '<div class="card"><div class="row"><b style="font-size:1.1rem;">請求書</b><label class="ltl">発行日の期間 <select id="yr">' + years.map(y => '<option value="' + y + '"' + (y === P.per ? ' selected' : '') + '>' + y + '年</option>').join('') + '<option value="all"' + (P.per === 'all' ? ' selected' : '') + '>すべての時期</option><option value="range"' + (P.per === 'range' ? ' selected' : '') + '>いつからいつまで</option>' + closeOpt(P.per === 'close') + '</select></label>' +
     (P.per === 'close' ? fySel('id="cm"', P.cm) : '') +
     (P.per === 'range' ? '<input type="date" id="rf1" value="' + esc(P.from || (y0 + '-01-01')) + '">〜<input type="date" id="rf2" value="' + esc(P.to || today()) + '"><button class="b sm" id="rgo">この期間で出す</button>' : '') +
@@ -944,6 +948,7 @@ async function xlsxOf(sheets, name) {
 
 /* ===== 入金 ===== */
 function drawPay() {
+  { const s = lt('pay'); if (s.per === undefined) s.per = 'close'; }   // 初めは今の期（ユーザー指示 2026-11-06）
   const open = ST.invs.filter(i => eraOk('pay', i)).map(i => ({ i, c: calcOf(i), st: stateOf(i) })).filter(x => ['未入金', '期日超え', '一部入金'].includes(x.st));
   const sum = f => open.filter(f).reduce((s, x) => s + x.c.total - SK.paid(x.i), 0), cnt = f => open.filter(f).length;
   const late = x => x.st === '期日超え', t0 = today(), soon = SK.ymd(new Date(Date.now() + 14 * 86400000));
@@ -971,6 +976,7 @@ function drawPay() {
 
 /* ===== 領収書（ユーザー指示 2026-11-05：作れるように。今までの分は写さない） ===== */
 function drawRcp() {
+  { const s = lt('rcp'); if (s.per === undefined) s.per = 'close'; }   // 初めは今の期
   const base = ST.rcps.filter(r => eraOk('rcp', r)).map(r => ({ r, id: r.id, date: r.date, no: r.no, name: r.toName || '', amt: Number(r.amount) || 0 }));
   M.innerHTML = '<div class="card"><div class="row"><b style="font-size:1.1rem;">領収書</b><span class="sp"></span><button class="b dark" id="nr">＋ 新しい領収書</button></div><div class="row lt" style="margin-top:8px;">' + eraBar('rcp') + perBar('rcp', '発行日') + '</div>' + ltBar('rcp', base, ['dateD', 'dateA', 'name', 'amt'], '発行日') +
     '<div class="note" style="margin-top:6px;">請求書の画面の「領収書を作る」からも作れます（宛名・金額・税率ごとの内訳が入ります）。発行日の月ごとに区切って出します。</div></div><div class="card" id="rl"></div>';
@@ -1088,7 +1094,7 @@ async function rangeData(from, to) {
 const monthData = ym => rangeData(ym + '-01', SK.ymd(new Date(+ym.slice(0, 4), +ym.slice(5, 7), 0)));
 async function drawSub() {
   const d = new Date(), def = d.getMonth() === 0 ? (d.getFullYear() - 1) + '-12' : d.getFullYear() + '-' + pad(d.getMonth());
-  const P = ST.sub = ST.sub || { mode: 'mon', ym: def, from: d.getFullYear() + '-01-01', to: SK.ymd(new Date(d.getFullYear(), d.getMonth(), 0)) };
+  const P = ST.sub = ST.sub || { mode: 'close', ym: def, from: d.getFullYear() + '-01-01', to: SK.ymd(new Date(d.getFullYear(), d.getMonth(), 0)) };
   M.innerHTML = '<div class="card"><div class="row"><b style="font-size:1.1rem;">提出データ（税理士さん）</b>' +
     '<label class="ltl"><input type="radio" name="sm" value="mon"' + (P.mode === 'mon' ? ' checked' : '') + '> 月ごと</label><label class="ltl"><input type="radio" name="sm" value="range"' + (P.mode === 'range' ? ' checked' : '') + '> いつからいつまで</label>' +
     '<label class="ltl"><input type="radio" name="sm" value="close"' + (P.mode === 'close' ? ' checked' : '') + '> 期ごと（' + (fyEnd() % 12 + 1) + '/1〜' + fyEnd() + '月末）</label>' +
