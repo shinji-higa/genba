@@ -128,12 +128,12 @@
 <main id="m"></main>
 <div id="busy"></div>
 
-<script src="calc.js?v=Ver.請求20261106-17"></script>
+<script src="calc.js?v=Ver.請求20261106-18"></script>
 <script type="module">
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
 import { getFirestore, collection, doc, getDoc, getDocs, setDoc, deleteDoc, writeBatch, runTransaction } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
-const APP_VER = 'Ver.請求20261106-17';   // 版の名前は「Ver.請求YYYYMMDD-NN」（ユーザー指示 2026-11-06）
+const APP_VER = 'Ver.請求20261106-18';   // 版の名前は「Ver.請求YYYYMMDD-NN」（ユーザー指示 2026-11-06）
 const API = 'https://script.google.com/macros/s/AKfycbzpJgqJOqQz5180PQF2S3kVN7TWg0c1dnyUUUNuCZtzy5_pmKEhAkw5w3gqSj31EEA1/exec';   // Apps Script「請求管理」（ポータル・給与とは別）
 /* ログインは給与アプリと同じ（ユーザー指示 2026-11-05）：ポータルの Firebase、メールとパスワード。入れるのはマスターと「請求管理」の権限（users.canInvoice）がある人 */
 const app = initializeApp({ apiKey: 'AIzaSyDVR4p4DO4s9h70uPlXUVlhNcMP9-YkQ5Q', authDomain: 'genba-portal-9077b.firebaseapp.com', projectId: 'genba-portal-9077b' });
@@ -577,7 +577,7 @@ function drawInvEdit() {
       '<td>' + '<textarea data-f="memo" rows="' + Math.min(6, Math.max(1, Math.ceil(wlen(l.memo || '') / 12))) + '"' + (ro ? ' disabled' : '') + '>' + esc(l.memo || '') + '</textarea>' + '</td><td style="white-space:nowrap;">' + (ro ? '' : '<button class="b sm" data-a="up">↑</button><button class="b sm" data-a="dn">↓</button><button class="b sm danger" data-a="rm">×</button>') + '</td></tr>';
   const pays = inv.payments || [], paid = SK.paid(inv);
   M.innerHTML = '<div class="card"><div class="row"><button class="b" id="back">← 一覧へ</button><b style="font-size:1.1rem;">請求書 ' + esc(inv.no || '（新しい請求書・保存すると番号が付きます）') + '</b>' + stTag(st) + (inv.state === '取消' ? '' : '') + '<span class="sp"></span>' +
-    (ro ? '' : '<button class="b dark" id="sv">保存</button>') + '<button class="b" id="pr">' + (String(inv.sentBy).includes('紙') ? '印刷（送り状つき）' : '印刷') + '</button><button class="b" id="pdf">PDFで保存</button><button class="b" id="see">紙を見る</button></div>' +
+    (ro ? '' : '<button class="b dark" id="sv">保存</button>') + '<button class="b" id="pr">' + (wantCover(inv) ? '印刷（送り状つき）' : '印刷') + '</button><button class="b" id="pdf">PDFで保存</button><button class="b" id="see">紙を見る</button></div>' +
     (ro ? '<div class="note" style="margin-top:8px;">販売らくだから写した請求書です。中身は直せません（入金は入れられます）。同じ中身で新しく作るときは「複製」を押してください。</div>' : '') + '</div>' +
     (inv.isNew ? '' : stkPanel(inv, 'stkE')) + apvCard(inv) +
     '<div class="card"><div class="grid3" style="align-items:start;">' +
@@ -648,7 +648,7 @@ function drawInvEdit() {
   const preview = () => {   // 紙を見る：送り状も出す（ユーザー指示 2026-11-06）。備考は紙の上で押すと書ける
     readForm();
     const pages = invPages(inv, coverDef(inv), { preview: !ro });
-    showPaper(pages, { title: '送り状（' + (String(inv.sentBy).includes('紙') ? '紙で送るので一緒に印刷します' : '送り方が「' + (inv.sentBy || '') + '」なので印刷しません') + '）＋ 請求書 ' + (pages.length - 1) + 'ページ',
+    showPaper(pages, { title: '送り状（' + (wantCover(inv) ? '印刷のとき送り状の画面が出ます' : '送り方が「メール」なので印刷しません') + '）＋ 請求書 ' + (pages.length - 1) + 'ページ',
       onNote: ro ? null : async w => { const r = await formBox('備考（請求書のいちばん下に出ます）', [{ k: 'n', label: '備考', type: 'area', value: inv.note || '' }], 'これにする'); if (!r) return; inv.note = r.n; $('nt').value = r.n; ST.dirty = true; w.remove(); preview(); } });
   };
   $('see').onclick = preview;
@@ -656,7 +656,7 @@ function drawInvEdit() {
   $('pr').onclick = async () => {
     readForm(); if (!(await needSaved()) || !(await needApproved())) return;
     let cv = null;
-    if (String(inv.sentBy).includes('紙')) { cv = await coverForm(inv); if (cv === undefined) return; }   // 紙で送るときは、毎回 送り状の画面で中身を入れてから印刷（ユーザー指示 2026-11-06）
+    if (wantCover(inv)) { cv = await coverForm(inv); if (cv === undefined) return; }   // 紙で送るときは、毎回 送り状の画面で中身を入れてから印刷（ユーザー指示 2026-11-06）
     printPages(invPages(inv, cv));
     if (cv) { if (inv.sentAt !== cv.date) { inv.sentAt = cv.date; try { await saveInv(inv, '送った日（送り状の日付）'); drawInvEdit(); } catch (e) { alert('送った日を保存できませんでした：' + e.message); } } }   // 送り状の日付＝送った日（ユーザー指示 2026-11-06）
     else if (!inv.sentAt || inv.sentAt === '不明') { if (await okBox('印刷しました。送った日を今日（' + dShort(today()) + '）にしますか？', '今日にする')) { inv.sentAt = today(); try { await saveInv(inv, '送った日'); drawInvEdit(); } catch (e) { alert(e.message); } } }
@@ -833,6 +833,8 @@ function coverCheck(v) {
 }
 /* 送り状の画面（ユーザー指示 2026-11-06：毎回フォームで記入。誰が送るかは選ぶ。記の下の文面も入れられる。送り状の日付＝送った日）。
    印刷は中身、「送り状なしで印刷」は null、やめたら undefined */
+/* 送り状の画面を出すか：送り方が「メール」だけのとき以外は出す（ユーザー指示 2026-11-06：販売らくだから写した請求書は送り方が「不明」で、送り状が出なかった）。要らないときは「送り状なしで印刷」 */
+const wantCover = inv => String(inv.sentBy || '').trim() !== 'メール';
 async function coverForm(inv) {
   const v = coverDef(inv);
   await loadPeople();
