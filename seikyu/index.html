@@ -129,12 +129,12 @@
 <main id="m"></main>
 <div id="busy"></div>
 
-<script src="calc.js?v=Ver.請求20261106-22"></script>
+<script src="calc.js?v=Ver.請求20261106-23"></script>
 <script type="module">
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
 import { getFirestore, collection, doc, getDoc, getDocs, setDoc, deleteDoc, writeBatch, runTransaction } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
-const APP_VER = 'Ver.請求20261106-22';   // 版の名前は「Ver.請求YYYYMMDD-NN」（ユーザー指示 2026-11-06）
+const APP_VER = 'Ver.請求20261106-23';   // 版の名前は「Ver.請求YYYYMMDD-NN」（ユーザー指示 2026-11-06）
 const API = 'https://script.google.com/macros/s/AKfycbzpJgqJOqQz5180PQF2S3kVN7TWg0c1dnyUUUNuCZtzy5_pmKEhAkw5w3gqSj31EEA1/exec';   // Apps Script「請求管理」（ポータル・給与とは別）
 /* ログインは給与アプリと同じ（ユーザー指示 2026-11-05）：ポータルの Firebase、メールとパスワード。入れるのはマスターと「請求管理」の権限（users.canInvoice）がある人 */
 const app = initializeApp({ apiKey: 'AIzaSyDVR4p4DO4s9h70uPlXUVlhNcMP9-YkQ5Q', authDomain: 'genba-portal-9077b.firebaseapp.com', projectId: 'genba-portal-9077b' });
@@ -340,6 +340,7 @@ const cfgMerge = c => { const o = Object.assign(plain(DEF_CFG), c || {}); if (!o
 const calcOf = inv => SK.calc(inv, ST.cfg);
 const KIRIKAE = '2026-03-01';   // この日より前に出した、写した請求書が「切替前」
 const preSw = i => !!(i && i.fixed && String(i.date || '') < KIRIKAE);
+const taxIncl = inv => !!inv && (inv.taxMode === 'in' || (inv.lines || []).some(l => l.inTax));   // 税込で入っている請求書（過去の特例）
 const stateOf = inv => preSw(inv) ? '切替前' : SK.payState(inv.state === '取消' ? { ...inv, status: '取消' } : inv, today(), calcOf(inv).total);
 const custOf = id => ST.custs.find(c => c.id === id);
 /* 発行元（自社の名前・住所・振込先・登録番号）は書類ごとに保存したときの物を残す。設定を変えても前の書類は変わらない（ユーザー指示 2026-11-05：古い請求書が自動で今の会社名にならないように）。
@@ -593,7 +594,7 @@ function drawInvEdit() {
     '<div><label class="f">発行日</label><input id="dt" type="date" value="' + esc(inv.date) + '"' + (ro ? ' disabled' : '') + ' style="width:100%;"></div>' +
     '<div><label class="f">入金予定日</label><input id="due" type="date" value="' + esc(inv.due || '') + '"><div class="row" style="gap:6px;margin-top:3px;"><button class="b sm" id="dueA" type="button"' + (ro ? ' disabled' : '') + '>支払いの決まりから出す</button><span class="note">' + esc(cust ? SK.termsLabel(cust.terms) + (cust.termsCheck ? '（要確認）' : '') : '') + '</span></div></div>' +
     '<div><label class="f">件名</label><input id="tt" value="' + esc(inv.title || '') + '"' + (ro ? ' disabled' : '') + '></div>' +
-    '<div><label class="f">金額の入れ方</label><select id="tm"' + (ro ? ' disabled' : '') + '><option value="out"' + (inv.taxMode !== 'in' ? ' selected' : '') + '>外税（金額は税抜で入れる）</option><option value="in"' + (inv.taxMode === 'in' ? ' selected' : '') + '>内税（金額は税込で入れる）</option></select></div>' +
+    '<div><label class="f">金額の入れ方</label><select id="tm" disabled>' + (taxIncl(inv) ? '<option value="' + esc(inv.taxMode || 'out') + '" selected>税込（過去の特例）</option>' : '<option value="out" selected>税抜（外税）</option>') + '</select><div class="note">' + (taxIncl(inv) ? '前に税込で作った請求書です（特例）。そのときの金額のまま出します。' : 'これからの請求書は税抜（外税）だけで作ります。') + '</div></div>' +
     '<div><label class="f">送り方</label><select id="sb">' + ['紙', 'メール', '紙とメール', '不明'].concat(preSw(inv) ? ['切替前'] : []).map(o => '<option' + (o === (preSw(inv) ? '切替前' : (inv.sentBy || '紙')) ? ' selected' : '') + '>' + o + '</option>').join('') + '</select><div class="note">「紙」のときは印刷で送り状も一緒に出ます</div></div>' +
     '</div><details style="margin-top:10px;"' + (inv.isNew ? '' : '') + '><summary style="cursor:pointer;font-weight:700;">宛名（' + esc([to.name, to.dept, to.person].filter(Boolean).join('　') || '未入力') + '　' + esc(to.honor || '') + '）を直す</summary><div class="grid3" style="margin-top:8px;">' +
     [['name', '会社名'], ['dept', '部署'], ['person', '担当者'], ['zip', '郵便番号'], ['addr1', '住所1'], ['addr2', '住所2（ビル名など）']].map(f => '<div><label class="f">' + f[1] + '</label><input data-to="' + f[0] + '" value="' + esc(to[f[0]] || '') + '"' + (ro ? ' disabled' : '') + '></div>').join('') +
@@ -614,7 +615,7 @@ function drawInvEdit() {
   const re = () => { readForm(); drawInvEdit(); ST.dirty = true; };
   function readForm() {
     if (ro) { inv.due = $('due').value; inv.sentBy = $('sb').value; return; }
-    inv.date = $('dt').value; inv.due = $('due').value; inv.title = $('tt').value; inv.taxMode = $('tm').value; inv.sentBy = $('sb').value; inv.note = $('nt').value;
+    inv.date = $('dt').value; inv.due = $('due').value; inv.title = $('tt').value; inv.taxMode = taxIncl(inv) && ro ? inv.taxMode : 'out';   // 税抜だけ（2026-11-06） inv.sentBy = $('sb').value; inv.note = $('nt').value;
     M.querySelectorAll('[data-to]').forEach(e => { inv.to[e.dataset.to] = e.value; });
     $('ln').querySelectorAll('tr').forEach(tr => {
       const l = inv.lines[+tr.dataset.k], g = f => { const e = tr.querySelector('[data-f="' + f + '"]'); return e ? e.value : undefined; };
@@ -689,9 +690,21 @@ function drawInvEdit() {
     $('sent').onclick = async () => { const r = await formBox('送った日', [{ k: 'd', label: '送った日', type: 'date', value: inv.sentAt && inv.sentAt !== '不明' ? inv.sentAt : today() }]); if (!r) return; readForm(); inv.sentAt = r.d; try { await saveInv(inv, '送った日'); ST.dirty = false; drawInvEdit(); } catch (e) { alert(e.message); } };
     $('hist').onclick = () => showHist(inv, '請求書');
     $('dup').onclick = () => {
-      const n = newInv(custOf(inv.custId)); if (!custOf(inv.custId)) n.to = plain(inv.to);   // 承認・付箋は写さない   // 宛名は今の得意先台帳の物（会社名が変わった得意先のため） n.title = inv.title; n.taxMode = inv.taxMode; n.note = inv.fixed ? '' : inv.note;
-      n.lines = plain(inv.lines).map(l => { delete l.rate; delete l.inTax; if (inv.fixed && l.type === 'item') { if (l.qty == null || l.price == null) l.amountFix = l.amountFix; else delete l.amountFix; } return l; });
-      openInv(n); ST.dirty = true; alert('複製しました。発行日・明細を確かめて保存してください。');
+      // 承認・付箋は写さない。宛名は今の得意先台帳の物（会社名が変わった得意先のため）
+      const n = newInv(custOf(inv.custId)); if (!custOf(inv.custId)) n.to = plain(inv.to);
+      n.title = inv.title || ''; n.taxMode = 'out'; n.note = inv.fixed ? '' : (inv.note || '');
+      let conv = 0;
+      n.lines = plain(inv.lines).map(l => {
+        if (l.type === 'item' && (inv.taxMode === 'in' || l.inTax) && l.price != null && l.price !== '') {   // 税込の単価 → 税抜の単価（そのときの税率で、税の端数は設定どおり）
+          const r = Number(l.rate) || SK.rateOf(l.tax || 'std', inv.date, ST.cfg.rates) || 0;
+          if (r) { const p = Number(l.price); l.price = p - SK.round(p * r / (100 + r), ST.cfg.taxRound); conv++; }
+          delete l.amountFix;
+        }
+        delete l.rate; delete l.inTax;
+        if (inv.fixed && l.type === 'item') { if (l.qty == null || l.price == null) l.amountFix = l.amountFix; else delete l.amountFix; }
+        return l;
+      });
+      openInv(n); ST.dirty = true; alert('複製しました。発行日・明細を確かめて保存してください。' + (conv ? '\n元の請求書は税込（特例）だったので、' + conv + ' 行の単価を税抜に直しました。' : ''));
     };
     $('mkR').onclick = () => { ST.tab = 'rcp'; draw(); newReceipt(inv); };
     if ($('mkO') && OFF_ON) $('mkO').onclick = () => { ST.tab = 'off'; draw(); newOffset(inv); };
