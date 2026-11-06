@@ -30,6 +30,7 @@
   button.b:disabled { opacity: .5; cursor: default; }
   input, select, textarea { font: inherit; padding: 6px 8px; border: 1.5px solid #7f8f85; border-radius: 5px; background: #fff; color: var(--ink); min-width: 0; }
   textarea { width: 100%; min-height: 60px; }
+  textarea.paperw { font-size: 15px; line-height: 1.7; padding: 6px 10px; font-family: 'BIZ UDMincho Medium','BIZ UD明朝 Medium','BIZ UDMincho','Yu Mincho','YuMincho','Hiragino Mincho ProN','Noto Serif JP',serif; box-sizing: content-box; }   /* 1em＝全角1字。紙と同じ字数で折り返す */
   label.f { display: block; font-size: .84rem; font-weight: 700; color: var(--sub); margin-bottom: 2px; }
   table.t { border-collapse: collapse; width: 100%; font-size: .9rem; }
   table.t th { background: var(--accent2); text-align: left; padding: 7px 8px; border-bottom: 2px solid var(--accent); white-space: nowrap; }
@@ -124,12 +125,12 @@
 <main id="m"></main>
 <div id="busy"></div>
 
-<script src="calc.js?v=Ver.請求20261106-05"></script>
+<script src="calc.js?v=Ver.請求20261106-06"></script>
 <script type="module">
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
 import { getFirestore, collection, doc, getDoc, getDocs, setDoc, deleteDoc, writeBatch, runTransaction } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
-const APP_VER = 'Ver.請求20261106-05';   // 版の名前は「Ver.請求YYYYMMDD-NN」（ユーザー指示 2026-11-06）
+const APP_VER = 'Ver.請求20261106-06';   // 版の名前は「Ver.請求YYYYMMDD-NN」（ユーザー指示 2026-11-06）
 const API = 'https://script.google.com/macros/s/AKfycbzpJgqJOqQz5180PQF2S3kVN7TWg0c1dnyUUUNuCZtzy5_pmKEhAkw5w3gqSj31EEA1/exec';   // Apps Script「請求管理」（ポータル・給与とは別）
 /* ログインは給与アプリと同じ（ユーザー指示 2026-11-05）：ポータルの Firebase、メールとパスワード。入れるのはマスターと「請求管理」の権限（users.canInvoice）がある人 */
 const app = initializeApp({ apiKey: 'AIzaSyDVR4p4DO4s9h70uPlXUVlhNcMP9-YkQ5Q', authDomain: 'genba-portal-9077b.firebaseapp.com', projectId: 'genba-portal-9077b' });
@@ -318,7 +319,7 @@ const DEF_CFG = {
   invNo: { prefix: 'S', digits: 5, next: 1 }, rcpNo: { prefix: 'R', digits: 5, next: 1 },
   defTerms: { close: 31, months: 1, day: 31 }, greeting: '下記の通りご請求申し上げます。',
   coverPerson: '比嘉 美紀', coverText: '拝啓　時下ますますご清栄のことと心よりお喜び申し上げます。平素は格別のお引き立てを賜り、厚く御礼を申し上げます。\n　さて、早速ではございますが下記の書類をお送りいたします。よろしくご査収くださいますよう、お願い申し上げます。',
-  stamps: true, rcpPurpose: 'ダクト工事代として', memoTax: '', approvers: DEF_APV
+  stamps: true, rcpPurpose: 'ダクト工事代として', memoTax: '', approvers: DEF_APV, fyEnd: 2
 };
 const ST = { stamps: {}, me: null, cfg: plain(DEF_CFG), custs: [], invs: [], rcps: [], tab: 'inv', year: String(new Date().getFullYear()), yearData: {}, q: '', filt: 'all' };
 const cfgMerge = c => { const o = Object.assign(plain(DEF_CFG), c || {}); o.company = Object.assign(plain(DEF_CFG.company), (c || {}).company || {}); if (!Array.isArray(o.approvers) || o.approvers.length !== 3) o.approvers = plain(DEF_APV); return o; };
@@ -329,7 +330,7 @@ const custOf = id => ST.custs.find(c => c.id === id);
    販売らくだから写した請求書は、販売らくだが1枚ごとに持っていた当時の自社情報（比嘉板工の時期・前の住所・前の振込先など） */
 const curFrom = () => { const co = ST.cfg.company; return { name: co.name, person: '', zip: co.zip, addr: co.addr, tel: co.tel, fax: co.fax, regNo: co.regNo || '', bank: ST.cfg.bank || '' }; };
 const fromOf = d => (d && d.from) || curFrom();
-const isUs = f => String(f.name || '').replace(/s/g, '') === String(ST.cfg.company.name || '').replace(/s/g, '');   // 今の会社と同じ名前か（ロゴ・角印はそのときだけ）
+const isUs = f => String(f.name || '').replace(/[\s　]/g, '') === String(ST.cfg.company.name || '').replace(/[\s　]/g, '');   // 今の会社と同じ名前か（ロゴ・角印はそのときだけ）
 function expireOf(inv) {
   const st = stateOf(inv);
   if (!(st === '入金済み' || st === '入金なし' || st === '取消')) return null;
@@ -395,10 +396,38 @@ async function invsOfRange(from, to) {
 /* 期間の欄（入金・領収書の一覧。データは手元にある物を期間でしぼる） */
 function perBar(key, label) {
   const s = lt(key);
-  return '<label class="ltl">' + esc(label) + 'の期間 <select data-lt="per"><option value="">すべての時期</option><option value="range"' + (s.per === 'range' ? ' selected' : '') + '>いつからいつまで</option></select></label>' +
+  return '<label class="ltl">' + esc(label) + 'の期間 <select data-lt="per"><option value="">すべての時期</option><option value="range"' + (s.per === 'range' ? ' selected' : '') + '>いつからいつまで</option>' + closeOpt(s.per === 'close') + '</select></label>' +
+    (s.per === 'close' ? fySel('data-lt="cm"', s.cm) : '') +
     (s.per === 'range' ? '<input type="date" data-lt="from" value="' + esc(s.from || '') + '">〜<input type="date" data-lt="to" value="' + esc(s.to || '') + '">' : '');
 }
-const perOk = (key, d) => { const s = lt(key); if (s.per !== 'range') return true; d = String(d || ''); return (!s.from || d >= s.from) && (!s.to || d <= s.to); };
+/* 自社の締め（期）。ユーザー指示 2026-11-06：自社の締めは 3/1〜2月末。設定の「決算の月」の月末で締める（初めは2月）。
+   期の名前は締める年（2026/3/1〜2027/2/28 は「2027年2月期」） */
+const fyEnd = () => Math.min(12, Math.max(1, Number(ST.cfg.fyEnd) || 2));
+const mEnd = (y, m) => new Date(y, m, 0).getDate();
+function closeRange(fy) {   // fy（締める年 '2027'）の期 { from, to }
+  const y = +fy, e = fyEnd(), sm = e === 12 ? 1 : e + 1, sy = e === 12 ? y : y - 1;
+  return { from: sy + '-' + pad(sm) + '-01', to: y + '-' + pad(e) + '-' + pad(mEnd(y, e)) };
+}
+function closeYm(d) {   // その日が入る期（締める年）
+  d = String(d || ''); if (!/^\d{4}-\d{2}/.test(d)) return '';
+  const y = +d.slice(0, 4), m = +d.slice(5, 7);
+  return String(m > fyEnd() ? y + 1 : y);
+}
+const closeName = fy => { const r = closeRange(fy); return fy + '年' + fyEnd() + '月期（' + dShort(r.from) + '〜' + dShort(r.to) + '）'; };
+const closeOpt = sel => '<option value="close"' + (sel ? ' selected' : '') + '>期ごと（' + (fyEnd() % 12 + 1) + '/1〜' + fyEnd() + '月末）</option>';
+function fySel(attr, cur) {   // 期を選ぶ欄
+  const now = +closeYm(today()), out = []; for (let y = now + 1; y >= 2011; y--) out.push(String(y));
+  cur = cur || String(now);
+  return '<select ' + attr + '>' + out.map(y => '<option value="' + y + '"' + (y === cur ? ' selected' : '') + '>' + esc(closeName(y)) + '</option>').join('') + '</select>';
+}
+/* 切替以前（販売らくだから写した物）・切替後（このアプリで作った物）。初めは切替後（ユーザー指示 2026-11-06：昔の入金はさかのぼって見ない） */
+const isOld = x => !!(x && (x.fixed || x.legacy));
+function eraBar(key) {
+  const e = lt(key).era || '';
+  return '<label class="ltl">データ <select data-lt="era"><option value="">切替後（このアプリで作った物）</option><option value="old"' + (e === 'old' ? ' selected' : '') + '>切替以前（販売らくだから写した物）</option><option value="all"' + (e === 'all' ? ' selected' : '') + '>両方</option></select></label>';
+}
+const eraOk = (key, x) => { const e = lt(key).era || ''; return e === 'all' ? true : e === 'old' ? isOld(x) : !isOld(x); };
+const perOk = (key, d) => { const s = lt(key); if (s.per === 'close') { const r = closeRange(s.cm || closeYm(today())); d = String(d || ''); return d >= r.from && d <= r.to; } if (s.per !== 'range') return true; d = String(d || ''); return (!s.from || d >= s.from) && (!s.to || d <= s.to); };
 /* 月ごとに分ける（並べ方はそのまま、月の中で並ぶ）。月の順は「古い順・入金予定日の早い順」のときだけ古い月から */
 function ltGroups(key, rows) {
   const s = lt(key), asc = s.sort === 'dateA' || s.sort === 'due', G = {};
@@ -422,7 +451,8 @@ async function doApprove(inv, k, on) {
 async function drawInvList() {
   const y0 = new Date().getFullYear(), years = []; for (let y = y0 + 1; y >= 2011; y--) years.push(String(y));
   const P = lt('invPer', ''); P.per = P.per || ST.year;   // 年（2026 など）・all（すべての時期）・range（いつからいつまで）
-  M.innerHTML = '<div class="card"><div class="row"><b style="font-size:1.1rem;">請求書</b><label class="ltl">発行日の期間 <select id="yr">' + years.map(y => '<option value="' + y + '"' + (y === P.per ? ' selected' : '') + '>' + y + '年</option>').join('') + '<option value="all"' + (P.per === 'all' ? ' selected' : '') + '>すべての時期</option><option value="range"' + (P.per === 'range' ? ' selected' : '') + '>いつからいつまで</option></select></label>' +
+  M.innerHTML = '<div class="card"><div class="row"><b style="font-size:1.1rem;">請求書</b><label class="ltl">発行日の期間 <select id="yr">' + years.map(y => '<option value="' + y + '"' + (y === P.per ? ' selected' : '') + '>' + y + '年</option>').join('') + '<option value="all"' + (P.per === 'all' ? ' selected' : '') + '>すべての時期</option><option value="range"' + (P.per === 'range' ? ' selected' : '') + '>いつからいつまで</option>' + closeOpt(P.per === 'close') + '</select></label>' +
+    (P.per === 'close' ? fySel('id="cm"', P.cm) : '') +
     (P.per === 'range' ? '<input type="date" id="rf1" value="' + esc(P.from || (y0 + '-01-01')) + '">〜<input type="date" id="rf2" value="' + esc(P.to || today()) + '"><button class="b sm" id="rgo">この期間で出す</button>' : '') +
     '<select id="fl"><option value="all">すべて</option><option value="open">入金がまだの物</option><option value="late">期日超え</option><option value="paid">入金済み</option><option value="apv">未承認の物</option><option value="cancel">取消</option></select>' +
     '<input id="q" placeholder="さがす（番号・得意先・件名・付箋）" style="width:240px;" value="' + esc(ST.q) + '"><span class="sp"></span><button class="b dark" id="nw">＋ 新しい請求書</button></div>' +
@@ -430,11 +460,12 @@ async function drawInvList() {
   $('fl').value = ST.filt;
   $('yr').onchange = () => { P.per = $('yr').value; if (/^\d{4}$/.test(P.per)) ST.year = P.per; drawInvList(); };
   if ($('rgo')) $('rgo').onclick = () => { P.from = $('rf1').value; P.to = $('rf2').value; if (!P.from || !P.to || P.from > P.to) return alert('期間の「いつから」「いつまで」を入れてください。'); drawInvList(); };
+  if ($('cm')) $('cm').onchange = () => { if ($('cm').value) { P.cm = $('cm').value; drawInvList(); } };
   $('fl').onchange = () => { ST.filt = $('fl').value; fill(); };
   $('q').oninput = () => { ST.q = $('q').value; fill(); };
   $('nw').onclick = () => openInv(newInv());
   let list = [];
-  try { list = P.per === 'all' ? await invsOfRange('2000-01-01', '2099-12-31') : P.per === 'range' ? (P.from && P.to ? await invsOfRange(P.from, P.to) : []) : await invsOfYear(P.per); }
+  try { list = P.per === 'close' ? await invsOfRange(closeRange(P.cm || closeYm(today())).from, closeRange(P.cm || closeYm(today())).to) : P.per === 'all' ? await invsOfRange('2000-01-01', '2099-12-31') : P.per === 'range' ? (P.from && P.to ? await invsOfRange(P.from, P.to) : []) : await invsOfYear(P.per); }
   catch (e) { $('lst').innerHTML = '<div class="msg">' + esc(e.message) + '</div>'; return; }
   const base = list.map(i => { const c = calcOf(i); return { i, c, st: stateOf(i), date: i.date, no: i.no, name: (i.to || {}).name || '', custId: i.custId, amt: c.total, due: i.due }; });
   $('ltb').innerHTML = ltBar('inv', base, ['dateD', 'dateA', 'name', 'amt', 'due'], '発行日');
@@ -680,6 +711,8 @@ function paginate(lines, W, first, firstLast, next, nextLast) {
   }
   return pages;
 }
+/* 会社の欄の上の位置（mm）。ロゴの上を「下記の通りご請求申し上げます。」の文字の上に合わせる（ユーザー指示 2026-11-06） */
+let CO_TOP = 73.1;   // 文字の上（72.9mm＋字の中の余白）とロゴの絵の上（画像の上の余白 0.1mm）をそろえた値
 /* 会社の欄。角印は会社名の横・高さの真ん中（ユーザー指示 2026-11-06）。個人の印は承認の欄に押す */
 function companyBlock(withStamp, d) {
   const co = fromOf(d), us = isUs(co);   // 登録番号は、その書類に入っていた時だけ出す
@@ -738,7 +771,7 @@ function invPages(inv, cover, opt) {   // cover：送り状の中身（coverForm
       h += '<div style="position:absolute;left:15mm;top:72mm;width:100mm;font-size:10pt;">' + esc(ST.cfg.greeting) + (inv.title ? '<div style="margin-top:1.5mm;">件名：' + esc(inv.title) + '</div>' : '') +
         '<div style="margin-top:2.5mm;border:.5mm solid #1a6b3c;border-radius:1.5mm;padding:2.5mm 4mm;display:flex;justify-content:space-between;align-items:baseline;"><span style="font-size:11pt;font-weight:700;">今回ご請求額</span><span style="font-size:19pt;font-weight:700;">¥' + yen(c.total) + '<span style="font-size:9pt;">（税込）</span></span></div>' +
         (inv.due ? '<div style="margin-top:1.5mm;">お支払期限：' + dJp(inv.due) + '</div>' : '') + '</div>';
-      h += '<div style="position:absolute;left:122mm;top:62mm;width:76mm;">' + companyBlock(true, inv) + '</div>';
+      h += '<div style="position:absolute;left:122mm;top:' + CO_TOP + 'mm;width:76mm;">' + companyBlock(true, inv) + '</div>';
     }
     h += '<div style="position:absolute;left:15mm;right:15mm;top:' + (p === 0 ? 118 : 36) + 'mm;"><table class="it"><thead><tr>' + cols + '</tr></thead><tbody>' + pl.map(row).join('') + '</tbody></table>' + (last ? '' : '<div style="text-align:right;font-size:8.5pt;margin-top:1.5mm;">次のページへ続きます</div>') + '</div>';
     if (p > 0) h += '<div style="position:absolute;left:15mm;top:15mm;font-size:11pt;">' + esc(to.name) + '　御請求書（つづき）</div>';
@@ -759,7 +792,7 @@ function invPages(inv, cover, opt) {   // cover：送り状の中身（coverForm
   return out;
 }
 /* 送り状の中身の初めの値（宛名は請求書の宛名、送り主は設定の担当＝比嘉 美紀、日付は送った日） */
-const CV_TEXT_LINES = 5, CV_TEXT_W = 46, CV_ITEM_LINES = 7, CV_ITEM_W = 42;   // 1ページに収まる文字の量（送り文 5行×48字ほど、記 7行×44字まで）
+const CV_TEXT_LINES = 5, CV_TEXT_W = 44, CV_ITEM_LINES = 7, CV_ITEM_W = 42;   // 1ページに収まる文字の量（送り文 5行×48字ほど、記 7行×44字まで）
 function coverDef(inv) {
   const T = inv.to || {}, to = SK.addrLines(T);
   const l5 = T.person ? [T.name, T.dept].filter(Boolean).join('　') : (T.dept ? T.name : ''), l6 = T.person ? T.person : (T.dept ? T.dept : T.name);
@@ -783,7 +816,7 @@ async function coverForm(inv) {
   return new Promise(done => {
     const w = document.createElement('div'); w.id = 'ask';
     const I = (k, label, note, wide) => '<div style="' + (wide ? 'grid-column:1/-1;' : '') + '"><label class="f">' + label + '</label><input data-k="' + k + '" value="' + esc(v[k]) + '" style="width:100%;">' + (note ? '<div class="note">' + note + '</div>' : '') + '</div>';
-    const A = (k, label, note, h) => '<div style="grid-column:1/-1;"><label class="f">' + label + '</label><textarea data-k="' + k + '" style="width:100%;min-height:' + h + 'px;">' + esc(v[k]) + '</textarea><div class="note" data-n="' + k + '">' + note + '</div></div>';
+    const A = (k, label, note, h) => '<div style="grid-column:1/-1;"><label class="f">' + label + '</label><textarea data-k="' + k + '" class="paperw"' + (k === 'items' ? ' wrap="off"' : '') + ' style="display:block;width:' + (k === 'items' ? '41.2em' : '44.8em') + ';max-width:calc(100% - 22px);min-height:' + h + 'px;">' + esc(v[k]) + '</textarea><div class="note" data-n="' + k + '">' + note + '</div></div>';
     w.innerHTML = '<div class="card" style="max-width:760px;"><h2>送り状（' + esc(inv.no) + '）</h2><div class="note">ここで入れた中身で、送り状と請求書を一緒に印刷します。宛名は窓付き封筒の窓に出る所です。送り状の日付が「送った日」になります。</div>' +
       '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px 14px;margin-top:10px;">' +
       '<div><label class="f">送った日（送り状の日付）</label><input data-k="date" type="date" value="' + esc(v.date) + '" style="width:100%;"></div>' +
@@ -817,13 +850,13 @@ function coverPage(inv, cv) {
   h += ab(11.9, 10, cv.zip ? '〒' + esc(cv.zip) : '') + ab(18.3, fit(cv.addr1, 10, W), esc(cv.addr1)) + ab(24.9, fit(cv.addr2, 10, W), esc(cv.addr2)) + ab(31.2, fit(cv.l5, 11.5, W), esc(cv.l5), true);
   h += '<div style="position:absolute;left:23mm;top:37.3mm;width:' + W + 'mm;border-bottom:.4mm solid #1d1d1d;font-size:' + fit(cv.l6 + '　' + (cv.honor || ''), 13, W) + 'pt;font-weight:700;display:flex;justify-content:space-between;white-space:nowrap;"><span>' + esc(cv.l6) + '</span><span>' + esc(cv.honor || '') + '</span></div>';
   // 自社の欄は請求書と同じ位置・同じ形（印は押さない）。下に送る人
-  h += '<div style="position:absolute;left:122mm;top:62mm;width:76mm;">' + companyBlock(false, null) + '<div style="font-size:9.5pt;line-height:1.65;">担当：' + esc(cv.person || '') + '</div></div>';
-  h += '<div style="position:absolute;left:0;right:0;top:113mm;text-align:center;"><span style="display:inline-block;font-size:20pt;font-weight:700;letter-spacing:.35em;padding:0 0 1.5mm .35em;border-bottom:.5mm solid #1a6b3c;">' + esc(cv.title || '') + '</span></div>';
-  h += '<div style="position:absolute;left:18mm;right:18mm;top:133mm;font-size:11pt;line-height:1.95;white-space:pre-wrap;word-break:break-all;">' + esc(cv.text || '') + '<div style="text-align:right;">敬具</div></div>';
-  h += '<div style="position:absolute;left:0;right:0;top:188mm;text-align:center;font-size:11pt;">記</div>';
+  h += '<div style="position:absolute;left:122mm;top:' + CO_TOP + 'mm;width:76mm;">' + companyBlock(false, null) + '<div style="font-size:9.5pt;line-height:1.65;">担当：' + esc(cv.person || '') + '</div></div>';
+  h += '<div style="position:absolute;left:0;right:0;top:116mm;text-align:center;"><span style="display:inline-block;font-size:20pt;font-weight:700;letter-spacing:.35em;padding:0 0 1.5mm .35em;border-bottom:.5mm solid #1a6b3c;">' + esc(cv.title || '') + '</span></div>';
+  h += '<div style="position:absolute;left:18mm;right:18mm;top:136mm;font-size:11pt;line-height:1.95;white-space:pre-wrap;word-break:break-all;">' + esc(cv.text || '') + '<div style="text-align:right;">敬具</div></div>';
+  h += '<div style="position:absolute;left:0;right:0;top:191mm;text-align:center;font-size:11pt;">記</div>';
   const items = String(cv.items || '').split('\n');
-  for (let k = 0; k < CV_ITEM_LINES; k++) h += '<div style="position:absolute;left:24mm;right:24mm;top:' + (203 + k * 10 - 7).toFixed(1) + 'mm;height:7mm;border-bottom:.3mm solid #1d1d1d;font-size:11pt;padding-left:2mm;white-space:nowrap;overflow:hidden;">' + esc(items[k] || '') + '</div>';
-  h += '<div style="position:absolute;right:24mm;top:' + (203 + CV_ITEM_LINES * 10 - 4).toFixed(1) + 'mm;font-size:11pt;">以上</div>';
+  for (let k = 0; k < CV_ITEM_LINES; k++) h += '<div style="position:absolute;left:24mm;right:24mm;top:' + (206 + k * 10 - 7).toFixed(1) + 'mm;height:7mm;border-bottom:.3mm solid #1d1d1d;font-size:11pt;padding-left:2mm;white-space:nowrap;overflow:hidden;">' + esc(items[k] || '') + '</div>';
+  h += '<div style="position:absolute;right:24mm;top:' + (206 + CV_ITEM_LINES * 10 - 4).toFixed(1) + 'mm;font-size:11pt;">以上</div>';
   return pgWrap(h, true);
 }
 /* 領収書：A4 の上半分が本紙、下半分が控え（切り取り線）。収入印紙は国税庁 No.7105 の表（calc.js） */
@@ -911,16 +944,16 @@ async function xlsxOf(sheets, name) {
 
 /* ===== 入金 ===== */
 function drawPay() {
-  const open = ST.invs.map(i => ({ i, c: calcOf(i), st: stateOf(i) })).filter(x => ['未入金', '期日超え', '一部入金'].includes(x.st));
+  const open = ST.invs.filter(i => eraOk('pay', i)).map(i => ({ i, c: calcOf(i), st: stateOf(i) })).filter(x => ['未入金', '期日超え', '一部入金'].includes(x.st));
   const sum = f => open.filter(f).reduce((s, x) => s + x.c.total - SK.paid(x.i), 0), cnt = f => open.filter(f).length;
   const late = x => x.st === '期日超え', t0 = today(), soon = SK.ymd(new Date(Date.now() + 14 * 86400000));
-  const recent = []; ST.invs.forEach(i => (i.payments || []).forEach(p => { if (p.date && p.date >= SK.ymd(new Date(Date.now() - 62 * 86400000))) recent.push({ i, p }); }));
+  const recent = []; ST.invs.filter(i => eraOk('pay', i)).forEach(i => (i.payments || []).forEach(p => { if (p.date && p.date >= SK.ymd(new Date(Date.now() - 62 * 86400000))) recent.push({ i, p }); }));
   recent.sort((a, b) => b.p.date.localeCompare(a.p.date));
   const base = open.map(x => Object.assign(x, { date: x.i.date, mon: x.i.due, no: x.i.no, name: (x.i.to || {}).name || '', custId: x.i.custId, amt: x.c.total - SK.paid(x.i), due: x.i.due }));
   M.innerHTML = '<div class="row" style="margin-bottom:14px;"><div class="stat red"><span class="note">入金予定日を過ぎた物</span><b>' + cnt(late) + ' 枚　' + yen(sum(late)) + ' 円</b></div>' +
     '<div class="stat"><span class="note">2週間以内に予定日が来る物</span><b>' + cnt(x => !late(x) && x.i.due && x.i.due <= soon) + ' 枚　' + yen(sum(x => !late(x) && x.i.due && x.i.due <= soon)) + ' 円</b></div>' +
     '<div class="stat"><span class="note">入金がまだの物（全部）</span><b>' + open.length + ' 枚　' + yen(sum(() => true)) + ' 円</b></div></div>' +
-    '<div class="card"><h2 style="font-size:1.1rem;">入金がまだの請求書</h2><div class="row lt">' + perBar('pay', '入金予定日') + '</div>' + ltBar('pay', base, ['due', 'dateD', 'dateA', 'name', 'amt'], '入金予定日') + '<div id="pl" style="margin-top:10px;"></div>' +
+    '<div class="card"><h2 style="font-size:1.1rem;">入金がまだの請求書</h2><div class="row lt">' + eraBar('pay') + perBar('pay', '入金予定日') + '</div>' + ltBar('pay', base, ['due', 'dateD', 'dateA', 'name', 'amt'], '入金予定日') + '<div id="pl" style="margin-top:10px;"></div>' +
     '<div class="note" style="margin-top:8px;">入金予定日は得意先の「支払いの決まり」から出します。違うときは請求書の画面で直せます。赤い物は予定日を過ぎています。入金予定日の月ごとに区切って出します。番号を押すと請求書が開きます。</div></div>' +
     '<div class="card"><h2>最近の入金（2か月）</h2>' + (recent.length ? '<div class="wrapx"><table class="t"><thead><tr><th>入金日</th><th>番号</th><th>得意先</th><th class="n">入金額</th><th class="n">振込手数料</th><th>方法</th><th>メモ</th></tr></thead><tbody>' + recent.map(x => '<tr><td>' + dShort(x.p.date) + '</td><td>' + esc(x.i.no) + '</td><td>' + esc((x.i.to || {}).name) + '</td><td class="n">' + yen(x.p.amount) + '</td><td class="n">' + yen(x.p.fee) + '</td><td>' + esc(x.p.how) + '</td><td>' + esc(x.p.memo) + '</td></tr>').join('') + '</tbody></table></div>' : '<div class="note">ありません。</div>') + '</div>';
   function fill() {
@@ -933,13 +966,13 @@ function drawPay() {
     wireStk($('pl'), id => ST.invs.find(i => i.id === id), async i => { if (await saveInvSticky(i)) drawPay(); });
     $('pl').querySelectorAll('[data-o]').forEach(a => a.onclick = e => { e.preventDefault(); ST.tab = 'inv'; draw(); openInv(plain(ST.invs.find(i => i.id === a.dataset.o))); });
   }
-  ltWire('pay', () => { const s = lt('pay'); if (M.querySelector('[data-lt="per"]') && (s.per === 'range') !== !!M.querySelector('[data-lt="from"]')) drawPay(); else fill(); }); fill();
+  ltWire('pay', drawPay); fill();   // 上の数字（期日超えなど）も選んだデータで出し直す
 }
 
 /* ===== 領収書（ユーザー指示 2026-11-05：作れるように。今までの分は写さない） ===== */
 function drawRcp() {
-  const base = ST.rcps.map(r => ({ r, id: r.id, date: r.date, no: r.no, name: r.toName || '', amt: Number(r.amount) || 0 }));
-  M.innerHTML = '<div class="card"><div class="row"><b style="font-size:1.1rem;">領収書</b><span class="sp"></span><button class="b dark" id="nr">＋ 新しい領収書</button></div><div class="row lt" style="margin-top:8px;">' + perBar('rcp', '発行日') + '</div>' + ltBar('rcp', base, ['dateD', 'dateA', 'name', 'amt'], '発行日') +
+  const base = ST.rcps.filter(r => eraOk('rcp', r)).map(r => ({ r, id: r.id, date: r.date, no: r.no, name: r.toName || '', amt: Number(r.amount) || 0 }));
+  M.innerHTML = '<div class="card"><div class="row"><b style="font-size:1.1rem;">領収書</b><span class="sp"></span><button class="b dark" id="nr">＋ 新しい領収書</button></div><div class="row lt" style="margin-top:8px;">' + eraBar('rcp') + perBar('rcp', '発行日') + '</div>' + ltBar('rcp', base, ['dateD', 'dateA', 'name', 'amt'], '発行日') +
     '<div class="note" style="margin-top:6px;">請求書の画面の「領収書を作る」からも作れます（宛名・金額・税率ごとの内訳が入ります）。発行日の月ごとに区切って出します。</div></div><div class="card" id="rl"></div>';
   $('nr').onclick = () => newReceipt(null);
   const R = id => ST.rcps.find(r => r.id === id);
@@ -956,7 +989,7 @@ function drawRcp() {
     Q('[data-pdf]').forEach(b => b.onclick = async () => { const r = R(b.dataset.pdf); try { await pdfOf(rcpPages(r), '領収書_' + r.no + '_' + r.toName + '.pdf'); } catch (e) { alert(e.message); } });
     Q('[data-c]').forEach(b => b.onclick = async () => { const r = R(b.dataset.c); if (!(await okBox('領収書 ' + r.no + ' を取消にしますか？', '取消にする'))) return; r.state = '取消'; try { await saveRcp(r); drawRcp(); } catch (e) { alert(e.message); } });
   }
-  ltWire('rcp', () => { const s = lt('rcp'); if ((s.per === 'range') !== !!M.querySelector('[data-lt="from"]')) drawRcp(); else fill(); }); fill();
+  ltWire('rcp', drawRcp); fill();
 }
 async function saveRcp(r) {
   if (!r.no) r.no = await nextNo('rcpNo');
@@ -1058,16 +1091,19 @@ async function drawSub() {
   const P = ST.sub = ST.sub || { mode: 'mon', ym: def, from: d.getFullYear() + '-01-01', to: SK.ymd(new Date(d.getFullYear(), d.getMonth(), 0)) };
   M.innerHTML = '<div class="card"><div class="row"><b style="font-size:1.1rem;">提出データ（税理士さん）</b>' +
     '<label class="ltl"><input type="radio" name="sm" value="mon"' + (P.mode === 'mon' ? ' checked' : '') + '> 月ごと</label><label class="ltl"><input type="radio" name="sm" value="range"' + (P.mode === 'range' ? ' checked' : '') + '> いつからいつまで</label>' +
-    (P.mode === 'mon' ? '<input type="month" id="ym" value="' + esc(P.ym) + '">' : '<input type="date" id="f1" value="' + esc(P.from) + '">〜<input type="date" id="f2" value="' + esc(P.to) + '"><button class="b sm" id="go">この期間で出す</button>') +
+    '<label class="ltl"><input type="radio" name="sm" value="close"' + (P.mode === 'close' ? ' checked' : '') + '> 期ごと（' + (fyEnd() % 12 + 1) + '/1〜' + fyEnd() + '月末）</label>' +
+    (P.mode === 'close' ? fySel('id="cm"', P.cm) : P.mode === 'mon' ? '<input type="month" id="ym" value="' + esc(P.ym) + '">' : '<input type="date" id="f1" value="' + esc(P.from) + '">〜<input type="date" id="f2" value="' + esc(P.to) + '"><button class="b sm" id="go">この期間で出す</button>') +
     '<span class="sp"></span>' + (ST.cfg.memoTax ? '<button class="b" id="memo">税理士さんへのメモ</button>' : '') + '</div><div class="note" style="margin-top:6px;">月か期間を選んで、PDF と Excel を作ってダウンロードします（保存先を選べます）。メールに付けて送るか、印刷して渡してください。</div></div><div class="card" id="sb">読み込んでいます…</div>';
   M.querySelectorAll('[name="sm"]').forEach(r => r.onchange = () => { P.mode = r.value; drawSub(); });
   if ($('ym')) $('ym').onchange = () => { P.ym = $('ym').value; drawSub(); };
+  if ($('cm')) $('cm').onchange = () => { if ($('cm').value) { P.cm = $('cm').value; drawSub(); } };
   if ($('go')) $('go').onclick = () => { const a = $('f1').value, b = $('f2').value; if (!a || !b || a > b) return alert('期間の「いつから」「いつまで」を入れてください。'); P.from = a; P.to = b; drawSub(); };
   if ($('memo')) $('memo').onclick = () => alert(ST.cfg.memoTax);
-  const from = P.mode === 'mon' ? P.ym + '-01' : P.from, to = P.mode === 'mon' ? SK.ymd(new Date(+P.ym.slice(0, 4), +P.ym.slice(5, 7), 0)) : P.to;
+  const cr = closeRange(P.cm || closeYm(today()));
+  const from = P.mode === 'close' ? cr.from : P.mode === 'mon' ? P.ym + '-01' : P.from, to = P.mode === 'close' ? cr.to : P.mode === 'mon' ? SK.ymd(new Date(+P.ym.slice(0, 4), +P.ym.slice(5, 7), 0)) : P.to;
   let md; try { md = await rangeData(from, to); } catch (e) { $('sb').innerHTML = '<div class="msg">' + esc(e.message) + '</div>'; return; }
   const tot = a => a.reduce((s, i) => s + calcOf(i).total, 0);
-  const lab = P.mode === 'mon' ? P.ym.replace('-', '年') + '月' : from.replace(/-/g, '') + '-' + to.replace(/-/g, ''), labJ = P.mode === 'mon' ? lab : dJp(from) + '〜' + dJp(to);
+  const lab = P.mode === 'mon' ? P.ym.replace('-', '年') + '月' : P.mode === 'close' ? (P.cm || closeYm(today())) + '年' + fyEnd() + '月期' : from.replace(/-/g, '') + '-' + to.replace(/-/g, ''), labJ = P.mode === 'mon' ? lab : P.mode === 'close' ? closeName(P.cm || closeYm(today())) : dJp(from) + '〜' + dJp(to);
   $('sb').innerHTML = '<div class="note" style="margin-bottom:8px;">期間：<b>' + esc(labJ) + '</b></div><table class="t"><tbody>' +
     '<tr><td><b>請求書（PDF）</b><div class="note">' + esc(labJ) + 'に出した請求書（取消を除く）。印鑑つき、1枚ずつ。</div></td><td class="n">' + md.issued.length + ' 枚　' + yen(tot(md.issued)) + ' 円</td><td><button class="b dark" id="p1"' + (md.issued.length ? '' : ' disabled') + '>PDFをダウンロード</button></td></tr>' +
     '<tr><td><b>入金分（PDF）</b><div class="note">' + esc(labJ) + 'に入金があった請求書。</div></td><td class="n">' + md.paidIn.length + ' 枚</td><td><button class="b dark" id="p2"' + (md.paidIn.length ? '' : ' disabled') + '>PDFをダウンロード</button></td></tr>' +
@@ -1091,6 +1127,8 @@ async function drawSub() {
 function drawCfg() {
   const g = ST.cfg, co = g.company;
   const S = (k, input, d) => '<div class="set"><span class="k">' + k + '</span><span>' + input + '</span><span class="d">' + d + '</span></div>';
+  // 長い文の欄は広く（紙の1行と同じ字数で折り返す。改行が見て分かるように。ユーザー指示 2026-11-06）
+  const SW = (k, input, d) => '<div class="set" style="grid-template-columns:minmax(170px,230px) 1fr;"><span class="k">' + k + '</span><span>' + input + '<div class="d" style="margin-top:4px;">' + d + '</div></span></div>';
   const I = (id, v, w) => '<input id="' + id + '" value="' + esc(v == null ? '' : v) + '"' + (w ? ' style="text-align:right;"' : '') + '>';
   const R = (id, v) => '<select id="' + id + '"><option value="down"' + (v === 'down' ? ' selected' : '') + '>切り捨て</option><option value="half"' + (v === 'half' ? ' selected' : '') + '>四捨五入</option><option value="up"' + (v === 'up' ? ' selected' : '') + '>切り上げ</option></select>';
   const rateRows = (g.rates || []).map((r, k) => '<tr data-k="' + k + '"><td><select data-r="kind"><option value="std"' + (r.kind === 'std' ? ' selected' : '') + '>標準税率</option><option value="red"' + (r.kind === 'red' ? ' selected' : '') + '>軽減税率</option></select></td><td><input data-r="rate" value="' + esc(r.rate) + '" style="width:70px;text-align:right;"> %</td><td><input data-r="from" type="date" value="' + esc(r.from) + '"></td><td><button class="b sm danger" data-rm="' + k + '">消す</button></td></tr>').join('');
@@ -1100,7 +1138,7 @@ function drawCfg() {
     '<div class="card"><div class="row"><h2 style="margin:0;">設定</h2><span class="sp"></span><button class="b dark" id="sv">保存</button></div>' +
     S('会社名', I('c_name', co.name), 'これから作る請求書・領収書と送り状に出ます。前に作った請求書・領収書は、作ったときの会社名・住所・振込先のままです。') + S('郵便番号', I('c_zip', co.zip), '') + S('住所', I('c_addr', co.addr), '2026-11-05 ユーザー決定：戸ノ内町5丁目10-16。') +
     S('TEL', I('c_tel', co.tel), '') + S('FAX', I('c_fax', co.fax), '') + S('登録番号', I('c_reg', co.regNo), '適格請求書発行事業者の登録番号（T＋13けた）。請求書に必ず出します。') +
-    S('振込先', '<textarea id="bank">' + esc(g.bank) + '</textarea>', '請求書の下の「お振込先」に出ます。改行もそのまま出ます。') +
+    SW('振込先', '<textarea id="bank" class="paperw" style="width:24.9em;max-width:calc(100% - 22px);min-height:5.4em;">' + esc(g.bank) + '</textarea>', '請求書の下の「お振込先」に出ます。この欄で改行した所は、紙でも改行します。') +
     S('あいさつ文', I('greet', g.greeting), '請求書の「今回ご請求額」の上に出ます。') +
     S('印鑑を押す', '<label><input type="checkbox" id="stp"' + (g.stamps ? ' checked' : '') + '> 押す</label>', '請求書・領収書の会社名の横に角印、請求書の承認の欄に承認した人の印を押します。') +
     S('印鑑の画像', '<div class="row">' + STAMP_NAMES.filter(x => x[0]).map(x => ST.stamps[x[0]] ? '<span style="text-align:center;"><img src="' + ST.stamps[x[0]] + '" style="height:44px;display:block;margin:auto;"><span class="note">' + x[1] + '</span></span>' : '<span class="tag ng">' + x[1] + 'なし</span>').join('') + '</div><label class="f">角印</label><input type="file" id="stK" accept="image/png"><label class="f">代表者印（丸印）</label><input type="file" id="stM" accept="image/png"><label class="f">比嘉の印</label><input type="file" id="stH" accept="image/png">', 'PNG（背景が透明な物）。OneDrive「電子印鑑【EX】」の朱。公開のサイトには置かず、請求の権限がある人だけが読める所に入れます。選ぶとすぐ入ります。') +
@@ -1114,11 +1152,12 @@ function drawCfg() {
     '</div><div class="card"><h2>番号・初めの値</h2>' +
     S('請求書の番号', '<span class="row" style="gap:4px;flex-wrap:nowrap;">' + I('in_p', g.invNo.prefix) + I('in_d', g.invNo.digits, 1) + I('in_n', g.invNo.next, 1) + '</span>', '頭の字・けた数・次の番号。次に保存する新しい請求書は「' + esc(g.invNo.prefix + String(g.invNo.next).padStart(g.invNo.digits, '0')) + '」。') +
     S('領収書の番号', '<span class="row" style="gap:4px;flex-wrap:nowrap;">' + I('rn_p', g.rcpNo.prefix) + I('rn_d', g.rcpNo.digits, 1) + I('rn_n', g.rcpNo.next, 1) + '</span>', '次は「' + esc(g.rcpNo.prefix + String(g.rcpNo.next).padStart(g.rcpNo.digits, '0')) + '」。') +
+    S('自社の締め（決算）', '<select id="oc">' + Array.from({ length: 12 }, (_, k) => k + 1).map(m => '<option value="' + m + '"' + (fyEnd() === m ? ' selected' : '') + '>' + m + '月末で締める（' + (m % 12 + 1) + '/1〜' + m + '月末）</option>').join('') + '</select>', '1年の締め。請求書・入金・領収書の一覧と提出データで「期ごと」を選べます（2026-11-06 ユーザー：3/1〜2月末）。') +
     S('支払いの決まりの初め', '<span class="row" style="gap:4px;flex-wrap:nowrap;"><select id="dc">' + CLOSES.map(o => '<option value="' + o[0] + '"' + (String(Math.min(31, g.defTerms.close)) === o[0] ? ' selected' : '') + '>' + o[1] + '</option>').join('') + '</select><select id="dm">' + PMS.map(o => '<option value="' + o[0] + '"' + (String(g.defTerms.months) === o[0] ? ' selected' : '') + '>' + o[1] + '</option>').join('') + '</select><select id="dd">' + PDAYS.map(o => '<option value="' + o[0] + '"' + (String(Math.min(31, g.defTerms.day)) === o[0] ? ' selected' : '') + '>' + o[1] + '</option>').join('') + '</select></span>', '新しい得意先の初めの値。') +
     S('領収書の但し書き', I('rp', g.rcpPurpose), '新しい領収書の初めの値。') +
     '</div><div class="card"><h2>送り状</h2>' +
     S('担当', I('cp', g.coverPerson), '送り状の画面の「担当（送り主）」の初めの値です。印刷のたびに変えられます。') +
-    S('本文', '<textarea id="ct" style="min-height:110px;">' + esc(g.coverText) + '</textarea>', '送り状の画面の「送り文」の初めの値です。印刷のたびに変えられます。') +
+    SW('本文', '<textarea id="ct" class="paperw" style="width:44.8em;max-width:calc(100% - 22px);min-height:9em;">' + esc(g.coverText) + '</textarea>', '送り状の画面の「送り文」の初めの値です。印刷のたびに変えられます。欄の幅は紙の1行（' + CV_TEXT_W + ' 字）と同じです。改行した所は紙でも改行します。') +
     '</div><div class="card"><h2>税理士さんへのメモ</h2><textarea id="mt" style="min-height:90px;">' + esc(g.memoTax) + '</textarea><div class="note">提出データの画面のボタンで見られます（送り方・締め切りなど）。</div></div>' +
     '';
   $('rf').onclick = refreshApp;
@@ -1131,7 +1170,7 @@ function drawCfg() {
       company: { name: $('c_name').value.trim(), zip: $('c_zip').value.trim(), addr: $('c_addr').value.trim(), tel: $('c_tel').value.trim(), fax: $('c_fax').value.trim(), regNo: $('c_reg').value.trim() },
       bank: $('bank').value.trim(), greeting: $('greet').value, stamps: $('stp').checked, rates: readRates(), taxRound: $('tr').value, amtRound: $('ar').value,
       invNo: { prefix: $('in_p').value.trim(), digits: num($('in_d').value) || 5, next: num($('in_n').value) || 1 }, rcpNo: { prefix: $('rn_p').value.trim(), digits: num($('rn_d').value) || 5, next: num($('rn_n').value) || 1 },
-      defTerms: { close: Number($('dc').value), months: Number($('dm').value), day: Number($('dd').value) }, rcpPurpose: $('rp').value, coverPerson: $('cp').value, coverText: $('ct').value, memoTax: $('mt').value,
+      defTerms: { close: Number($('dc').value), months: Number($('dm').value), day: Number($('dd').value) }, rcpPurpose: $('rp').value, coverPerson: $('cp').value, coverText: $('ct').value, memoTax: $('mt').value, fyEnd: Number($('oc').value) || 2,
       approvers: [...M.querySelectorAll('[data-apk]')].map(tr => { const u = tr.querySelector('[data-ap="uid"]'), uid = u.value, p = (ST.people || []).find(x => x.uid === uid); return { label: tr.querySelector('[data-ap="label"]').value.trim() || '承認', uid, name: uid ? (p ? p.name : (u.selectedOptions[0] || {}).textContent || uid) : '', stamp: tr.querySelector('[data-ap="stamp"]').value }; })
     };
   }
