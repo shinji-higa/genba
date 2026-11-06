@@ -129,12 +129,12 @@
 <main id="m"></main>
 <div id="busy"></div>
 
-<script src="calc.js?v=Ver.請求20261106-24"></script>
+<script src="calc.js?v=Ver.請求20261106-25"></script>
 <script type="module">
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
 import { getFirestore, collection, doc, getDoc, getDocs, setDoc, deleteDoc, writeBatch, runTransaction } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
-const APP_VER = 'Ver.請求20261106-24';   // 版の名前は「Ver.請求YYYYMMDD-NN」（ユーザー指示 2026-11-06）
+const APP_VER = 'Ver.請求20261106-25';   // 版の名前は「Ver.請求YYYYMMDD-NN」（ユーザー指示 2026-11-06）
 const API = 'https://script.google.com/macros/s/AKfycbzpJgqJOqQz5180PQF2S3kVN7TWg0c1dnyUUUNuCZtzy5_pmKEhAkw5w3gqSj31EEA1/exec';   // Apps Script「請求管理」（ポータル・給与とは別）
 /* ログインは給与アプリと同じ（ユーザー指示 2026-11-05）：ポータルの Firebase、メールとパスワード。入れるのはマスターと「請求管理」の権限（users.canInvoice）がある人 */
 const app = initializeApp({ apiKey: 'AIzaSyDVR4p4DO4s9h70uPlXUVlhNcMP9-YkQ5Q', authDomain: 'genba-portal-9077b.firebaseapp.com', projectId: 'genba-portal-9077b' });
@@ -911,7 +911,7 @@ function rcpPages(r) {
   const off = isOff(r), TT = off ? '相殺伝票' : '領収書';
   // 2026-11-06 ユーザー指示：請求書と同じ紙のデザイン（ダクトの絵）・字の大きさ・つり合いにする。A4 の上半分が本紙、下半分が控え
   const half = (copy) => {
-    const duty = SK.stampDuty(r.amount);
+    const duty = rcpDuty(r);
     const A = (x, y, w, css, html) => '<div style="position:absolute;left:' + x + 'mm;top:' + y + 'mm;' + (w ? 'width:' + w + 'mm;' : '') + css + '">' + html + '</div>';
     let h = '<div style="position:relative;height:148.5mm;overflow:hidden;">' +
       '<div style="position:absolute;right:0;bottom:0;width:108mm;height:94mm;background:url(paper_duct.png) right bottom/contain no-repeat;"></div>';
@@ -925,7 +925,7 @@ function rcpPages(r) {
     h += A(15, 50, 120, 'border:.5mm solid #1a6b3c;border-radius:1.5mm;padding:4mm 6mm;display:flex;justify-content:space-between;align-items:baseline;box-sizing:border-box;', '<span style="font-size:12pt;font-weight:700;letter-spacing:' + (off ? '.1em' : '.3em') + ';">' + (off ? '相殺金額' : '金額') + '</span><span style="font-size:22pt;font-weight:700;">¥' + yen(r.amount) + '－' + (off ? '' : '<span style="font-size:9pt;">（税込）</span>') + '</span>');
     // 但し書き・内訳
     h += A(15, 78, 105, 'font-size:10.5pt;line-height:1.9;', (off ? '内容　' + esc(r.purpose) + '<br>上記の金額を相殺いたしました。' : '但し　' + esc(r.purpose) + '<br>上記正に領収いたしました。') +
-      '<div style="margin-top:2mm;font-size:9.5pt;line-height:1.7;border-top:.3mm solid #c9d6cd;padding-top:1.5mm;">' + (off ? [] : r.groups || []).map(g => '<div>' + esc(SK.groupLabel(g)) + '対象　' + yen(g.incl) + '円（うち消費税 ' + yen(g.tax) + '円）</div>').join('') +
+      '<div style="margin-top:2mm;font-size:9.5pt;line-height:1.7;border-top:.3mm solid #c9d6cd;padding-top:1.5mm;">' + (off ? [] : r.groups || []).map(g => '<div>' + esc(SK.groupLabel(g)) + '対象　' + yen(g.incl) + '円（うち消費税額等 ' + yen(g.tax) + '円）</div>').join('') +
       (r.how ? '<div>受け取り方：' + esc(r.how) + '</div>' : '') + (r.invNo ? '<div>請求書 No.' + esc(r.invNo) + '</div>' : '') + '</div>');
     // 収入印紙（本紙だけ。金額の枠の右）
     if (!off && !copy && duty) h += A(147, 48, 26, 'height:30mm;border:.3mm dashed #8a958e;font-size:8.5pt;color:#5b6b61;text-align:center;box-sizing:border-box;padding-top:10mm;line-height:1.6;', '収入印紙<br>' + yen(duty) + '円');
@@ -1133,7 +1133,7 @@ function drawSlips(key) {
   const R = id => ST.rcps.find(r => r.id === id);
   function fill() {
     const rows = ltApply(key, base.filter(x => perOk(key, x.date))), tot = a => a.filter(x => x.r.state !== '取消').reduce((s, x) => s + x.amt, 0);
-    const duty = r => SK.stampDuty(r.amount) == null ? '<span class="tag ng">要確認</span>' : SK.stampDuty(r.amount) ? yen(SK.stampDuty(r.amount)) + '円' : '不要';
+    const duty = r => rcpDuty(r) == null ? '<span class="tag ng">要確認</span>' : rcpDuty(r) ? yen(rcpDuty(r)) + '円' : '不要';
     const row = x => { const r = x.r; return '<tr class="link" data-id="' + esc(r.id) + '"><td><b>' + esc(r.no) + '</b>' + (r.state === '取消' ? ' <span class="tag">取消</span>' : '') + '</td><td>' + dShort(r.date) + '</td><td>' + esc(r.toName) + '</td><td class="n">' + yen(r.amount) + '</td><td>' + esc(r.purpose) + '</td><td>' + esc(r.invNo || '') + '</td>' + (key === 'rcp' ? '<td>' + duty(r) + '</td>' : '') + stkCell(r, key) + '</tr>'; };
     const cols = key === 'rcp' ? 8 : 7;
     $('rl').innerHTML = rows.length ? '<div class="wrapx"><table class="t"><thead><tr><th>番号</th><th>' + K.date + '</th><th>' + K.who + '</th><th class="n">金額</th><th>' + K.what + '</th><th>請求書</th>' + (key === 'rcp' ? '<th>収入印紙</th>' : '') + '<th>付箋メモ</th></tr></thead><tbody>' +
@@ -1168,7 +1168,7 @@ async function newReceipt(inv) {
   if (!res.toName || !v) return alert('宛名と金額を入れてください。');
   // 税率ごとの内訳：税込で請求書の全額なら請求書の内訳。ほかは発行日の標準税率で分ける（税抜なら消費税を足す）
   const am = rcpAmounts(v, mode, res.date, inv ? inv.id : ''), amount = am.amount, groups = am.groups;
-  const r = { id: newId('t'), no: '', date: res.date, toName: res.toName, honor: res.honor, amount, amtMode: mode, purpose: res.purpose, how: res.how, invId: inv ? inv.id : '', invNo: inv ? inv.no : '', groups, stamp: SK.stampDuty(amount), state: '発行済み' };
+  const r = { id: newId('t'), no: '', date: res.date, toName: res.toName, honor: res.honor, amount, amtMode: mode, purpose: res.purpose, how: res.how, invId: inv ? inv.id : '', invNo: inv ? inv.no : '', groups, stamp: rcpDuty({ amount, groups }), state: '発行済み' };
   try { await saveRcp(r); ST.tab = 'rcp'; ST.rcpOpen = plain(r); draw(); if (r.stamp == null) alert('1,000万円を超える領収書の収入印紙は、国税庁 No.7141 の表で確かめてください。'); } catch (e) { alert('保存できませんでした：' + e.message); }
 }
 
@@ -1198,6 +1198,9 @@ function rcpAmounts(v, mode, date, invId) {
   if (mode === 'ex') { const rate = SK.rateOf('std', date, ST.cfg.rates) || 0, tax = SK.round(v * rate / 100, ST.cfg.taxRound); return { amount: v + tax, groups: [{ kind: 'std', rate, base: v, tax, incl: v + tax }] }; }
   return { amount: v, groups: rcpGroups(v, date, invId) };
 }
+/* 印紙の金額を決める金額：紙に「うち消費税額等」を分けて書くので、消費税額等を除いた金額（No.7124）。登録番号がない（免税事業者の）ときは税込のまま */
+const rcpDutyBase = r => { const tax = (r.groups || []).reduce((s, g) => s + (Number(g.tax) || 0), 0), reg = ((r.from || {}).regNo != null ? (r.from || {}).regNo : (ST.cfg.company || {}).regNo); return reg ? (Number(r.amount) || 0) - tax : (Number(r.amount) || 0); };
+const rcpDuty = r => SK.stampDuty(rcpDutyBase(r));
 const rcpBase = r => (r.groups || []).reduce((s, g) => s + (Number(g.base) || 0), 0);
 function rcpGroups(amount, date, invId) {
   const inv = invId ? ST.invs.find(i => i.id === invId) : null, c = inv ? calcOf(inv) : null;
@@ -1210,7 +1213,7 @@ function drawRcpEdit() {
   const F = (k, label, html) => '<div><label class="f">' + label + '</label>' + html + '</div>';
   const I = (k, v, extra) => '<input data-r="' + k + '" value="' + esc(v == null ? '' : v) + '"' + (gone ? ' disabled' : '') + (extra || '') + ' style="width:100%;">';
   const S = (k, v, opts) => '<select data-r="' + k + '"' + (gone ? ' disabled' : '') + ' style="width:100%;">' + (opts.includes(v) || !v ? opts : opts.concat([v])).map(o => '<option' + (o === v ? ' selected' : '') + '>' + esc(o) + '</option>').join('') + '</select>';
-  const duty = SK.stampDuty(r.amount);
+  const duty = rcpDuty(r);
   M.innerHTML = '<div class="card"><div class="row"><button class="b" id="rBack">← 一覧へ</button><b style="font-size:1.1rem;">' + K.name + ' ' + esc(r.no) + '</b>' + (gone ? '<span class="tag">取消</span>' : '<span class="tag ok">発行済み</span>') +
     '<span class="sp"></span>' + (gone ? '' : '<button class="b dark" id="rSave">保存</button><button class="b" id="rPrint">印刷</button><button class="b" id="rPdf">PDFで保存</button>') + '<button class="b" id="rSee">紙を見る</button><button class="b" id="rHist">直した記録</button>' + (gone ? '' : '<button class="b danger" id="rCancel">取消</button>') + '</div>' +
     (gone ? '<div class="note" style="margin-top:6px;">取消にした' + K.name + 'です。中身は直せません。</div>' : '') + (off ? '<div class="note" style="margin-top:6px;">相殺伝票は紙を作るだけで、請求書の入金には入りません。</div>' : '') + '</div>' +
@@ -1222,8 +1225,8 @@ function drawRcpEdit() {
     (off ? F('invNo', '請求書の番号', I('invNo', r.invNo || '')) : F('how', '受け取り方', S('how', r.how || '振込', ['振込', '現金', '小切手', 'その他']))) +
     '</div><div class="row" style="margin-top:12px;gap:24px;align-items:flex-start;">' +
     (off ? '' : '<div><label class="f">請求書</label>' + (r.invNo ? '<a href="#" id="rInv"><b>' + esc(r.invNo) + '</b></a>' : '<span class="note">なし</span>') + '</div>' +
-      '<div><label class="f">収入印紙</label><span id="rDuty">' + (duty == null ? '<span class="tag ng">要確認</span>' : duty ? yen(duty) + ' 円' : '不要') + '</span></div>' +
-      '<div><label class="f">税率ごとの内訳</label><span id="rGrp">' + (r.groups || []).map(g => esc(SK.groupLabel(g)) + '対象 ' + yen(g.incl) + ' 円（うち消費税 ' + yen(g.tax) + ' 円）').join('<br>') + '</span><div class="note">金額を変えると、保存のときに出し直します。</div></div>') +
+      '<div><label class="f">収入印紙</label><span id="rDuty">' + (duty == null ? '<span class="tag ng">要確認</span>' : duty ? yen(duty) + ' 円' : '不要') + '</span><div class="note">税抜 ' + yen(rcpDutyBase(r)) + ' 円で決めます（消費税額等を分けて書くため）</div></div>' +
+      '<div><label class="f">税率ごとの内訳</label><span id="rGrp">' + (r.groups || []).map(g => esc(SK.groupLabel(g)) + '対象 ' + yen(g.incl) + ' 円（うち消費税額等 ' + yen(g.tax) + ' 円）').join('<br>') + '</span><div class="note">金額を変えると、保存のときに出し直します。</div></div>') +
     (off && r.invNo ? '<div><label class="f">請求書</label><a href="#" id="rInv"><b>' + esc(r.invNo) + '</b></a></div>' : '') +
     '<div><label class="f">作った人</label>' + esc(r.createdBy || '') + ' <span class="note">' + esc(r.createdAt || '') + '</span></div></div></div>';
   const val = () => { const o = Object.assign({}, r); M.querySelectorAll('[data-r]').forEach(e => { o[e.dataset.r] = e.value; }); o.amount = num(o.amount) || 0; o.toName = String(o.toName || '').trim(); if (off) o.invNo = String(o.invNo || '').trim(); return o; };
@@ -1240,7 +1243,7 @@ function drawRcpEdit() {
       const mode = (RCP_MODES.find(x => x[1] === o.amtMode) || RCP_MODES[0])[0], v = o.amount, before = r.amtMode === 'ex' ? rcpBase(r) : Number(r.amount);
       o.amtMode = mode;
       if (v !== before || o.date !== r.date || mode !== (r.amtMode || 'in')) { const am = rcpAmounts(v, mode, o.date, o.invId); o.amount = am.amount; o.groups = am.groups; } else o.amount = Number(r.amount);
-      o.stamp = SK.stampDuty(o.amount);
+      o.stamp = rcpDuty(o);
     }
     try { await saveRcp(o); ST.dirty = false; ST.rcpOpen = plain(o); drawRcpEdit(); if (!off && o.stamp == null) alert('1,000万円を超える領収書の収入印紙は、国税庁 No.7141 の表で確かめてください。'); return true; } catch (e) { alert('保存できませんでした：' + e.message); return false; }
   }
