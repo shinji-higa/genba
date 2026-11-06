@@ -130,12 +130,12 @@
 <main id="m"></main>
 <div id="busy"></div>
 
-<script src="calc.js?v=Ver.請求20261106-30"></script>
+<script src="calc.js?v=Ver.請求20261106-31"></script>
 <script type="module">
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
 import { getFirestore, collection, doc, getDoc, getDocs, setDoc, deleteDoc, writeBatch, runTransaction, onSnapshot } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
-const APP_VER = 'Ver.請求20261106-30';   // 版の名前は「Ver.請求YYYYMMDD-NN」（ユーザー指示 2026-11-06）
+const APP_VER = 'Ver.請求20261106-31';   // 版の名前は「Ver.請求YYYYMMDD-NN」（ユーザー指示 2026-11-06）
 const API = 'https://script.google.com/macros/s/AKfycbzpJgqJOqQz5180PQF2S3kVN7TWg0c1dnyUUUNuCZtzy5_pmKEhAkw5w3gqSj31EEA1/exec';   // Apps Script「請求管理」（ポータル・給与とは別）
 /* ログインは給与アプリと同じ（ユーザー指示 2026-11-05）：ポータルの Firebase、メールとパスワード。入れるのはマスターと「請求管理」の権限（users.canInvoice）がある人 */
 const app = initializeApp({ apiKey: 'AIzaSyDVR4p4DO4s9h70uPlXUVlhNcMP9-YkQ5Q', authDomain: 'genba-portal-9077b.firebaseapp.com', projectId: 'genba-portal-9077b' });
@@ -448,7 +448,7 @@ function liveOn() {
     });
     if (ch) { apvBadge(); liveRedraw(); }
   };
-  ST.unsub.push(onSnapshot(doc(db, C.cfg, 'main'), s => { if (!s.exists()) return; const v = s.data(); ST.cfg.yearRev = v.yearRev || {}; ['invNo', 'rcpNo', 'offNo'].forEach(k => { if (v[k]) ST.cfg[k] = v[k]; }); }, () => {}));
+  ST.unsub.push(onSnapshot(doc(db, C.cfg, 'main'), s => { if (!s.exists()) return; const v = s.data(), old = ST.cfg.yearRev || {}, nw = v.yearRev || {}; Object.keys(ST.yearData).forEach(y => { if (String(old[y] || '') !== String(nw[y] || '')) delete ST.yearData[y]; }); ST.cfg.yearRev = nw; /* ほかの人が昔の年を直したら、その年は次に見るとき読み直す */ ['invNo', 'rcpNo', 'offNo'].forEach(k => { if (v[k]) ST.cfg[k] = v[k]; }); }, () => {}));
   ST.unsub.push(onSnapshot(collection(db, C.inv), apply('invs'), () => {}));
   ST.unsub.push(onSnapshot(collection(db, C.rcp), apply('rcps'), () => {}));
   ST.unsub.push(onSnapshot(collection(db, C.cust), apply('custs'), () => {}));
