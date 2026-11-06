@@ -12,13 +12,14 @@
   * { box-sizing: border-box; }
   body { margin: 0; background: var(--bg); color: var(--ink); font-family: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Yu Gothic UI", Meiryo, sans-serif; font-size: 15px; line-height: 1.55; }
   header { background: var(--head); color: #fff; padding: 10px 16px; display: flex; align-items: center; gap: 14px; flex-wrap: wrap; position: sticky; top: 0; z-index: 20; }
+  @media (max-width: 760px) { header { position: static; } }   /* スマホ（もしものとき見る）では上の帯を止めず、表を広く見せる（2026-11-06） */
   header b { font-size: 1.1rem; letter-spacing: .08em; }
   nav { display: flex; gap: 4px; flex-wrap: wrap; flex: 1; }
   nav button { background: transparent; color: #d3e6da; border: 0; padding: 7px 12px; border-radius: 6px; font: inherit; font-weight: 700; cursor: pointer; }
   nav button.on { background: #fff; color: var(--head); }
   .who { font-size: .82rem; color: #d3e6da; }
   .who a { color: #fff; }
-  main { max-width: 1180px; margin: 0 auto; padding: 16px; }
+  main { max-width: none; margin: 0 auto; padding: 16px clamp(10px, 2.5vw, 56px); }   /* 画面（窓）の幅に合わせて広げ、左右に少し余白（ユーザー指示 2026-11-06：PCのモニターに合わせる。スマホでも見られる） */
   .card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; margin-bottom: 14px; }
   .card h2 { margin: 0 0 10px; font-size: 1rem; }
   .row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
@@ -127,12 +128,12 @@
 <main id="m"></main>
 <div id="busy"></div>
 
-<script src="calc.js?v=Ver.請求20261106-16"></script>
+<script src="calc.js?v=Ver.請求20261106-17"></script>
 <script type="module">
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
 import { getFirestore, collection, doc, getDoc, getDocs, setDoc, deleteDoc, writeBatch, runTransaction } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
-const APP_VER = 'Ver.請求20261106-16';   // 版の名前は「Ver.請求YYYYMMDD-NN」（ユーザー指示 2026-11-06）
+const APP_VER = 'Ver.請求20261106-17';   // 版の名前は「Ver.請求YYYYMMDD-NN」（ユーザー指示 2026-11-06）
 const API = 'https://script.google.com/macros/s/AKfycbzpJgqJOqQz5180PQF2S3kVN7TWg0c1dnyUUUNuCZtzy5_pmKEhAkw5w3gqSj31EEA1/exec';   // Apps Script「請求管理」（ポータル・給与とは別）
 /* ログインは給与アプリと同じ（ユーザー指示 2026-11-05）：ポータルの Firebase、メールとパスワード。入れるのはマスターと「請求管理」の権限（users.canInvoice）がある人 */
 const app = initializeApp({ apiKey: 'AIzaSyDVR4p4DO4s9h70uPlXUVlhNcMP9-YkQ5Q', authDomain: 'genba-portal-9077b.firebaseapp.com', projectId: 'genba-portal-9077b' });
