@@ -43,6 +43,7 @@
   .wrapx { overflow-x: auto; }
   .tag { display: inline-block; padding: 1px 8px; border-radius: 10px; font-size: .78rem; font-weight: 800; background: #e4e9e6; color: var(--sub); white-space: nowrap; }
   .tag.ok { background: #dcefe3; color: var(--ok); }
+  .tag.pre { background: #e6e9f2; color: #3d4a6b; }   /* 切替前（特例） */
   .tag.ng { background: #fdeaea; color: var(--warn); }
   .tag.mid { background: #fff1d6; color: var(--amber); }
   .tag.blue { background: #e3edf8; color: #1f4f86; }
@@ -128,12 +129,12 @@
 <main id="m"></main>
 <div id="busy"></div>
 
-<script src="calc.js?v=Ver.請求20261106-21"></script>
+<script src="calc.js?v=Ver.請求20261106-22"></script>
 <script type="module">
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
 import { getFirestore, collection, doc, getDoc, getDocs, setDoc, deleteDoc, writeBatch, runTransaction } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
-const APP_VER = 'Ver.請求20261106-21';   // 版の名前は「Ver.請求YYYYMMDD-NN」（ユーザー指示 2026-11-06）
+const APP_VER = 'Ver.請求20261106-22';   // 版の名前は「Ver.請求YYYYMMDD-NN」（ユーザー指示 2026-11-06）
 const API = 'https://script.google.com/macros/s/AKfycbzpJgqJOqQz5180PQF2S3kVN7TWg0c1dnyUUUNuCZtzy5_pmKEhAkw5w3gqSj31EEA1/exec';   // Apps Script「請求管理」（ポータル・給与とは別）
 /* ログインは給与アプリと同じ（ユーザー指示 2026-11-05）：ポータルの Firebase、メールとパスワード。入れるのはマスターと「請求管理」の権限（users.canInvoice）がある人 */
 const app = initializeApp({ apiKey: 'AIzaSyDVR4p4DO4s9h70uPlXUVlhNcMP9-YkQ5Q', authDomain: 'genba-portal-9077b.firebaseapp.com', projectId: 'genba-portal-9077b' });
@@ -337,7 +338,9 @@ const DEF_CFG = {
 const ST = { stamps: {}, me: null, cfg: plain(DEF_CFG), custs: [], invs: [], rcps: [], tab: 'inv', year: String(new Date().getFullYear()), yearData: {}, q: '', filt: 'all' };
 const cfgMerge = c => { const o = Object.assign(plain(DEF_CFG), c || {}); if (!o.offNo || !o.offNo.prefix) o.offNo = plain(DEF_CFG.offNo); o.company = Object.assign(plain(DEF_CFG.company), (c || {}).company || {}); if (!Array.isArray(o.approvers) || o.approvers.length !== 3) o.approvers = plain(DEF_APV); return o; };
 const calcOf = inv => SK.calc(inv, ST.cfg);
-const stateOf = inv => SK.payState(inv.state === '取消' ? { ...inv, status: '取消' } : inv, today(), calcOf(inv).total);
+const KIRIKAE = '2026-03-01';   // この日より前に出した、写した請求書が「切替前」
+const preSw = i => !!(i && i.fixed && String(i.date || '') < KIRIKAE);
+const stateOf = inv => preSw(inv) ? '切替前' : SK.payState(inv.state === '取消' ? { ...inv, status: '取消' } : inv, today(), calcOf(inv).total);
 const custOf = id => ST.custs.find(c => c.id === id);
 /* 発行元（自社の名前・住所・振込先・登録番号）は書類ごとに保存したときの物を残す。設定を変えても前の書類は変わらない（ユーザー指示 2026-11-05：古い請求書が自動で今の会社名にならないように）。
    販売らくだから写した請求書は、販売らくだが1枚ごとに持っていた当時の自社情報（比嘉板工の時期・前の住所・前の振込先など） */
@@ -352,7 +355,7 @@ function expireOf(inv) {
   if (!(st === '入金済み' || st === '入金なし' || st === '取消')) return null;
   return endOfMarch(Math.max(Number(String(inv.date).slice(0, 4)) || 0, Number((SK.lastPayDate(inv) || inv.date).slice(0, 4)) || 0));
 }
-const stTag = st => '<span class="tag ' + ({ '入金済み': 'ok', '期日超え': 'ng', '一部入金': 'mid', '未入金': 'blue', '取消': '', '入金なし': '' }[st] || '') + '">' + esc(st) + '</span>';
+const stTag = st => '<span class="tag ' + ({ '入金済み': 'ok', '期日超え': 'ng', '一部入金': 'mid', '未入金': 'blue', '取消': '', '入金なし': '', '切替前': 'pre' }[st] || '') + '">' + esc(st) + '</span>';
 
 /* 起動 */
 async function boot() {
@@ -457,7 +460,7 @@ function ltGroups(key, rows) {
 const monLabel = m => m === '----' ? '日付なし' : m.slice(0, 4) + '年' + Number(m.slice(5, 7)) + '月';
 const monRow = (g, cols, sumTxt) => '<tr class="mh"><td colspan="' + cols + '"><b>' + monLabel(g.m) + '</b><span class="mhn">' + g.rows.length + ' 件' + (sumTxt ? '　' + sumTxt : '') + '</span></td></tr>';
 /* 承認の表示（ユーザー指示 2026-11-06：「まだ」ではなく「未承認」。緑は完了） */
-const apvTag = i => !needApv(i) ? '' : approved(i) ? '<span class="tag ok">承認済み</span>' : '<span class="tag org">未承認</span>';
+const apvTag = i => preSw(i) ? '<span class="tag pre">切替前</span>' : !needApv(i) ? '' : approved(i) ? '<span class="tag ok">承認済み</span>' : '<span class="tag org">未承認</span>';
 const myApvBox = i => needApv(i) && !approved(i) ? (ST.cfg.approvers || []).findIndex((a, k) => a.uid && a.uid === ST.me.uid && !(i.approvals && i.approvals[k])) : -1;
 /* 承認する（請求書の画面・一覧のどちらからでも） */
 async function doApprove(inv, k, on) {
@@ -505,7 +508,7 @@ async function drawInvList() {
     }));
     const sumOf = a => a.filter(x => x.st !== '取消').reduce((s, x) => s + x.c.total, 0);
     const row = x => { const k = myApvBox(x.i); return '<tr class="link" data-id="' + esc(x.i.id) + '"><td><b>' + esc(x.i.no || '（番号なし）') + '</b></td><td>' + dShort(x.i.date) + '</td><td>' + esc(x.name) + '</td><td>' + esc(x.i.title || ((x.i.lines || []).find(l => l.name) || {}).name || '') + '</td><td class="n">' + yen(x.c.total) + '</td><td>' + dShort(x.i.due) + '</td><td>' + stTag(x.st) + '</td>' +
-      '<td style="white-space:nowrap;">' + apvTag(x.i) + (k >= 0 ? ' <button class="b sm dark" data-apvl="' + esc(x.i.id) + '" data-k="' + k + '">承認する</button>' : '') + '</td><td>' + esc(x.i.sentBy || '') + (x.i.sentAt && x.i.sentAt !== '不明' ? ' <span class="note">' + dShort(x.i.sentAt) + '</span>' : '') + (!x.i.sentAt && x.i.sentBy !== '不明' && x.st !== '取消' ? ' <span class="tag mid">まだ送っていない</span>' : '') + '</td>' + stkCell(x.i, 'inv') + '</tr>'; };
+      '<td style="white-space:nowrap;">' + apvTag(x.i) + (k >= 0 ? ' <button class="b sm dark" data-apvl="' + esc(x.i.id) + '" data-k="' + k + '">承認する</button>' : '') + '</td><td>' + (preSw(x.i) ? '<span class="tag pre">切替前</span>' : esc(x.i.sentBy || '')) + (x.i.sentAt && x.i.sentAt !== '不明' ? ' <span class="note">' + dShort(x.i.sentAt) + '</span>' : '') + (!x.i.sentAt && x.i.sentBy !== '不明' && !preSw(x.i) && x.st !== '取消' ? ' <span class="tag mid">まだ送っていない</span>' : '') + '</td>' + stkCell(x.i, 'inv') + '</tr>'; };
     $('lst').innerHTML = rows.length ? '<div class="wrapx"><table class="t"><thead><tr><th>番号</th><th>発行日</th><th>得意先</th><th>件名・品名</th><th class="n">合計</th><th>入金予定日</th><th>入金</th><th>承認</th><th>送り方</th><th>付箋メモ</th></tr></thead><tbody>' +
       ltGroups('inv', rows).map(g => monRow(g, 10, '合計 ' + yen(sumOf(g.rows)) + ' 円') + g.rows.map(row).join('')).join('') +
       '</tbody><tfoot><tr><td colspan="4">' + rows.length + ' 枚（取消を除いた合計）</td><td class="n">' + yen(sumOf(rows)) + '</td><td colspan="5"></td></tr></tfoot></table></div>' : '<div class="note">当てはまる請求書はありません。</div>';
@@ -591,7 +594,7 @@ function drawInvEdit() {
     '<div><label class="f">入金予定日</label><input id="due" type="date" value="' + esc(inv.due || '') + '"><div class="row" style="gap:6px;margin-top:3px;"><button class="b sm" id="dueA" type="button"' + (ro ? ' disabled' : '') + '>支払いの決まりから出す</button><span class="note">' + esc(cust ? SK.termsLabel(cust.terms) + (cust.termsCheck ? '（要確認）' : '') : '') + '</span></div></div>' +
     '<div><label class="f">件名</label><input id="tt" value="' + esc(inv.title || '') + '"' + (ro ? ' disabled' : '') + '></div>' +
     '<div><label class="f">金額の入れ方</label><select id="tm"' + (ro ? ' disabled' : '') + '><option value="out"' + (inv.taxMode !== 'in' ? ' selected' : '') + '>外税（金額は税抜で入れる）</option><option value="in"' + (inv.taxMode === 'in' ? ' selected' : '') + '>内税（金額は税込で入れる）</option></select></div>' +
-    '<div><label class="f">送り方</label><select id="sb">' + ['紙', 'メール', '紙とメール', '不明'].map(o => '<option' + (o === (inv.sentBy || '紙') ? ' selected' : '') + '>' + o + '</option>').join('') + '</select><div class="note">「紙」のときは印刷で送り状も一緒に出ます</div></div>' +
+    '<div><label class="f">送り方</label><select id="sb">' + ['紙', 'メール', '紙とメール', '不明'].concat(preSw(inv) ? ['切替前'] : []).map(o => '<option' + (o === (preSw(inv) ? '切替前' : (inv.sentBy || '紙')) ? ' selected' : '') + '>' + o + '</option>').join('') + '</select><div class="note">「紙」のときは印刷で送り状も一緒に出ます</div></div>' +
     '</div><details style="margin-top:10px;"' + (inv.isNew ? '' : '') + '><summary style="cursor:pointer;font-weight:700;">宛名（' + esc([to.name, to.dept, to.person].filter(Boolean).join('　') || '未入力') + '　' + esc(to.honor || '') + '）を直す</summary><div class="grid3" style="margin-top:8px;">' +
     [['name', '会社名'], ['dept', '部署'], ['person', '担当者'], ['zip', '郵便番号'], ['addr1', '住所1'], ['addr2', '住所2（ビル名など）']].map(f => '<div><label class="f">' + f[1] + '</label><input data-to="' + f[0] + '" value="' + esc(to[f[0]] || '') + '"' + (ro ? ' disabled' : '') + '></div>').join('') +
     '<div><label class="f">敬称</label><select data-to="honor"' + (ro ? ' disabled' : '') + '>' + ['様', '御中', '殿'].map(o => '<option' + (o === (to.honor || '様') ? ' selected' : '') + '>' + o + '</option>').join('') + '</select></div></div><div class="note">ここを直しても、この請求書だけが変わります（得意先の台帳は変わりません）。</div></details></div>' +
