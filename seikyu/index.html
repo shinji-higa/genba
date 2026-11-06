@@ -125,12 +125,12 @@
 <main id="m"></main>
 <div id="busy"></div>
 
-<script src="calc.js?v=Ver.請求20261106-11"></script>
+<script src="calc.js?v=Ver.請求20261106-12"></script>
 <script type="module">
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
 import { getFirestore, collection, doc, getDoc, getDocs, setDoc, deleteDoc, writeBatch, runTransaction } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
-const APP_VER = 'Ver.請求20261106-11';   // 版の名前は「Ver.請求YYYYMMDD-NN」（ユーザー指示 2026-11-06）
+const APP_VER = 'Ver.請求20261106-12';   // 版の名前は「Ver.請求YYYYMMDD-NN」（ユーザー指示 2026-11-06）
 const API = 'https://script.google.com/macros/s/AKfycbzpJgqJOqQz5180PQF2S3kVN7TWg0c1dnyUUUNuCZtzy5_pmKEhAkw5w3gqSj31EEA1/exec';   // Apps Script「請求管理」（ポータル・給与とは別）
 /* ログインは給与アプリと同じ（ユーザー指示 2026-11-05）：ポータルの Firebase、メールとパスワード。入れるのはマスターと「請求管理」の権限（users.canInvoice）がある人 */
 const app = initializeApp({ apiKey: 'AIzaSyDVR4p4DO4s9h70uPlXUVlhNcMP9-YkQ5Q', authDomain: 'genba-portal-9077b.firebaseapp.com', projectId: 'genba-portal-9077b' });
@@ -875,19 +875,31 @@ function coverPage(inv, cv) {
 }
 /* 領収書：A4 の上半分が本紙、下半分が控え（切り取り線）。収入印紙は国税庁 No.7105 の表（calc.js） */
 function rcpPages(r) {
+  // 2026-11-06 ユーザー指示：請求書と同じ紙のデザイン（ダクトの絵）・字の大きさ・つり合いにする。A4 の上半分が本紙、下半分が控え
   const half = (copy) => {
     const duty = SK.stampDuty(r.amount);
-    return '<div style="position:relative;height:148.5mm;padding:12mm 15mm 0;">' +
-      '<div style="display:flex;justify-content:space-between;font-size:10pt;"><span>' + (copy ? '<b>控え</b>' : '') + '</span><span>No.　' + esc(r.no) + '<br>' + dJp(r.date) + '</span></div>' +
-      '<div style="text-align:center;font-size:22pt;font-weight:700;letter-spacing:.6em;padding-left:.6em;margin-top:-4mm;">領収書</div>' +
-      '<div style="margin-top:6mm;font-size:13pt;border-bottom:.4mm solid #1d1d1d;width:110mm;display:flex;justify-content:space-between;"><span>' + esc(r.toName) + '</span><span>' + esc(r.honor || '様') + '</span></div>' +
-      '<div style="margin:6mm 0 0 45mm;width:125mm;border:.5mm solid #1a6b3c;border-radius:1.5mm;padding:3mm 5mm;display:flex;justify-content:space-between;align-items:baseline;"><span style="font-size:11pt;">金額</span><span style="font-size:20pt;font-weight:700;">¥' + yen(r.amount) + '－<span style="font-size:9pt;">（税込）</span></span></div>' +
-      '<div style="margin:3mm 0 0 45mm;width:72mm;font-size:10pt;line-height:1.7;">但し　' + esc(r.purpose) + '<br>上記正に領収いたしました。' +
-      '<div style="font-size:8.5pt;margin-top:1mm;line-height:1.6;">' + (r.groups || []).map(g => '<div>' + esc(SK.groupLabel(g)) + '対象 ' + yen(g.incl) + '円（うち消費税 ' + yen(g.tax) + '円）</div>').join('') + (r.how ? '<div>受け取り方：' + esc(r.how) + '</div>' : '') + (r.invNo ? '<div>請求書 No.' + esc(r.invNo) + '</div>' : '') + '</div></div>' +
-      (!copy && duty ? '<div style="position:absolute;left:15mm;top:50mm;width:24mm;height:28mm;border:.3mm dashed #888;font-size:8pt;color:#666;text-align:center;padding-top:9mm;">収入印紙<br>' + yen(duty) + '円</div>' : '') +
-      '<div style="position:absolute;right:12mm;top:76mm;width:72mm;">' + companyBlock(!copy, r) + '</div></div>';
+    const A = (x, y, w, css, html) => '<div style="position:absolute;left:' + x + 'mm;top:' + y + 'mm;' + (w ? 'width:' + w + 'mm;' : '') + css + '">' + html + '</div>';
+    let h = '<div style="position:relative;height:148.5mm;overflow:hidden;">' +
+      '<div style="position:absolute;right:0;bottom:0;width:108mm;height:94mm;background:url(paper_duct.png) right bottom/contain no-repeat;"></div>';
+    // 右上：領収書（淡い緑・請求書と同じ）と No.・日付
+    h += '<div style="position:absolute;right:15mm;top:11.3mm;font-size:24pt;font-weight:700;letter-spacing:.6em;margin-right:-.6em;color:#7db592;">領収書</div>';
+    if (copy) h += '<div style="position:absolute;right:15mm;top:6mm;font-size:9pt;font-weight:700;color:#5b6b61;">（控え）</div>';
+    h += '<div style="position:absolute;right:15mm;top:26.5mm;text-align:right;font-size:10pt;line-height:1.8;">No.　' + esc(r.no) + '<br>' + dJp(r.date) + '</div>';
+    // 左上：宛名（請求書の宛名と同じ大きさ）
+    h += A(15, 27, 105, 'font-size:14pt;font-weight:700;border-bottom:.4mm solid #1d1d1d;display:flex;justify-content:space-between;align-items:flex-end;padding-bottom:1mm;', '<span>' + esc(r.toName) + '</span><span style="font-size:12pt;">' + esc(r.honor || '様') + '</span>');
+    // 金額（請求書の「今回ご請求額」と同じ枠）
+    h += A(15, 50, 120, 'border:.5mm solid #1a6b3c;border-radius:1.5mm;padding:4mm 6mm;display:flex;justify-content:space-between;align-items:baseline;box-sizing:border-box;', '<span style="font-size:12pt;font-weight:700;letter-spacing:.3em;">金額</span><span style="font-size:22pt;font-weight:700;">¥' + yen(r.amount) + '－<span style="font-size:9pt;">（税込）</span></span>');
+    // 但し書き・内訳
+    h += A(15, 78, 105, 'font-size:10.5pt;line-height:1.9;', '但し　' + esc(r.purpose) + '<br>上記正に領収いたしました。' +
+      '<div style="margin-top:2mm;font-size:9.5pt;line-height:1.7;border-top:.3mm solid #c9d6cd;padding-top:1.5mm;">' + (r.groups || []).map(g => '<div>' + esc(SK.groupLabel(g)) + '対象　' + yen(g.incl) + '円（うち消費税 ' + yen(g.tax) + '円）</div>').join('') +
+      (r.how ? '<div>受け取り方：' + esc(r.how) + '</div>' : '') + (r.invNo ? '<div>請求書 No.' + esc(r.invNo) + '</div>' : '') + '</div>');
+    // 収入印紙（本紙だけ。金額の枠の右）
+    if (!copy && duty) h += A(147, 48, 26, 'height:30mm;border:.3mm dashed #8a958e;font-size:8.5pt;color:#5b6b61;text-align:center;box-sizing:border-box;padding-top:10mm;line-height:1.6;', '収入印紙<br>' + yen(duty) + '円');
+    // 右下：自社の欄（請求書と同じ。本紙は角印）
+    h += A(122, 84, 76, '', companyBlock(!copy, r));
+    return h + '</div>';
   };
-  return [pgWrap(half(false) + '<div style="border-top:.3mm dashed #888;margin:0 8mm;text-align:center;font-size:8pt;color:#888;">切り取り線</div>' + half(true), false)];
+  return [pgWrap(half(false) + '<div style="border-top:.3mm dashed #8a958e;margin:0 8mm;height:0;position:relative;"><span style="position:absolute;left:50%;top:-2.2mm;transform:translateX(-50%);background:#fff;padding:0 3mm;font-size:8pt;color:#8a958e;">切り取り線</span></div>' + half(true), false)];
 }
 /* 画面で紙を見る */
 function showPaper(pages, opt) {
