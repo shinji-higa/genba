@@ -128,12 +128,12 @@
 <main id="m"></main>
 <div id="busy"></div>
 
-<script src="calc.js?v=Ver.請求20261106-20"></script>
+<script src="calc.js?v=Ver.請求20261106-21"></script>
 <script type="module">
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
 import { getFirestore, collection, doc, getDoc, getDocs, setDoc, deleteDoc, writeBatch, runTransaction } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
-const APP_VER = 'Ver.請求20261106-20';   // 版の名前は「Ver.請求YYYYMMDD-NN」（ユーザー指示 2026-11-06）
+const APP_VER = 'Ver.請求20261106-21';   // 版の名前は「Ver.請求YYYYMMDD-NN」（ユーザー指示 2026-11-06）
 const API = 'https://script.google.com/macros/s/AKfycbzpJgqJOqQz5180PQF2S3kVN7TWg0c1dnyUUUNuCZtzy5_pmKEhAkw5w3gqSj31EEA1/exec';   // Apps Script「請求管理」（ポータル・給与とは別）
 /* ログインは給与アプリと同じ（ユーザー指示 2026-11-05）：ポータルの Firebase、メールとパスワード。入れるのはマスターと「請求管理」の権限（users.canInvoice）がある人 */
 const app = initializeApp({ apiKey: 'AIzaSyDVR4p4DO4s9h70uPlXUVlhNcMP9-YkQ5Q', authDomain: 'genba-portal-9077b.firebaseapp.com', projectId: 'genba-portal-9077b' });
@@ -288,6 +288,8 @@ async function stkEdit(o) {   // 付箋の画面。OK なら新しい sticky、�
 /* ===== 承認（ユーザー指示 2026-11-06：担当者が作り、比嘉 伸治・比嘉 美紀の2人が承認してから印刷・PDF。承認の欄は3つ）。
    cfg.approvers[k] = { label, name, uid, stamp }。uid が入っている欄の承認が全部済むと印刷できる。
    inv.approvals[k] = { uid, name, stamp, at }。中身を直して保存すると承認はやり直し ===== */
+const OWNERS = ['sh@excureduct.co.jp', 'mh@excureduct.com'];   // オーナー（比嘉 伸治・比嘉 美紀）。2026-11-06
+const isOwner = () => !!(ST.me && OWNERS.includes(ST.me.uid));
 const DEF_APV = [{ label: '代表者承認', name: '比嘉 伸治', uid: 'sh@excureduct.co.jp', stamp: 'maru' }, { label: '経理承認', name: '比嘉 美紀', uid: 'mh@excureduct.com', stamp: 'higa' }, { label: '担当者承認', name: '', uid: '', stamp: '' }];
 const STAMP_NAMES = [['maru', '代表者印（丸印）'], ['higa', '比嘉の印'], ['kaku', '角印'], ['', 'なし（名前の文字）']];
 const needApv = inv => !inv.fixed && inv.state !== '取消';   // 販売らくだから写した請求書（もう出した物）は承認なしで印刷できる
@@ -361,8 +363,9 @@ async function boot() {
       if (!u.isMaster && !u.canInvoice) throw new Error('請求管理の権限がありません。ポータルの「人の管理」で「請求管理」を付けてもらってください。');
       ST.me = { name: u.name || auth.currentUser.email, uid: auth.currentUser.uid };
     } else { const as = new URLSearchParams(location.search).get('as') || 'sh@excureduct.co.jp'; ST.me = { name: '試し（' + as + '）', uid: as }; }   // 試しでは ?as=ログインID で人を選べる
-    const [c, cs, is, rs, sp] = await Promise.all([store.get(C.cfg, 'main'), store.all(C.cust), store.all(C.inv), store.all(C.rcp), store.get(C.cfg, 'stamps')]);
+    const [c, cs, is, rs, sp, sec] = await Promise.all([store.get(C.cfg, 'main'), store.all(C.cust), store.all(C.inv), store.all(C.rcp), store.get(C.cfg, 'stamps'), store.get(C.cfg, 'secret').catch(() => null)]);
     /* 印鑑の画像は公開のサイト（GitHub）に置かない。請求の権限がある人だけが読める Firestore の seikyuCfg/stamps に入れる（2026-11-05） */
+    ST.secret = sec || {};
     ST.stamps = sp || (LOCAL ? { kaku: '../印鑑/stamp_kaku.png', higa: '../印鑑/stamp_higa.png', maru: '../印鑑/stamp_maru.png' } : {});
     ST.cfg = cfgMerge(c); ST.hasCfg = !!c;
     ST.custs = cs.sort((a, b) => String(a.code).localeCompare(String(b.code)));
@@ -663,7 +666,7 @@ function drawInvEdit() {
     if (cv) { if (inv.sentAt !== cv.date) { inv.sentAt = cv.date; try { await saveInv(inv, '送った日（送り状の日付）'); drawInvEdit(); } catch (e) { alert('送った日を保存できませんでした：' + e.message); } } }   // 送り状の日付＝送った日（ユーザー指示 2026-11-06）
     else if (!inv.sentAt || inv.sentAt === '不明') { if (await okBox('印刷しました。送った日を今日（' + dShort(today()) + '）にしますか？', '今日にする')) { inv.sentAt = today(); try { await saveInv(inv, '送った日'); drawInvEdit(); } catch (e) { alert(e.message); } } }
   };
-  $('pdf').onclick = async () => { readForm(); if (!(await needSaved()) || !(await needApproved())) return; try { await pdfOf(invPages(inv, null), '請求書_' + inv.no + '_' + (inv.to.name || '') + '.pdf'); } catch (e) { alert(e.message); } };
+  $('pdf').onclick = async () => { readForm(); if (!(await needSaved()) || !(await needApproved())) return; try { await pdfOf(invPages(inv, null), '請求書_' + inv.no + '_' + (inv.to.name || '') + '.pdf', { lock: true }); } catch (e) { alert(e.message); } };   // 取引先に渡す物だけ書き換え禁止
   if ($('stkE')) $('stkE').onclick = async () => { if (await saveInvSticky(inv)) { readForm(); const d = ST.dirty; drawInvEdit(); ST.dirty = d; } };
   M.querySelectorAll('[data-apv]').forEach(b => b.onclick = async () => {
     if (ST.dirty) return alert('先に保存してください（直した中身が保存されていません）。');
@@ -1027,7 +1030,7 @@ async function pickSave(name) {
   try { return await window.showSaveFilePicker({ id: 'seikyu-save', suggestedName: name.replace(/[\\/:*?"<>|]/g, ''), types: [type] }); }
   catch (e) { if (e && e.name === 'AbortError') throw new Error('保存をやめました。'); return null; }
 }
-async function pdfOf(pages, name) {
+async function pdfOf(pages, name, opt) {
   const fh = await pickSave(name);
   await loadLib();
   if (typeof pages === 'function') pages = await pages();
@@ -1035,7 +1038,9 @@ async function pdfOf(pages, name) {
   busy('PDFを作っています…（' + pages.length + 'ページ）');
   const box = document.createElement('div'); box.style.cssText = 'position:fixed;left:-6000px;top:0;background:#fff;'; document.body.appendChild(box);
   try {
-    const pdf = new window.jspdf.jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait', compress: true });
+    // 取引先に渡す請求書の PDF は書き換え禁止にする（ユーザー指示 2026-11-06。パスワードは設定でオーナーが入れる。開くのにパスワードはいらない）
+    const pw = opt && opt.lock ? String((ST.secret || {}).pdfPw || '') : '';
+    const pdf = new window.jspdf.jsPDF(Object.assign({ unit: 'mm', format: 'a4', orientation: 'portrait', compress: true }, pw ? { encryption: { userPassword: '', ownerPassword: pw, userPermissions: ['print', 'copy'] } } : {}));
     for (let i = 0; i < pages.length; i++) {
       box.innerHTML = pages[i];
       await Promise.all([...box.querySelectorAll('img')].map(im => im.complete ? 0 : new Promise(r => { im.onload = im.onerror = r; })));
@@ -1392,7 +1397,9 @@ function drawCfg() {
     S('印鑑の画像', '<div class="row">' + STAMP_NAMES.filter(x => x[0]).map(x => ST.stamps[x[0]] ? '<span style="text-align:center;"><img src="' + ST.stamps[x[0]] + '" style="height:44px;display:block;margin:auto;"><span class="note">' + x[1] + '</span></span>' : '<span class="tag ng">' + x[1] + 'なし</span>').join('') + '</div><label class="f">角印</label><input type="file" id="stK" accept="image/png"><label class="f">代表者印（丸印）</label><input type="file" id="stM" accept="image/png"><label class="f">比嘉の印</label><input type="file" id="stH" accept="image/png">', 'PNG（背景が透明な物）。OneDrive「電子印鑑【EX】」の朱。公開のサイトには置かず、請求の権限がある人だけが読める所に入れます。選ぶとすぐ入ります。') +
     '</div><div class="card"><h2>承認の欄（請求書の右上に3つ）</h2><div class="note">人を決めた欄の承認が全部済むと、請求書を印刷・PDFにできます。直して保存すると承認はやり直しです（ユーザー指示 2026-11-06：担当者が作り、比嘉 伸治・比嘉 美紀が承認）。</div>' +
     '<table class="t" style="margin-top:8px;max-width:760px;"><thead><tr><th>欄</th><th>欄の名前</th><th>承認する人</th><th>押す印</th></tr></thead><tbody>' + (g.approvers || []).map((a, k) => '<tr data-apk="' + k + '"><td>' + (k + 1) + '</td><td><input data-ap="label" value="' + esc(a.label) + '" style="width:120px;"></td><td><select data-ap="uid" style="width:200px;"><option value="' + esc(a.uid) + '" selected>' + esc(a.name || (a.uid ? a.uid : '（決めていない）')) + '</option></select></td><td><select data-ap="stamp">' + STAMP_NAMES.map(x => '<option value="' + x[0] + '"' + (x[0] === (a.stamp || '') ? ' selected' : '') + '>' + x[1] + '</option>').join('') + '</select></td></tr>').join('') + '</tbody></table>' +
-    '</div><div class="card"><h2>消費税</h2>' +
+    '</div>' + (isOwner() ? '<div class="card" style="border-color:#b3261e;"><h2>請求書PDFの書き換え禁止（オーナーだけに見える欄）</h2><div class="note">請求書の画面の「PDFで保存」で作る PDF（取引先に渡す物）に、このパスワードで書き換え禁止をかけます。開く・印刷・コピーはパスワードなしでできます。空にすると、かけません。スプレッドシートには書きません。</div>' +
+      '<div class="row" style="margin-top:8px;"><input id="pdfPw" type="password" autocomplete="new-password" value="' + esc((ST.secret || {}).pdfPw || '') + '" style="width:280px;" placeholder="書き換え禁止のパスワード"><label class="ltl"><input type="checkbox" id="pdfPwShow"> 見せる</label><button class="b dark" id="pdfPwSv">パスワードを保存</button><span class="note" id="pdfPwSt">' + ((ST.secret || {}).pdfPw ? '今：かけている' : '今：かけていない') + '</span></div></div>' : '') +
+    '<div class="card"><h2>消費税</h2>' +
     '<div class="note">税率が変わったら、新しい税率と「いつから」を1行足してください。発行日がその日より前の請求書は、前の税率のままです。行の区分ごとに、発行日にいちばん近い（その日まで）の行を使います。</div>' +
     '<table class="t" style="margin:8px 0;max-width:620px;"><thead><tr><th>区分</th><th>税率</th><th>いつから</th><th></th></tr></thead><tbody id="rt">' + rateRows + '</tbody></table><button class="b sm" id="addR">＋ 行を足す</button>' +
     S('消費税の端数', R('tr', g.taxRound), '税率ごとに合計してから1回だけ丸めます（インボイスの決まり）。') +
@@ -1416,6 +1423,17 @@ function drawCfg() {
     '</div><div class="card"><h2>税理士さんへのメモ</h2><textarea id="mt" style="min-height:90px;">' + esc(g.memoTax) + '</textarea><div class="note">提出データの画面のボタンで見られます（送り方・締め切りなど）。</div></div>' +
     '';
   $('rf').onclick = refreshApp;
+  if ($('pdfPw')) {
+    $('pdfPwShow').onchange = () => { $('pdfPw').type = $('pdfPwShow').checked ? 'text' : 'password'; };
+    $('pdfPwSv').onclick = async () => {
+      if (!isOwner()) return;
+      const v = $('pdfPw').value.trim();
+      if (v && v.length < 8) return alert('パスワードは8文字以上にしてください。');
+      busy('保存しています…');
+      try { const o = Object.assign({}, ST.secret || {}, { pdfPw: v, at: nowStr(), by: ST.me.name }); await store.put(C.cfg, 'secret', o); ST.secret = o; gas('log', { what: '請求書PDFの書き換え禁止パスワードを' + (v ? '変えた' : '外した'), detail: '' }).catch(() => {}); $('pdfPwSt').textContent = v ? '今：かけている（保存しました）' : '今：かけていない（保存しました）'; }
+      catch (e) { alert('保存できませんでした：' + e.message); } finally { busy(''); }
+    };
+  }
   const readRates = () => [...$('rt').querySelectorAll('tr')].map(tr => ({ kind: tr.querySelector('[data-r="kind"]').value, rate: num(tr.querySelector('[data-r="rate"]').value), from: tr.querySelector('[data-r="from"]').value }));
   $('addR').onclick = () => { g.rates = readRates().concat([{ kind: 'std', rate: 10, from: '' }]); const keep = readAll(); drawCfg(); Object.assign(ST.cfg, keep, { rates: g.rates }); ST.dirty = true; };
   M.querySelectorAll('[data-rm]').forEach(b => b.onclick = () => { const r = readRates(); r.splice(+b.dataset.rm, 1); g.rates = r; drawCfg(); ST.dirty = true; });
