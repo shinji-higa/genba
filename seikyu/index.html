@@ -129,12 +129,12 @@
 <main id="m"></main>
 <div id="busy"></div>
 
-<script src="calc.js?v=Ver.請求20261106-25"></script>
+<script src="calc.js?v=Ver.請求20261106-26"></script>
 <script type="module">
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
 import { getFirestore, collection, doc, getDoc, getDocs, setDoc, deleteDoc, writeBatch, runTransaction } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
-const APP_VER = 'Ver.請求20261106-25';   // 版の名前は「Ver.請求YYYYMMDD-NN」（ユーザー指示 2026-11-06）
+const APP_VER = 'Ver.請求20261106-26';   // 版の名前は「Ver.請求YYYYMMDD-NN」（ユーザー指示 2026-11-06）
 const API = 'https://script.google.com/macros/s/AKfycbzpJgqJOqQz5180PQF2S3kVN7TWg0c1dnyUUUNuCZtzy5_pmKEhAkw5w3gqSj31EEA1/exec';   // Apps Script「請求管理」（ポータル・給与とは別）
 /* ログインは給与アプリと同じ（ユーザー指示 2026-11-05）：ポータルの Firebase、メールとパスワード。入れるのはマスターと「請求管理」の権限（users.canInvoice）がある人 */
 const app = initializeApp({ apiKey: 'AIzaSyDVR4p4DO4s9h70uPlXUVlhNcMP9-YkQ5Q', authDomain: 'genba-portal-9077b.firebaseapp.com', projectId: 'genba-portal-9077b' });
@@ -273,6 +273,7 @@ const stkCell = (o, key) => '<td class="stkc" data-stk="' + esc(o.id) + '" data-
 async function saveInvSticky(inv) {
   const v = await stkEdit(inv); if (v === undefined) return false;
   const base = plain([...ST.invs, ...Object.values(ST.yearData).flat()].find(x => x.id === inv.id) || inv);
+  try { await freshen(C.inv, base, null, '請求書'); } catch (e) { alert(e.message); return false; }
   base.sticky = v;
   try { await saveInv(base, '付箋'); inv.sticky = v; return true; } catch (e) { alert('付箋を保存できませんでした：' + e.message); return false; }
 }
@@ -467,6 +468,7 @@ const myApvBox = i => needApv(i) && !approved(i) ? (ST.cfg.approvers || []).find
 async function doApprove(inv, k, on) {
   const a = ST.cfg.approvers[k];
   if (on && !(await okBox(dShort(inv.date) + '　' + inv.no + '　' + ((inv.to || {}).name || '') + '\n合計 ¥' + yen(calcOf(inv).total) + '\nこの請求書を「' + (a.label || '承認') + '」します（' + (a.name || '') + ' の印を押します）。', '承認する'))) return false;
+  try { await staleCheck(C.inv, inv, '請求書'); } catch (e) { alert(e.message); return false; }
   inv.approvals = Object.assign({}, inv.approvals || {});
   if (on) inv.approvals[k] = { uid: ST.me.uid, name: ST.me.name, stamp: a.stamp || '', at: nowStr() }; else delete inv.approvals[k];
   try { await saveInv(inv, on ? '承認' : '承認を取り消し'); return true; } catch (e) { alert('承認を保存できませんでした：' + e.message); return false; }
@@ -544,7 +546,26 @@ async function nextNo(kind) {   // 番号は保存したときに付ける（2�
   gas('saveCfg', { cfg: { [kind]: ST.cfg[kind] } }).catch(() => {});
   return n.prefix + String(n.next).padStart(n.digits, '0');
 }
+/* 保存の直前に、画面の写しの最新の中身と「最後に保存した時刻」を比べる。違えば、ほかの人が先に保存している */
+class StaleError extends Error {}
+async function latestOf(col, id) { try { return await store.get(col, id); } catch (e) { return null; } }
+const staleMsg = (cur, what) => 'ほかの人（' + (cur.updatedBy || '') + '）が ' + (cur.updatedAt || '') + ' に、この' + what + 'を先に保存しました。\nいま画面にある中身は古いので、保存をやめました。\n上の「読み込み直す」を押してから、もう一度してください。';
+async function staleCheck(col, local, what) {
+  if (!local || local.isNew || !local.id) return;
+  const cur = await latestOf(col, local.id);
+  if (cur && String(cur.updatedAt || '') !== String(local.updatedAt || '')) throw new StaleError(staleMsg(cur, what));
+}
+/* 1か所だけ足す操作（付箋・入金・送った日）は、最新の中身を取ってきて、その上に足す。直している途中（保存していない）なら止める */
+async function freshen(col, local, list, what) {
+  if (!local || local.isNew || !local.id) return local;
+  const cur = await latestOf(col, local.id);
+  if (!cur || String(cur.updatedAt || '') === String(local.updatedAt || '')) return local;
+  if (ST.dirty) throw new StaleError(staleMsg(cur, what));
+  Object.keys(local).forEach(k => { if (!(k in cur)) delete local[k]; }); Object.assign(local, plain(cur));
+  return local;
+}
 async function saveInv(inv, why) {
+  await staleCheck(C.inv, inv, '請求書');
   const c = calcOf(inv);
   if (c.missing.length) throw new Error('発行日（' + dShort(inv.date) + '）に使う税率が、設定の税率の表にありません：' + c.missing.map(SK.kindName).join('・'));
   if (!inv.no) inv.no = await nextNo('invNo');
@@ -667,7 +688,7 @@ function drawInvEdit() {
     let cv = null;
     if (wantCover(inv)) { cv = await coverForm(inv); if (cv === undefined) return; }   // 紙で送るときは、毎回 送り状の画面で中身を入れてから印刷（ユーザー指示 2026-11-06）
     printPages(invPages(inv, cv));
-    if (cv) { if (inv.sentAt !== cv.date) { inv.sentAt = cv.date; try { await saveInv(inv, '送った日（送り状の日付）'); drawInvEdit(); } catch (e) { alert('送った日を保存できませんでした：' + e.message); } } }   // 送り状の日付＝送った日（ユーザー指示 2026-11-06）
+    if (cv) { if (inv.sentAt !== cv.date) { try { await freshen(C.inv, inv, null, '請求書'); } catch (e) { return alert(e.message); } inv.sentAt = cv.date; try { await saveInv(inv, '送った日（送り状の日付）'); drawInvEdit(); } catch (e) { alert('送った日を保存できませんでした：' + e.message); } } }   // 送り状の日付＝送った日（ユーザー指示 2026-11-06）
     else if (!inv.sentAt || inv.sentAt === '不明') { if (await okBox('印刷しました。送った日を今日（' + dShort(today()) + '）にしますか？', '今日にする')) { inv.sentAt = today(); try { await saveInv(inv, '送った日'); drawInvEdit(); } catch (e) { alert(e.message); } } }
   };
   $('pdf').onclick = async () => { readForm(); if (!(await needSaved()) || !(await needApproved())) return; try { await pdfOf(invPages(inv, null), '請求書_' + inv.no + '_' + (inv.to.name || '') + '.pdf', { lock: true }); } catch (e) { alert(e.message); } };   // 取引先に渡す物だけ書き換え禁止
@@ -723,6 +744,7 @@ async function addPayment(inv, after) {
   if (!r) return;
   const p = { date: r.date, amount: num(r.amount) || 0, fee: num(r.fee) || 0, how: r.how, memo: r.memo, at: nowStr(), by: ST.me.name };
   if (!p.date || !(p.amount || p.fee)) return alert('入金日と金額を入れてください。');
+  try { await freshen(C.inv, inv, null, '請求書'); } catch (e) { return alert(e.message); }
   inv.payments = (inv.payments || []).concat([p]);
   try { await saveInv(inv, '入金 ' + yen(p.amount) + '円'); if (after) after(); else if (ST.edit === inv) drawInvEdit(); } catch (e) { inv.payments.pop(); alert('保存できませんでした：' + e.message); }
 }
@@ -1144,6 +1166,8 @@ function drawSlips(key) {
   ltWire(key, () => drawSlips(key)); fill();
 }
 async function saveRcp(r) {
+  await staleCheck(C.rcp, r, isOff(r) ? '相殺伝票' : '領収書');
+  r.updatedAt = nowStr(); r.updatedBy = ST.me.name;
   if (!r.no) r.no = await nextNo(isOff(r) ? 'offNo' : 'rcpNo');
   if (!r.from) r.from = curFrom();
   if (!r.createdAt) { r.createdAt = nowStr(); r.createdBy = ST.me.name; }
@@ -1315,7 +1339,7 @@ async function custDelete(list) {
   if (!(await okBox(msg, '削除する'))) return;
   busy('削除しています…');
   try {
-    for (const c0 of list) { const c = plain(c0); c.deleted = nowStr() + ' ' + (ST.me.name || ''); c.active = false; await gas('saveCust', { c }); await store.put(C.cust, c.id, c); ST.custs = ST.custs.filter(x => x.id !== c.id).concat([c]); }
+    for (const c0 of list) { const c = plain(c0); await freshen(C.cust, c, null, '得意先'); c.deleted = nowStr() + ' ' + (ST.me.name || ''); c.active = false; c.updatedAt = nowStr(); c.updatedBy = ST.me.name; await gas('saveCust', { c }); await store.put(C.cust, c.id, c); ST.custs = ST.custs.filter(x => x.id !== c.id).concat([c]); }
     ST.custs.sort((x, y) => String(x.code).localeCompare(String(y.code)));
     ST.cSel = { ids: new Set() };
   } catch (e) { alert('削除できませんでした：' + e.message); } finally { busy(''); }
@@ -1326,7 +1350,7 @@ async function saveCustSticky(c) {
   const v = await stkEdit(c); if (v === undefined) return false;
   const b = plain(ST.custs.find(x => x.id === c.id) || c); b.sticky = v;
   busy('保存しています…');
-  try { await gas('saveCust', { c: b }); await store.put(C.cust, b.id, b); ST.custs = ST.custs.filter(x => x.id !== b.id).concat([b]).sort((x, y) => String(x.code).localeCompare(String(y.code))); c.sticky = v; return true; }
+  try { await freshen(C.cust, b, null, '得意先'); b.sticky = v; b.updatedAt = nowStr(); b.updatedBy = ST.me.name; await gas('saveCust', { c: b }); await store.put(C.cust, b.id, b); ST.custs = ST.custs.filter(x => x.id !== b.id).concat([b]).sort((x, y) => String(x.code).localeCompare(String(y.code))); c.sticky = v; return true; }
   catch (e) { alert('付箋を保存できませんでした：' + e.message); return false; } finally { busy(''); }
 }
 function editCust(c) {
@@ -1351,7 +1375,7 @@ function editCust(c) {
     if (ST.custs.some(x => x.id !== c.id && x.code === c.code)) return alert('コード ' + c.code + ' はほかの得意先が使っています。');
     c.termsCheck = false; c.termsText = SK.termsLabel(c.terms); delete c.isNew;
     busy('保存しています…');
-    try { await gas('saveCust', { c: plain(c) }); await store.put(C.cust, c.id, c); ST.custs = ST.custs.filter(x => x.id !== c.id).concat([c]).sort((a, b) => String(a.code).localeCompare(String(b.code))); alert('保存しました。'); editCust(c); }
+    try { await staleCheck(C.cust, c, '得意先'); c.updatedAt = nowStr(); c.updatedBy = ST.me.name; await gas('saveCust', { c: plain(c) }); await store.put(C.cust, c.id, c); ST.custs = ST.custs.filter(x => x.id !== c.id).concat([c]).sort((a, b) => String(a.code).localeCompare(String(b.code))); alert('保存しました。'); editCust(c); }
     catch (e) { alert('保存できませんでした：' + e.message); } finally { busy(''); }
   };
   if ($('mk')) $('mk').onclick = () => { ST.tab = 'inv'; draw(); openInv(newInv(c)); ST.dirty = true; };
