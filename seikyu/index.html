@@ -125,12 +125,12 @@
 <main id="m"></main>
 <div id="busy"></div>
 
-<script src="calc.js?v=Ver.請求20261106-08"></script>
+<script src="calc.js?v=Ver.請求20261106-09"></script>
 <script type="module">
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
 import { getFirestore, collection, doc, getDoc, getDocs, setDoc, deleteDoc, writeBatch, runTransaction } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
-const APP_VER = 'Ver.請求20261106-08';   // 版の名前は「Ver.請求YYYYMMDD-NN」（ユーザー指示 2026-11-06）
+const APP_VER = 'Ver.請求20261106-09';   // 版の名前は「Ver.請求YYYYMMDD-NN」（ユーザー指示 2026-11-06）
 const API = 'https://script.google.com/macros/s/AKfycbzpJgqJOqQz5180PQF2S3kVN7TWg0c1dnyUUUNuCZtzy5_pmKEhAkw5w3gqSj31EEA1/exec';   // Apps Script「請求管理」（ポータル・給与とは別）
 /* ログインは給与アプリと同じ（ユーザー指示 2026-11-05）：ポータルの Firebase、メールとパスワード。入れるのはマスターと「請求管理」の権限（users.canInvoice）がある人 */
 const app = initializeApp({ apiKey: 'AIzaSyDVR4p4DO4s9h70uPlXUVlhNcMP9-YkQ5Q', authDomain: 'genba-portal-9077b.firebaseapp.com', projectId: 'genba-portal-9077b' });
@@ -278,7 +278,7 @@ async function stkEdit(o) {   // 付箋の画面。OK なら新しい sticky、�
 /* ===== 承認（ユーザー指示 2026-11-06：担当者が作り、比嘉 伸治・比嘉 美紀の2人が承認してから印刷・PDF。承認の欄は3つ）。
    cfg.approvers[k] = { label, name, uid, stamp }。uid が入っている欄の承認が全部済むと印刷できる。
    inv.approvals[k] = { uid, name, stamp, at }。中身を直して保存すると承認はやり直し ===== */
-const DEF_APV = [{ label: '承認', name: '比嘉 伸治', uid: 'sh@excureduct.co.jp', stamp: 'maru' }, { label: '承認', name: '比嘉 美紀', uid: 'mh@excureduct.com', stamp: 'higa' }, { label: '承認', name: '', uid: '', stamp: '' }];
+const DEF_APV = [{ label: '代表者承認', name: '比嘉 伸治', uid: 'sh@excureduct.co.jp', stamp: 'maru' }, { label: '経理承認', name: '比嘉 美紀', uid: 'mh@excureduct.com', stamp: 'higa' }, { label: '担当者承認', name: '', uid: '', stamp: '' }];
 const STAMP_NAMES = [['maru', '代表者印（丸印）'], ['higa', '比嘉の印'], ['kaku', '角印'], ['', 'なし（名前の文字）']];
 const needApv = inv => !inv.fixed && inv.state !== '取消';   // 販売らくだから写した請求書（もう出した物）は承認なしで印刷できる
 const apvNeed = () => (ST.cfg.approvers || []).map((a, k) => a.uid ? k : -1).filter(k => k >= 0);
@@ -717,8 +717,9 @@ function paginate(lines, W, first, firstLast, next, nextLast) {
   return pages;
 }
 /* 会社の欄の上の位置（mm）。ロゴの上を「下記の通りご請求申し上げます。」の文字の上に合わせる（ユーザー指示 2026-11-06） */
-const HEAD_TOP = 61;   // 「下記の通り〜」と自社の欄の枠の上（mm）。承認の欄を自社の欄の下に入れたので上げた（2026-11-06）
-let CO_TOP = 62.1;   // 文字の上（72.9mm＋字の中の余白）とロゴの絵の上（画像の上の余白 0.1mm）をそろえた値
+const HEAD_TOP = 64.5;   // 「下記の通り〜」と自社の欄の枠の上（mm）。「請求書」の字から上と、下の振込先・税の欄はそのままで、間を下げた（2026-11-06）
+const TBL_TOP = 122;   // 1ページ目の明細の表の上（mm）
+let CO_TOP = HEAD_TOP + 1.1;   // 文字の上（72.9mm＋字の中の余白）とロゴの絵の上（画像の上の余白 0.1mm）をそろえた値
 /* 会社の欄。角印は会社名の横・高さの真ん中（ユーザー指示 2026-11-06）。個人の印は承認の欄に押す */
 function companyBlock(withStamp, d) {
   const co = fromOf(d), us = isUs(co);   // 登録番号は、その書類に入っていた時だけ出す
@@ -751,7 +752,7 @@ function invPages(inv, cover, opt) {   // cover：送り状の中身（coverForm
   const right = nRows * 6.3 + 3;
   const left = (hasRed ? 5.5 : 0) + (co.bank ? 9 + nLines(co.bank, 27) * 5.2 : 0) + (inv.note ? 3 + nLines(inv.note, 30) * 5.2 : (opt && opt.preview ? 8 : 0));
   const Hb = Math.max(right, left) + 30;
-  const p1 = 297 - 118 - 9, pn = 297 - 36 - 9;
+  const p1 = 297 - TBL_TOP - 9, pn = 297 - 36 - 9;
   const pages = paginate(lines, W, p1 - 20, Math.max(20, p1 - Hb), pn - 20, Math.max(30, pn - Hb)), N = pages.length;
   const cols = '<th>品　名</th><th style="width:15mm;">数量</th><th style="width:11mm;">単位</th><th style="width:21mm;">単価</th><th style="width:25mm;">金額</th><th style="width:11mm;">税</th>' + (hasMemo ? '<th style="width:' + memoW + 'mm;">備考</th>' : '');
   const taxMark = l => l.tax === 'free' ? '非' : l.tax === 'out' ? '−' : (l.tax === 'red' ? '8%※' : (l.rate || SK.rateOf(l.tax || 'std', inv.date, ST.cfg.rates) || '') + '%');
@@ -780,7 +781,7 @@ function invPages(inv, cover, opt) {   // cover：送り状の中身（coverForm
         (inv.due ? '<div style="margin-top:1.5mm;margin-bottom:-.9mm;line-height:1.2;">お支払期限：' + dJp(inv.due) + '</div>' : '') + '</div>' +
         '<div style="margin-left:7mm;width:76mm;padding-top:' + (CO_TOP - HEAD_TOP).toFixed(1) + 'mm;">' + companyBlock(true, inv) + (needApv(inv) ? apvBoxes(inv) : '') + '</div></div>';
     }
-    h += '<div style="position:absolute;left:15mm;right:15mm;top:' + (p === 0 ? 118 : 36) + 'mm;"><table class="it"><thead><tr>' + cols + '</tr></thead><tbody>' + pl.map(row).join('') + '</tbody></table>' + (last ? '' : '<div style="text-align:right;font-size:8.5pt;margin-top:1.5mm;">次のページへ続きます</div>') + '</div>';
+    h += '<div style="position:absolute;left:15mm;right:15mm;top:' + (p === 0 ? TBL_TOP : 36) + 'mm;"><table class="it"><thead><tr>' + cols + '</tr></thead><tbody>' + pl.map(row).join('') + '</tbody></table>' + (last ? '' : '<div style="text-align:right;font-size:8.5pt;margin-top:1.5mm;">次のページへ続きます</div>') + '</div>';
     if (p > 0) h += '<div style="position:absolute;left:15mm;top:15mm;font-size:11pt;">' + esc(to.name) + '　御請求書（つづき）</div>';
     if (last) {
       // 下の並びは初めの形（左に振込先・備考、右に合計の表）。枠は透かして紙のデザインが見える（ユーザー指示 2026-11-06）
