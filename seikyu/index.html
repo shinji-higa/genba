@@ -128,12 +128,12 @@
 <main id="m"></main>
 <div id="busy"></div>
 
-<script src="calc.js?v=Ver.請求20261106-18"></script>
+<script src="calc.js?v=Ver.請求20261106-19"></script>
 <script type="module">
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
 import { getFirestore, collection, doc, getDoc, getDocs, setDoc, deleteDoc, writeBatch, runTransaction } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
-const APP_VER = 'Ver.請求20261106-18';   // 版の名前は「Ver.請求YYYYMMDD-NN」（ユーザー指示 2026-11-06）
+const APP_VER = 'Ver.請求20261106-19';   // 版の名前は「Ver.請求YYYYMMDD-NN」（ユーザー指示 2026-11-06）
 const API = 'https://script.google.com/macros/s/AKfycbzpJgqJOqQz5180PQF2S3kVN7TWg0c1dnyUUUNuCZtzy5_pmKEhAkw5w3gqSj31EEA1/exec';   // Apps Script「請求管理」（ポータル・給与とは別）
 /* ログインは給与アプリと同じ（ユーザー指示 2026-11-05）：ポータルの Firebase、メールとパスワード。入れるのはマスターと「請求管理」の権限（users.canInvoice）がある人 */
 const app = initializeApp({ apiKey: 'AIzaSyDVR4p4DO4s9h70uPlXUVlhNcMP9-YkQ5Q', authDomain: 'genba-portal-9077b.firebaseapp.com', projectId: 'genba-portal-9077b' });
@@ -214,6 +214,8 @@ async function gas(action, data) {
     if (action === 'importRead') return fetch('../移行/seikyu_import.json', { cache: 'no-store' }).then(r => r.json());
     if (action === 'year') return (await fetch('../移行/seikyu_import.json', { cache: 'no-store' }).then(r => r.json())).invoices.filter(i => String(i.date).slice(0, 4) === String(data.year)).map(i => Object.assign(i, { fromSheet: true }));
     if (action === 'hist') return [];
+    if (action === 'saveCov') { const L = JSON.parse(localStorage.getItem('skTestCovs') || '[]').filter(x => x.id !== data.c.id); L.push(data.c); localStorage.setItem('skTestCovs', JSON.stringify(L)); return {}; }
+    if (action === 'covs') return JSON.parse(localStorage.getItem('skTestCovs') || '[]').filter(c => c.date >= data.from && c.date <= data.to);
     if (action === 'range') return (await fetch('../移行/seikyu_import.json', { cache: 'no-store' }).then(r => r.json())).invoices.filter(i => i.date >= data.from && i.date <= data.to).map(i => Object.assign(i, { fromSheet: true }));
     if (action === 'importWrite') return { customers: 0, invoices: 0, note: '試し（スプレッドシートには書いていません）' };
     return { at: nowStr() };
@@ -378,12 +380,12 @@ async function boot() {
   busy('');
 }
 const OFF_ON = false;   // 相殺伝票を使うか（2026-11-06 ユーザー：今は使わない。要るときに true）
-const TABS = [['inv', '請求書'], ['pay', '入金'], ['rcp', '領収書'], ['off', '相殺伝票'], ['cust', '得意先'], ['sub', '提出データ'], ['cfg', '設定']];
+const TABS = [['inv', '請求書'], ['pay', '入金'], ['rcp', '領収書'], ['cov', '送り状'], ['off', '相殺伝票'], ['cust', '得意先'], ['sub', '提出データ'], ['cfg', '設定']];
 function draw() {
   if (ST.tab === 'off' && !OFF_ON) ST.tab = 'inv';
   $('nav').innerHTML = TABS.map(t => '<button data-t="' + t[0] + '" class="' + (ST.tab === t[0] ? 'on' : '') + '"' + (t[0] === 'off' && !OFF_ON ? ' disabled title="相殺伝票は今は使いません" style="opacity:.35;cursor:not-allowed;"' : '') + '>' + t[1] + '</button>').join('');
   $('nav').querySelectorAll('button').forEach(b => b.onclick = async () => { if (ST.dirty && !(await okBox('保存していない変更があります。捨てて移りますか？', '捨てて移る'))) return; ST.dirty = false; ST.tab = b.dataset.t; ST.rcpOpen = null; draw(); });
-  ({ inv: drawInvList, pay: drawPay, rcp: drawRcp, off: drawOff, cust: drawCust, sub: drawSub, cfg: drawCfg })[ST.tab]();
+  ({ inv: drawInvList, pay: drawPay, rcp: drawRcp, cov: drawCov, off: drawOff, cust: drawCust, sub: drawSub, cfg: drawCfg })[ST.tab]();
   window.scrollTo(0, 0);
 }
 
@@ -926,6 +928,73 @@ async function showHist(o, kind) {
   document.body.appendChild(w);
   w.querySelector('#hx').onclick = () => w.remove();
   w.querySelectorAll('[data-hv]').forEach(b => b.onclick = () => { let d; try { d = JSON.parse(h[+b.dataset.hv].data); } catch (e) { return alert('この記録は長すぎて、紙にできません（スプレッドシートで見てください）。'); } showPaper(kind === '請求書' ? invPages(tidyInv(d), null) : rcpPages(d), { title: kind + '（' + h[+b.dataset.hv].at + ' の中身）' }); });
+}
+/* ===== 送り状（ユーザー指示 2026-11-06：送り状だけを作る画面。送り先は登録した得意先、送り主は請求管理に入れる人から選ぶ。
+   作るたびに一覧（スプレッドシート「送り状」）に残し、この画面を開いたときに読み込んで出す。Firestore には置かない） ===== */
+async function drawCov() {
+  { const s = lt('cov'); if (s.per === undefined) s.per = 'close'; }
+  const s = lt('cov'), cr = closeRange(s.cm || closeYm(today()));
+  const from = s.per === 'close' ? cr.from : s.per === 'range' ? (s.from || '2000-01-01') : '2000-01-01', to = s.per === 'close' ? cr.to : s.per === 'range' ? (s.to || '2099-12-31') : '2099-12-31';
+  M.innerHTML = '<div class="card"><div class="row"><b style="font-size:1.1rem;">送り状</b><span class="sp"></span><button class="b" id="cvRe">読み込み直す</button><button class="b dark" id="cvNew">＋ 新しい送り状</button></div>' +
+    '<div class="row lt" style="margin-top:8px;">' + perBar('cov', '日付') + '</div>' +
+    '<div class="note" style="margin-top:6px;">請求書を付けずに、送り状だけを作って印刷します。作った送り状はスプレッドシート「請求管理DB」の「送り状」に残り、この一覧は開いたときに読み込みます。行を押すと開いて、直して保存・もう一度印刷できます。請求書と一緒に送るときは、請求書の画面の「印刷（送り状つき）」を使ってください。</div></div>' +
+    '<div class="card" id="cvl"><div class="note">読み込んでいます…</div></div>';
+  ltWire('cov', drawCov);
+  $('cvNew').onclick = () => coverEdit(null);
+  $('cvRe').onclick = () => { ST.covCache = {}; drawCov(); };
+  const key = from + '_' + to; ST.covCache = ST.covCache || {};
+  let list;
+  try { list = ST.covCache[key] || (ST.covCache[key] = await gas('covs', { from, to })); } catch (e) { $('cvl').innerHTML = '<div class="msg">読み込めませんでした：' + esc(e.message) + '</div>'; return; }
+  if (!$('cvl')) return;   // 読んでいる間に別の画面へ移った
+  list = list.slice().sort((a, b) => String(b.date).localeCompare(String(a.date)) || String(b.madeAt || '').localeCompare(String(a.madeAt || '')));
+  $('cvl').innerHTML = list.length ? '<div class="wrapx"><table class="t"><thead><tr><th>日付</th><th>送り先</th><th>「様」の前</th><th>送り主</th><th>表題</th><th>記の下（1行目）</th><th>作った人</th></tr></thead><tbody>' +
+    list.map((c, k) => '<tr class="link" data-k="' + k + '"><td>' + dShort(c.date) + '</td><td>' + esc(c.l5 || '') + '</td><td>' + esc((c.l6 || '') + ' ' + (c.honor || '')) + '</td><td>' + esc(c.person || '') + '</td><td>' + esc(c.title || '') + '</td><td>' + esc(String(c.items || '').split('\n').find(Boolean) || '') + '</td><td>' + esc(c.madeBy || '') + '</td></tr>').join('') +
+    '</tbody></table></div><div class="note" style="margin-top:6px;">' + list.length + ' 件</div>' : '<div class="note">この期間の送り状はありません。</div>';
+  $('cvl').querySelectorAll('tr.link').forEach(tr => tr.onclick = () => coverEdit(plain(list[+tr.dataset.k])));
+}
+/* 送り状を作る・直す画面。c：一覧から開いた物（null なら新しく） */
+async function coverEdit(c) {
+  await loadPeople();
+  const custs = ST.custs.filter(x => !x.deleted && x.active !== false).sort((a, b) => String(a.code).localeCompare(String(b.code)));
+  const fromCust = cu => { const d = coverDef({ to: { name: cu.name || '', dept: cu.dept || '', person: cu.person || '', honor: cu.honor || '様', zip: cu.zip || '', addr1: cu.addr1 || '', addr2: cu.addr2 || '' }, no: '' }); return { zip: d.zip, addr1: d.addr1, addr2: d.addr2, l5: d.l5, l6: d.l6, honor: d.honor }; };
+  const v = Object.assign({ id: '', custId: '', custCode: '', date: today(), zip: '', addr1: '', addr2: '', l5: '', l6: '', honor: '様', person: ST.cfg.coverPerson || '', title: '書類送付のご案内', text: ST.cfg.coverText || '', items: '' }, c || {});
+  const P = (ST.people || []).map(p => p.name); if (v.person && !P.includes(v.person)) P.unshift(v.person);
+  return new Promise(done => {
+    const w = document.createElement('div'); w.id = 'ask';
+    const I = (k, label, wide) => '<div style="' + (wide ? 'grid-column:1/-1;' : '') + '"><label class="f">' + label + '</label><input data-k="' + k + '" value="' + esc(v[k]) + '" style="width:100%;"></div>';
+    const A = (k, label, note, h) => '<div style="grid-column:1/-1;"><label class="f">' + label + '</label><textarea data-k="' + k + '" class="paperw"' + (k === 'items' ? ' wrap="off"' : '') + ' style="display:block;width:' + (k === 'items' ? '41.2em' : '44.8em') + ';max-width:calc(100% - 22px);min-height:' + h + 'px;">' + esc(v[k]) + '</textarea><div class="note" data-n="' + k + '">' + note + '</div></div>';
+    w.innerHTML = '<div class="card" style="max-width:760px;"><h2>' + (v.id ? '送り状（' + esc(dShort(v.date)) + ' ' + esc(v.l5 || v.l6) + '）' : '新しい送り状') + '</h2><div class="note">送り状だけを印刷します。宛名は窓付き封筒の窓に出る所です。</div>' +
+      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px 14px;margin-top:10px;">' +
+      '<div style="grid-column:1/-1;"><label class="f">送り先（登録した得意先）</label><select data-x="cust" style="width:100%;"><option value="">（選ぶ）</option>' + custs.map(x => '<option value="' + esc(x.id) + '"' + (x.id === v.custId ? ' selected' : '') + '>' + esc(x.code + '　' + x.name + (x.dept ? '　' + x.dept : '') + (x.person ? '　' + x.person : '')) + '</option>').join('') + '</select><div class="note">選ぶと、下の宛名に得意先の住所・名前が入ります（入ったあとで直せます）。</div></div>' +
+      '<div><label class="f">日付（送る日）</label><input data-k="date" type="date" value="' + esc(v.date) + '" style="width:100%;"></div>' +
+      '<div><label class="f">送り主（請求管理に入れる人）</label><select data-k="personSel" style="width:100%;">' + P.map(n => '<option' + (n === v.person ? ' selected' : '') + '>' + esc(n) + '</option>').join('') + '</select></div>' +
+      '<div style="grid-column:1/-1;margin-top:6px;"><b>宛名（封筒の窓に出る所）</b></div>' +
+      I('zip', '郵便番号') + '<div></div>' + I('addr1', '住所1', true) + I('addr2', '住所2（ビル名など）', true) + I('l5', '会社名（担当者の名前を入れるときは 会社名＋部署）', true) + I('l6', '「様」の前の名前（担当者・部署・会社名）') + I('honor', '敬称') +
+      '<div style="grid-column:1/-1;margin-top:6px;"><b>中身</b></div>' + I('title', '表題', true) +
+      A('text', '送り文', '「敬具」は最後に自動で付きます。紙で ' + CV_TEXT_LINES + ' 行（1行 ' + CV_TEXT_W + ' 字ほど）まで。', 120) +
+      A('items', '記の下の文面（送る書類など。1行ずつ）', CV_ITEM_LINES + ' 行まで、1行 ' + CV_ITEM_W + ' 字ほどまで。', 150) +
+      '</div><div class="msg" id="cvMsg" style="font-size:1.05rem;"></div><div class="row" style="margin-top:12px;"><button class="b" data-x="see">紙を見る</button><span class="sp"></span><button class="b" data-x="n">やめる</button><button class="b" data-x="save">保存</button><button class="b dark" data-x="pr">保存して印刷</button></div></div>';
+    document.body.appendChild(w);
+    const val = () => { const o = Object.assign({}, v); w.querySelectorAll('[data-k]').forEach(e => { o[e.dataset.k] = e.value; }); o.person = o.personSel; delete o.personSel; const cu = custs.find(x => x.id === w.querySelector('[data-x="cust"]').value); o.custId = cu ? cu.id : ''; o.custCode = cu ? cu.code : ''; return o; };
+    const show = () => { const x = val(), m = coverCheck(x) || (!x.l5 && !x.l6 ? '送り先を選ぶか、宛名を入れてください。' : ''); w.querySelector('#cvMsg').textContent = m; return m; };
+    w.querySelector('[data-x="cust"]').onchange = e => { const cu = custs.find(x => x.id === e.target.value); if (!cu) return; const a = fromCust(cu); Object.keys(a).forEach(k => { const el = w.querySelector('[data-k="' + k + '"]'); if (el) el.value = a[k]; }); show(); };
+    w.querySelectorAll('input,textarea').forEach(e => e.addEventListener('input', show));
+    const end = r => { w.remove(); done(r); };
+    w.querySelector('[data-x="n"]').onclick = () => end(undefined);
+    w.querySelector('[data-x="see"]').onclick = () => showPaper([coverPage({}, val())], { title: '送り状' });
+    const save = async print => {
+      if (show()) return;
+      const o = val(); if (!o.id) o.id = newId('v');
+      busy('保存しています…');
+      try { await gas('saveCov', { c: plain(o) }); } catch (e) { busy(''); return alert('保存できませんでした：' + e.message); } finally { busy(''); }
+      ST.covCache = {};
+      if (print) printPages([coverPage({}, o)]);
+      end(o); if (ST.tab === 'cov') drawCov();
+    };
+    w.querySelector('[data-x="save"]').onclick = () => save(false);
+    w.querySelector('[data-x="pr"]').onclick = () => save(true);
+    show();
+  });
 }
 /* 画面で紙を見る */
 function showPaper(pages, opt) {
