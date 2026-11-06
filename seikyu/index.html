@@ -125,12 +125,12 @@
 <main id="m"></main>
 <div id="busy"></div>
 
-<script src="calc.js?v=Ver.請求20261106-13"></script>
+<script src="calc.js?v=Ver.請求20261106-14"></script>
 <script type="module">
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
 import { getFirestore, collection, doc, getDoc, getDocs, setDoc, deleteDoc, writeBatch, runTransaction } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
-const APP_VER = 'Ver.請求20261106-13';   // 版の名前は「Ver.請求YYYYMMDD-NN」（ユーザー指示 2026-11-06）
+const APP_VER = 'Ver.請求20261106-14';   // 版の名前は「Ver.請求YYYYMMDD-NN」（ユーザー指示 2026-11-06）
 const API = 'https://script.google.com/macros/s/AKfycbzpJgqJOqQz5180PQF2S3kVN7TWg0c1dnyUUUNuCZtzy5_pmKEhAkw5w3gqSj31EEA1/exec';   // Apps Script「請求管理」（ポータル・給与とは別）
 /* ログインは給与アプリと同じ（ユーザー指示 2026-11-05）：ポータルの Firebase、メールとパスワード。入れるのはマスターと「請求管理」の権限（users.canInvoice）がある人 */
 const app = initializeApp({ apiKey: 'AIzaSyDVR4p4DO4s9h70uPlXUVlhNcMP9-YkQ5Q', authDomain: 'genba-portal-9077b.firebaseapp.com', projectId: 'genba-portal-9077b' });
@@ -324,10 +324,10 @@ const DEF_CFG = {
   invNo: { prefix: 'S', digits: 5, next: 1 }, rcpNo: { prefix: 'R', digits: 5, next: 1 },
   defTerms: { close: 31, months: 1, day: 31 }, greeting: '下記の通りご請求申し上げます。',
   coverPerson: '比嘉 美紀', coverText: '拝啓　時下ますますご清栄のことと心よりお喜び申し上げます。平素は格別のお引き立てを賜り、厚く御礼を申し上げます。\n　さて、早速ではございますが下記の書類をお送りいたします。よろしくご査収くださいますよう、お願い申し上げます。',
-  stamps: true, rcpPurpose: 'ダクト工事代として', memoTax: '', approvers: DEF_APV, fyEnd: 2, stkRules: {}
+  stamps: true, rcpPurpose: 'ダクト工事代として', memoTax: '', approvers: DEF_APV, fyEnd: 2, stkRules: {}, offNo: { prefix: 'K', digits: 5, next: 1 }, offPurpose: '請求代金との相殺'
 };
 const ST = { stamps: {}, me: null, cfg: plain(DEF_CFG), custs: [], invs: [], rcps: [], tab: 'inv', year: String(new Date().getFullYear()), yearData: {}, q: '', filt: 'all' };
-const cfgMerge = c => { const o = Object.assign(plain(DEF_CFG), c || {}); o.company = Object.assign(plain(DEF_CFG.company), (c || {}).company || {}); if (!Array.isArray(o.approvers) || o.approvers.length !== 3) o.approvers = plain(DEF_APV); return o; };
+const cfgMerge = c => { const o = Object.assign(plain(DEF_CFG), c || {}); if (!o.offNo || !o.offNo.prefix) o.offNo = plain(DEF_CFG.offNo); o.company = Object.assign(plain(DEF_CFG.company), (c || {}).company || {}); if (!Array.isArray(o.approvers) || o.approvers.length !== 3) o.approvers = plain(DEF_APV); return o; };
 const calcOf = inv => SK.calc(inv, ST.cfg);
 const stateOf = inv => SK.payState(inv.state === '取消' ? { ...inv, status: '取消' } : inv, today(), calcOf(inv).total);
 const custOf = id => ST.custs.find(c => c.id === id);
@@ -373,11 +373,11 @@ async function boot() {
   } catch (e) { M.innerHTML = '<div class="card"><div class="msg">' + esc(e.message) + '</div></div>'; }
   busy('');
 }
-const TABS = [['inv', '請求書'], ['pay', '入金'], ['rcp', '領収書'], ['cust', '得意先'], ['sub', '提出データ'], ['cfg', '設定']];
+const TABS = [['inv', '請求書'], ['pay', '入金'], ['rcp', '領収書'], ['off', '相殺伝票'], ['cust', '得意先'], ['sub', '提出データ'], ['cfg', '設定']];
 function draw() {
   $('nav').innerHTML = TABS.map(t => '<button data-t="' + t[0] + '" class="' + (ST.tab === t[0] ? 'on' : '') + '">' + t[1] + '</button>').join('');
   $('nav').querySelectorAll('button').forEach(b => b.onclick = async () => { if (ST.dirty && !(await okBox('保存していない変更があります。捨てて移りますか？', '捨てて移る'))) return; ST.dirty = false; ST.tab = b.dataset.t; ST.rcpOpen = null; draw(); });
-  ({ inv: drawInvList, pay: drawPay, rcp: drawRcp, cust: drawCust, sub: drawSub, cfg: drawCfg })[ST.tab]();
+  ({ inv: drawInvList, pay: drawPay, rcp: drawRcp, off: drawOff, cust: drawCust, sub: drawSub, cfg: drawCfg })[ST.tab]();
   window.scrollTo(0, 0);
 }
 
@@ -592,7 +592,7 @@ function drawInvEdit() {
     (inv.isNew ? '' : '<div class="card"><div class="row"><h2 style="margin:0;">入金</h2>' + stTag(st) + '<span class="note">入金済み ' + yen(paid) + ' 円 ／ 残り ' + yen(Math.max(0, c.total - paid)) + ' 円</span><span class="sp"></span><button class="b dark" id="addP">入金を入れる</button></div>' +
       (pays.length ? '<table class="t" style="margin-top:8px;"><thead><tr><th>入金日</th><th class="n">入金額</th><th class="n">振込手数料</th><th>方法</th><th>メモ</th><th>入れた人</th><th></th></tr></thead><tbody>' + pays.map((p, k) => '<tr><td>' + (p.date ? dShort(p.date) : '不明') + '</td><td class="n">' + yen(p.amount) + '</td><td class="n">' + yen(p.fee) + '</td><td>' + esc(p.how) + '</td><td>' + esc(p.memo) + '</td><td class="note">' + esc(p.by) + ' ' + esc(String(p.at || '').slice(0, 16)) + '</td><td><button class="b sm danger" data-pr="' + k + '">消す</button></td></tr>').join('') + '</tbody></table>' : '<div class="note" style="margin-top:6px;">まだ入金はありません。</div>') + '</div>') +
     '<div class="card"><div class="row"><span class="note">' + (inv.createdAt ? '作成 ' + esc(inv.createdAt) + ' ' + esc(inv.createdBy || '') : '') + (inv.updatedAt ? '　最後に保存 ' + esc(inv.updatedAt) + ' ' + esc(inv.updatedBy || '') : '') + (inv.sentAt ? '　送った日 ' + esc(inv.sentAt === '不明' ? '不明' : dShort(inv.sentAt)) : '') + '</span><span class="sp"></span>' +
-    (inv.isNew ? '' : '<button class="b" id="sent">送った日を入れる</button><button class="b" id="dup">複製</button><button class="b" id="mkR">領収書を作る</button>' + (inv.state === '取消' ? '<button class="b" id="unc">取消をやめる</button>' : '<button class="b danger" id="cnl">取消にする</button>')) + '</div></div>';
+    (inv.isNew ? '' : '<button class="b" id="sent">送った日を入れる</button><button class="b" id="dup">複製</button><button class="b" id="mkR">領収書を作る</button><button class="b" id="mkO">相殺伝票を作る</button>' + (inv.state === '取消' ? '<button class="b" id="unc">取消をやめる</button>' : '<button class="b danger" id="cnl">取消にする</button>')) + '</div></div>';
 
   const mark = () => { ST.dirty = true; };
   const re = () => { readForm(); drawInvEdit(); ST.dirty = true; };
@@ -677,6 +677,7 @@ function drawInvEdit() {
       openInv(n); ST.dirty = true; alert('複製しました。発行日・明細を確かめて保存してください。');
     };
     $('mkR').onclick = () => { ST.tab = 'rcp'; draw(); newReceipt(inv); };
+    if ($('mkO')) $('mkO').onclick = () => { ST.tab = 'off'; draw(); newOffset(inv); };
     if ($('cnl')) $('cnl').onclick = async () => { if (!(await okBox('この請求書を「取消」にしますか？（消さずに取消の印を付けます。番号は使ったままになります）', '取消にする'))) return; readForm(); inv.state = '取消'; try { await saveInv(inv, '取消'); ST.dirty = false; drawInvEdit(); } catch (e) { alert(e.message); } };
     if ($('unc')) $('unc').onclick = async () => { readForm(); inv.state = '発行済み'; try { await saveInv(inv, '取消をやめた'); ST.dirty = false; drawInvEdit(); } catch (e) { alert(e.message); } };
   }
@@ -687,7 +688,7 @@ async function addPayment(inv, after) {
     { k: 'date', label: '入金日', type: 'date', value: today() },
     { k: 'amount', label: '入金額（円）', value: yen(rest), num: 1, note: '請求額 ' + yen(c.total) + ' 円、残り ' + yen(rest) + ' 円' },
     { k: 'fee', label: '振込手数料（先方が差し引いた分。円）', value: '0', num: 1, note: '入金額＋振込手数料で請求額に届けば「入金済み」になります' },
-    { k: 'how', label: '方法', type: 'select', opts: ['振込', '現金', '相殺', '手形', '小切手', '電子記録債権', 'その他'], value: '振込' },
+    { k: 'how', label: '方法', type: 'select', opts: ['振込', '現金', '相殺', '小切手', '電子記録債権', 'その他'], value: '振込' },
     { k: 'memo', label: 'メモ', value: '' }], '入金を入れる');
   if (!r) return;
   const p = { date: r.date, amount: num(r.amount) || 0, fee: num(r.fee) || 0, how: r.how, memo: r.memo, at: nowStr(), by: ST.me.name };
@@ -875,6 +876,7 @@ function coverPage(inv, cv) {
 }
 /* 領収書：A4 の上半分が本紙、下半分が控え（切り取り線）。収入印紙は国税庁 No.7105 の表（calc.js） */
 function rcpPages(r) {
+  const off = isOff(r), TT = off ? '相殺伝票' : '領収書';
   // 2026-11-06 ユーザー指示：請求書と同じ紙のデザイン（ダクトの絵）・字の大きさ・つり合いにする。A4 の上半分が本紙、下半分が控え
   const half = (copy) => {
     const duty = SK.stampDuty(r.amount);
@@ -882,19 +884,19 @@ function rcpPages(r) {
     let h = '<div style="position:relative;height:148.5mm;overflow:hidden;">' +
       '<div style="position:absolute;right:0;bottom:0;width:108mm;height:94mm;background:url(paper_duct.png) right bottom/contain no-repeat;"></div>';
     // 右上：領収書（淡い緑・請求書と同じ）と No.・日付
-    h += '<div style="position:absolute;right:15mm;top:11.3mm;font-size:24pt;font-weight:700;letter-spacing:.6em;margin-right:-.6em;color:#7db592;">領収書</div>';
+    h += '<div style="position:absolute;right:15mm;top:11.3mm;font-size:24pt;font-weight:700;letter-spacing:' + (off ? '.35em' : '.6em') + ';margin-right:' + (off ? '-.35em' : '-.6em') + ';color:#7db592;">' + TT + '</div>';
     if (copy) h += '<div style="position:absolute;right:15mm;top:6mm;font-size:9pt;font-weight:700;color:#5b6b61;">（控え）</div>';
     h += '<div style="position:absolute;right:15mm;top:26.5mm;text-align:right;font-size:10pt;line-height:1.8;">No.　' + esc(r.no) + '<br>' + dJp(r.date) + '</div>';
     // 左上：宛名（請求書の宛名と同じ大きさ）
     h += A(15, 27, 105, 'font-size:14pt;font-weight:700;border-bottom:.4mm solid #1d1d1d;display:flex;justify-content:space-between;align-items:flex-end;padding-bottom:1mm;', '<span>' + esc(r.toName) + '</span><span style="font-size:12pt;">' + esc(r.honor || '様') + '</span>');
     // 金額（請求書の「今回ご請求額」と同じ枠）
-    h += A(15, 50, 120, 'border:.5mm solid #1a6b3c;border-radius:1.5mm;padding:4mm 6mm;display:flex;justify-content:space-between;align-items:baseline;box-sizing:border-box;', '<span style="font-size:12pt;font-weight:700;letter-spacing:.3em;">金額</span><span style="font-size:22pt;font-weight:700;">¥' + yen(r.amount) + '－<span style="font-size:9pt;">（税込）</span></span>');
+    h += A(15, 50, 120, 'border:.5mm solid #1a6b3c;border-radius:1.5mm;padding:4mm 6mm;display:flex;justify-content:space-between;align-items:baseline;box-sizing:border-box;', '<span style="font-size:12pt;font-weight:700;letter-spacing:' + (off ? '.1em' : '.3em') + ';">' + (off ? '相殺金額' : '金額') + '</span><span style="font-size:22pt;font-weight:700;">¥' + yen(r.amount) + '－' + (off ? '' : '<span style="font-size:9pt;">（税込）</span>') + '</span>');
     // 但し書き・内訳
-    h += A(15, 78, 105, 'font-size:10.5pt;line-height:1.9;', '但し　' + esc(r.purpose) + '<br>上記正に領収いたしました。' +
-      '<div style="margin-top:2mm;font-size:9.5pt;line-height:1.7;border-top:.3mm solid #c9d6cd;padding-top:1.5mm;">' + (r.groups || []).map(g => '<div>' + esc(SK.groupLabel(g)) + '対象　' + yen(g.incl) + '円（うち消費税 ' + yen(g.tax) + '円）</div>').join('') +
+    h += A(15, 78, 105, 'font-size:10.5pt;line-height:1.9;', (off ? '内容　' + esc(r.purpose) + '<br>上記の金額を相殺いたしました。' : '但し　' + esc(r.purpose) + '<br>上記正に領収いたしました。') +
+      '<div style="margin-top:2mm;font-size:9.5pt;line-height:1.7;border-top:.3mm solid #c9d6cd;padding-top:1.5mm;">' + (off ? [] : r.groups || []).map(g => '<div>' + esc(SK.groupLabel(g)) + '対象　' + yen(g.incl) + '円（うち消費税 ' + yen(g.tax) + '円）</div>').join('') +
       (r.how ? '<div>受け取り方：' + esc(r.how) + '</div>' : '') + (r.invNo ? '<div>請求書 No.' + esc(r.invNo) + '</div>' : '') + '</div>');
     // 収入印紙（本紙だけ。金額の枠の右）
-    if (!copy && duty) h += A(147, 48, 26, 'height:30mm;border:.3mm dashed #8a958e;font-size:8.5pt;color:#5b6b61;text-align:center;box-sizing:border-box;padding-top:10mm;line-height:1.6;', '収入印紙<br>' + yen(duty) + '円');
+    if (!off && !copy && duty) h += A(147, 48, 26, 'height:30mm;border:.3mm dashed #8a958e;font-size:8.5pt;color:#5b6b61;text-align:center;box-sizing:border-box;padding-top:10mm;line-height:1.6;', '収入印紙<br>' + yen(duty) + '円');
     // 右下：自社の欄（請求書と同じ。本紙は角印）
     h += A(122, 84, 76, '', companyBlock(!copy, r));
     return h + '</div>';
@@ -996,28 +998,39 @@ function drawPay() {
   ltWire('pay', drawPay); fill();   // 上の数字（期日超えなど）も選んだデータで出し直す
 }
 
-/* ===== 領収書（ユーザー指示 2026-11-05：作れるように。今までの分は写さない） ===== */
-function drawRcp() {
-  if (ST.rcpOpen) return drawRcpEdit();
-  { const s = lt('rcp'); if (s.per === undefined) s.per = 'close'; }   // 初めは今の期
-  const base = ST.rcps.filter(r => eraOk('rcp', r)).map(r => ({ r, id: r.id, date: r.date, no: r.no, name: r.toName || '', amt: Number(r.amount) || 0 }));
-  M.innerHTML = '<div class="card"><div class="row"><b style="font-size:1.1rem;">領収書</b><span class="sp"></span><button class="b dark" id="nr">＋ 新しい領収書</button></div><div class="row lt" style="margin-top:8px;">' + eraBar('rcp') + perBar('rcp', '発行日') + '</div>' + ltBar('rcp', base, ['dateD', 'dateA', 'name', 'amt'], '発行日') +
-    '<div class="note" style="margin-top:6px;">行を押すと開きます（紙を見る・印刷・PDF・取消は開いた画面で）。請求書の画面の「領収書を作る」からも作れます（宛名・金額・税率ごとの内訳が入ります）。発行日の月ごとに区切って出します。</div></div><div class="card" id="rl"></div>';
-  $('nr').onclick = () => newReceipt(null);
+/* ===== 領収書（ユーザー指示 2026-11-05：作れるように。今までの分は写さない）と相殺伝票（2026-11-06） =====
+   相殺伝票は領収書と同じ置き場所（seikyuReceipts）に kind:'offset' で入れる。スプレッドシートは「相殺伝票」のシート */
+const isOff = r => !!r && r.kind === 'offset';
+const SLIP = {
+  rcp: { name: '領収書', who: '宛名', date: '発行日', what: '但し書き', mk: () => newReceipt(null), of: r => !isOff(r), era: true },
+  off: { name: '相殺伝票', who: '相手先', date: '相殺日', what: '内容', mk: () => newOffset(null), of: isOff, era: false }
+};
+function drawRcp() { drawSlips('rcp'); }
+function drawOff() { drawSlips('off'); }
+function drawSlips(key) {
+  const K = SLIP[key];
+  if (ST.rcpOpen && K.of(ST.rcpOpen)) return drawRcpEdit();
+  ST.rcpOpen = null;
+  { const s = lt(key); if (s.per === undefined) s.per = 'close'; }   // 初めは今の年度
+  const base = ST.rcps.filter(r => K.of(r) && (!K.era || eraOk(key, r))).map(r => ({ r, id: r.id, date: r.date, no: r.no, name: r.toName || '', amt: Number(r.amount) || 0 }));
+  M.innerHTML = '<div class="card"><div class="row"><b style="font-size:1.1rem;">' + K.name + '</b><span class="sp"></span><button class="b dark" id="nr">＋ 新しい' + K.name + '</button></div><div class="row lt" style="margin-top:8px;">' + (K.era ? eraBar(key) : '') + perBar(key, K.date) + '</div>' + ltBar(key, base, ['dateD', 'dateA', 'name', 'amt'], K.date) +
+    '<div class="note" style="margin-top:6px;">行を押すと開きます（紙を見る・印刷・PDF・取消は開いた画面で）。請求書の画面の「' + K.name + 'を作る」からも作れます。' + (key === 'off' ? '相殺伝票は紙を作るだけで、請求書の入金には入りません（入金は今までどおり「入金を入れる」で）。' : '') + K.date + 'の月ごとに区切って出します。</div></div><div class="card" id="rl"></div>';
+  $('nr').onclick = K.mk;
   const R = id => ST.rcps.find(r => r.id === id);
   function fill() {
-    const rows = ltApply('rcp', base.filter(x => perOk('rcp', x.date))), tot = a => a.filter(x => x.r.state !== '取消').reduce((s, x) => s + x.amt, 0);
-    const row = x => { const r = x.r; return '<tr class="link" data-id="' + esc(r.id) + '"><td><b>' + esc(r.no) + '</b>' + (r.state === '取消' ? ' <span class="tag">取消</span>' : '') + '</td><td>' + dShort(r.date) + '</td><td>' + esc(r.toName) + '</td><td class="n">' + yen(r.amount) + '</td><td>' + esc(r.purpose) + '</td><td>' + esc(r.invNo || '') + '</td><td>' + (SK.stampDuty(r.amount) == null ? '<span class="tag ng">要確認</span>' : SK.stampDuty(r.amount) ? yen(SK.stampDuty(r.amount)) + '円' : '不要') + '</td>' + stkCell(r, 'rcp') + '</tr>'; };
-    $('rl').innerHTML = rows.length ? '<div class="wrapx"><table class="t"><thead><tr><th>番号</th><th>発行日</th><th>宛名</th><th class="n">金額</th><th>但し書き</th><th>請求書</th><th>収入印紙</th><th>付箋メモ</th></tr></thead><tbody>' +
-      ltGroups('rcp', rows).map(g => monRow(g, 8, '合計 ' + yen(tot(g.rows)) + ' 円') + g.rows.map(row).join('')).join('') + '</tbody></table></div>' : '<div class="note">当てはまる領収書はありません。</div>';
-    const Q = a => $('rl').querySelectorAll(a);
-    wireStk($('rl'), R, async r => { const v = await stkEdit(r); if (v === undefined) return; r.sticky = v; try { await saveRcp(r); drawRcp(); } catch (e) { alert('付箋を保存できませんでした：' + e.message); } });
-    Q('tr.link').forEach(tr => tr.onclick = () => { ST.rcpOpen = plain(R(tr.dataset.id)); drawRcp(); window.scrollTo(0, 0); });
+    const rows = ltApply(key, base.filter(x => perOk(key, x.date))), tot = a => a.filter(x => x.r.state !== '取消').reduce((s, x) => s + x.amt, 0);
+    const duty = r => SK.stampDuty(r.amount) == null ? '<span class="tag ng">要確認</span>' : SK.stampDuty(r.amount) ? yen(SK.stampDuty(r.amount)) + '円' : '不要';
+    const row = x => { const r = x.r; return '<tr class="link" data-id="' + esc(r.id) + '"><td><b>' + esc(r.no) + '</b>' + (r.state === '取消' ? ' <span class="tag">取消</span>' : '') + '</td><td>' + dShort(r.date) + '</td><td>' + esc(r.toName) + '</td><td class="n">' + yen(r.amount) + '</td><td>' + esc(r.purpose) + '</td><td>' + esc(r.invNo || '') + '</td>' + (key === 'rcp' ? '<td>' + duty(r) + '</td>' : '') + stkCell(r, key) + '</tr>'; };
+    const cols = key === 'rcp' ? 8 : 7;
+    $('rl').innerHTML = rows.length ? '<div class="wrapx"><table class="t"><thead><tr><th>番号</th><th>' + K.date + '</th><th>' + K.who + '</th><th class="n">金額</th><th>' + K.what + '</th><th>請求書</th>' + (key === 'rcp' ? '<th>収入印紙</th>' : '') + '<th>付箋メモ</th></tr></thead><tbody>' +
+      ltGroups(key, rows).map(g => monRow(g, cols, '合計 ' + yen(tot(g.rows)) + ' 円') + g.rows.map(row).join('')).join('') + '</tbody></table></div>' : '<div class="note">当てはまる' + K.name + 'はありません。</div>';
+    wireStk($('rl'), R, async r => { const v = await stkEdit(r); if (v === undefined) return; r.sticky = v; try { await saveRcp(r); drawSlips(key); } catch (e) { alert('付箋を保存できませんでした：' + e.message); } });
+    $('rl').querySelectorAll('tr.link').forEach(tr => tr.onclick = () => { ST.rcpOpen = plain(R(tr.dataset.id)); drawSlips(key); window.scrollTo(0, 0); });
   }
-  ltWire('rcp', drawRcp); fill();
+  ltWire(key, () => drawSlips(key)); fill();
 }
 async function saveRcp(r) {
-  if (!r.no) r.no = await nextNo('rcpNo');
+  if (!r.no) r.no = await nextNo(isOff(r) ? 'offNo' : 'rcpNo');
   if (!r.from) r.from = curFrom();
   if (!r.createdAt) { r.createdAt = nowStr(); r.createdBy = ST.me.name; }
   busy('保存しています…');
@@ -1033,7 +1046,7 @@ async function newReceipt(inv) {
     { k: 'date', label: '発行日', type: 'date', value: inv ? (SK.lastPayDate(inv) || today()) : today() },
     { k: 'amount', label: '金額（税込・円）', value: amt === '' ? '' : yen(amt), num: 1, note: inv ? '請求額 ' + yen(c.total) + ' 円' + (paid ? '、入金額 ' + yen(paid - (inv.payments || []).reduce((s, p) => s + (Number(p.fee) || 0), 0)) + ' 円（手数料を除く）' : '') : '' },
     { k: 'purpose', label: '但し書き', value: ST.cfg.rcpPurpose },
-    { k: 'how', label: '受け取り方', type: 'select', opts: ['振込', '現金', '小切手', '手形', 'その他'], value: inv && inv.payments && inv.payments.length ? (inv.payments[inv.payments.length - 1].how || '振込') : '振込' }
+    { k: 'how', label: '受け取り方', type: 'select', opts: ['振込', '現金', '小切手', 'その他'], value: inv && inv.payments && inv.payments.length ? (inv.payments[inv.payments.length - 1].how || '振込') : '振込' }
   ], '作って保存');
   if (!res) return;
   const amount = num(res.amount) || 0;
@@ -1046,6 +1059,24 @@ async function newReceipt(inv) {
   try { await saveRcp(r); ST.tab = 'rcp'; ST.rcpOpen = plain(r); draw(); if (r.stamp == null) alert('1,000万円を超える領収書の収入印紙は、国税庁 No.7141 の表で確かめてください。'); } catch (e) { alert('保存できませんでした：' + e.message); }
 }
 
+/* 相殺伝票を作る（ユーザー指示 2026-11-06：相殺の記録だけ。入金には入れない） */
+async function newOffset(inv) {
+  const res = await formBox('相殺伝票を作る', [
+    { k: 'toName', label: '相手先', value: inv ? (inv.to || {}).name : '' },
+    { k: 'honor', label: '敬称', type: 'select', opts: ['様', '御中', '殿'], value: '御中' },
+    { k: 'date', label: '相殺日', type: 'date', value: today() },
+    { k: 'amount', label: '相殺する金額（円）', value: '', num: 1, note: inv ? '請求額 ' + yen(calcOf(inv).total) + ' 円、入金済み ' + yen(SK.paid(inv)) + ' 円' : '' },
+    { k: 'purpose', label: '内容', value: ST.cfg.offPurpose || '' },
+    { k: 'invNo', label: '請求書の番号（あれば）', value: inv ? inv.no : '' }
+  ], '作って保存');
+  if (!res) return;
+  const amount = num(res.amount) || 0;
+  if (!res.toName || !amount) return alert('相手先と金額を入れてください。');
+  const iv = inv || ST.invs.find(i => i.no === String(res.invNo || '').trim());
+  const r = { id: newId('t'), kind: 'offset', no: '', date: res.date, toName: res.toName, honor: res.honor, amount, purpose: res.purpose, invId: iv ? iv.id : '', invNo: String(res.invNo || '').trim(), state: '発行済み' };
+  try { await saveRcp(r); ST.tab = 'off'; ST.rcpOpen = plain(r); draw(); } catch (e) { alert('保存できませんでした：' + e.message); }
+}
+
 /* ===== 領収書の画面（ユーザー指示 2026-11-06：請求書のように開いて直せる。紙を見る・印刷・PDF・取消はこの画面で） ===== */
 /* 税率ごとの内訳：請求書の全額と同じなら請求書の内訳。違う金額や請求書なしなら、発行日の標準税率の税込として分ける */
 function rcpGroups(amount, date, invId) {
@@ -1055,41 +1086,44 @@ function rcpGroups(amount, date, invId) {
   return [{ kind: 'std', rate, base: amount - tax, tax, incl: amount }];
 }
 function drawRcpEdit() {
-  const r = ST.rcpOpen, gone = r.state === '取消';
+  const r = ST.rcpOpen, gone = r.state === '取消', off = isOff(r), K = SLIP[off ? 'off' : 'rcp'];
   const F = (k, label, html) => '<div><label class="f">' + label + '</label>' + html + '</div>';
   const I = (k, v, extra) => '<input data-r="' + k + '" value="' + esc(v == null ? '' : v) + '"' + (gone ? ' disabled' : '') + (extra || '') + ' style="width:100%;">';
-  const S = (k, v, opts) => '<select data-r="' + k + '"' + (gone ? ' disabled' : '') + ' style="width:100%;">' + opts.map(o => '<option' + (o === v ? ' selected' : '') + '>' + esc(o) + '</option>').join('') + '</select>';
+  const S = (k, v, opts) => '<select data-r="' + k + '"' + (gone ? ' disabled' : '') + ' style="width:100%;">' + (opts.includes(v) || !v ? opts : opts.concat([v])).map(o => '<option' + (o === v ? ' selected' : '') + '>' + esc(o) + '</option>').join('') + '</select>';
   const duty = SK.stampDuty(r.amount);
-  M.innerHTML = '<div class="card"><div class="row"><button class="b" id="rBack">← 一覧へ</button><b style="font-size:1.1rem;">領収書 ' + esc(r.no) + '</b>' + (gone ? '<span class="tag">取消</span>' : '<span class="tag ok">発行済み</span>') +
+  M.innerHTML = '<div class="card"><div class="row"><button class="b" id="rBack">← 一覧へ</button><b style="font-size:1.1rem;">' + K.name + ' ' + esc(r.no) + '</b>' + (gone ? '<span class="tag">取消</span>' : '<span class="tag ok">発行済み</span>') +
     '<span class="sp"></span>' + (gone ? '' : '<button class="b dark" id="rSave">保存</button><button class="b" id="rPrint">印刷</button><button class="b" id="rPdf">PDFで保存</button>') + '<button class="b" id="rSee">紙を見る</button>' + (gone ? '' : '<button class="b danger" id="rCancel">取消</button>') + '</div>' +
-    (gone ? '<div class="note" style="margin-top:6px;">取消にした領収書です。中身は直せません。</div>' : '') + '</div>' +
+    (gone ? '<div class="note" style="margin-top:6px;">取消にした' + K.name + 'です。中身は直せません。</div>' : '') + (off ? '<div class="note" style="margin-top:6px;">相殺伝票は紙を作るだけで、請求書の入金には入りません。</div>' : '') + '</div>' +
     stkPanel(r, 'stkR') +
     '<div class="card"><div class="grid3" style="align-items:start;">' +
-    F('toName', '宛名', I('toName', r.toName)) + F('honor', '敬称', S('honor', r.honor || '様', ['様', '御中', '殿'])) + F('date', '発行日', '<input data-r="date" type="date" value="' + esc(r.date) + '"' + (gone ? ' disabled' : '') + ' style="width:100%;">') +
-    F('amount', '金額（税込・円）', I('amount', yen(r.amount), ' inputmode="numeric" style="text-align:right;"')) + F('purpose', '但し書き', I('purpose', r.purpose)) + F('how', '受け取り方', S('how', r.how || '振込', ['振込', '現金', '小切手', '手形', 'その他'])) +
+    F('toName', K.who, I('toName', r.toName)) + F('honor', '敬称', S('honor', r.honor || '様', ['様', '御中', '殿'])) + F('date', K.date, '<input data-r="date" type="date" value="' + esc(r.date) + '"' + (gone ? ' disabled' : '') + ' style="width:100%;">') +
+    F('amount', off ? '相殺する金額（円）' : '金額（税込・円）', I('amount', yen(r.amount), ' inputmode="numeric" style="text-align:right;"')) + F('purpose', K.what, I('purpose', r.purpose)) +
+    (off ? F('invNo', '請求書の番号', I('invNo', r.invNo || '')) : F('how', '受け取り方', S('how', r.how || '振込', ['振込', '現金', '小切手', 'その他']))) +
     '</div><div class="row" style="margin-top:12px;gap:24px;align-items:flex-start;">' +
-    '<div><label class="f">請求書</label>' + (r.invNo ? '<a href="#" id="rInv"><b>' + esc(r.invNo) + '</b></a>' : '<span class="note">なし</span>') + '</div>' +
-    '<div><label class="f">収入印紙</label><span id="rDuty">' + (duty == null ? '<span class="tag ng">要確認</span>' : duty ? yen(duty) + ' 円' : '不要') + '</span></div>' +
-    '<div><label class="f">税率ごとの内訳</label><span id="rGrp">' + (r.groups || []).map(g => esc(SK.groupLabel(g)) + '対象 ' + yen(g.incl) + ' 円（うち消費税 ' + yen(g.tax) + ' 円）').join('<br>') + '</span><div class="note">金額を変えると、保存のときに出し直します。</div></div>' +
+    (off ? '' : '<div><label class="f">請求書</label>' + (r.invNo ? '<a href="#" id="rInv"><b>' + esc(r.invNo) + '</b></a>' : '<span class="note">なし</span>') + '</div>' +
+      '<div><label class="f">収入印紙</label><span id="rDuty">' + (duty == null ? '<span class="tag ng">要確認</span>' : duty ? yen(duty) + ' 円' : '不要') + '</span></div>' +
+      '<div><label class="f">税率ごとの内訳</label><span id="rGrp">' + (r.groups || []).map(g => esc(SK.groupLabel(g)) + '対象 ' + yen(g.incl) + ' 円（うち消費税 ' + yen(g.tax) + ' 円）').join('<br>') + '</span><div class="note">金額を変えると、保存のときに出し直します。</div></div>') +
+    (off && r.invNo ? '<div><label class="f">請求書</label><a href="#" id="rInv"><b>' + esc(r.invNo) + '</b></a></div>' : '') +
     '<div><label class="f">作った人</label>' + esc(r.createdBy || '') + ' <span class="note">' + esc(r.createdAt || '') + '</span></div></div></div>';
-  const val = () => { const o = Object.assign({}, r); M.querySelectorAll('[data-r]').forEach(e => { o[e.dataset.r] = e.value; }); o.amount = num(o.amount) || 0; o.toName = String(o.toName || '').trim(); return o; };
+  const val = () => { const o = Object.assign({}, r); M.querySelectorAll('[data-r]').forEach(e => { o[e.dataset.r] = e.value; }); o.amount = num(o.amount) || 0; o.toName = String(o.toName || '').trim(); if (off) o.invNo = String(o.invNo || '').trim(); return o; };
   M.querySelectorAll('[data-r]').forEach(e => e.addEventListener('input', () => { ST.dirty = true; }));
-  const back = async () => { if (ST.dirty && !(await okBox('保存していない変更があります。捨てて一覧へ戻りますか？', '捨てて戻る'))) return; ST.dirty = false; ST.rcpOpen = null; drawRcp(); };
+  const back = async () => { if (ST.dirty && !(await okBox('保存していない変更があります。捨てて一覧へ戻りますか？', '捨てて戻る'))) return; ST.dirty = false; ST.rcpOpen = null; drawSlips(off ? 'off' : 'rcp'); };
   $('rBack').onclick = back;
-  if ($('rInv')) $('rInv').onclick = e => { e.preventDefault(); const inv = ST.invs.find(i => i.id === r.invId || i.no === r.invNo); if (!inv) return alert('請求書 ' + r.invNo + ' は画面の写しにありません（古い請求書は請求書の一覧で期間を選んで開いてください）。'); if (ST.dirty) return alert('先に保存してください。'); ST.rcpOpen = null; ST.tab = 'inv'; draw(); openInv(plain(inv)); };
+  if ($('rInv')) $('rInv').onclick = e => { e.preventDefault(); const inv = ST.invs.find(i => (r.invId && i.id === r.invId) || i.no === r.invNo); if (!inv) return alert('請求書 ' + r.invNo + ' は画面の写しにありません（古い請求書は請求書の一覧で期間を選んで開いてください）。'); if (ST.dirty) return alert('先に保存してください。'); ST.rcpOpen = null; ST.tab = 'inv'; draw(); openInv(plain(inv)); };
   async function save() {
     const o = val();
-    if (!o.toName || !o.amount) { alert('宛名と金額を入れてください。'); return false; }
-    if (o.amount !== Number(r.amount) || o.date !== r.date) o.groups = rcpGroups(o.amount, o.date, o.invId);
-    o.stamp = SK.stampDuty(o.amount);
-    try { await saveRcp(o); ST.dirty = false; ST.rcpOpen = plain(o); drawRcpEdit(); if (o.stamp == null) alert('1,000万円を超える領収書の収入印紙は、国税庁 No.7141 の表で確かめてください。'); return true; } catch (e) { alert('保存できませんでした：' + e.message); return false; }
+    if (!o.toName || !o.amount) { alert(K.who + 'と金額を入れてください。'); return false; }
+    if (off) { const iv = ST.invs.find(i => i.no === o.invNo); o.invId = iv ? iv.id : ''; }
+    else { if (o.amount !== Number(r.amount) || o.date !== r.date) o.groups = rcpGroups(o.amount, o.date, o.invId); o.stamp = SK.stampDuty(o.amount); }
+    try { await saveRcp(o); ST.dirty = false; ST.rcpOpen = plain(o); drawRcpEdit(); if (!off && o.stamp == null) alert('1,000万円を超える領収書の収入印紙は、国税庁 No.7141 の表で確かめてください。'); return true; } catch (e) { alert('保存できませんでした：' + e.message); return false; }
   }
   const ready = async () => !ST.dirty || await save();   // 直していたら保存してから
+  const fname = x => K.name + '_' + x.no + '_' + x.toName + '.pdf';
   if ($('rSave')) $('rSave').onclick = save;
   if ($('rPrint')) $('rPrint').onclick = async () => { if (await ready()) printPages(rcpPages(ST.rcpOpen)); };
-  if ($('rPdf')) $('rPdf').onclick = async () => { if (!(await ready())) return; const x = ST.rcpOpen; try { await pdfOf(rcpPages(x), '領収書_' + x.no + '_' + x.toName + '.pdf'); } catch (e) { alert(e.message); } };
-  $('rSee').onclick = () => showPaper(rcpPages(gone ? r : val()), { title: '領収書' });
-  if ($('rCancel')) $('rCancel').onclick = async () => { if (!(await okBox('領収書 ' + r.no + ' を取消にしますか？\n（取消にすると中身は直せなくなります）', '取消にする'))) return; const o = Object.assign({}, r, { state: '取消' }); try { await saveRcp(o); ST.dirty = false; ST.rcpOpen = plain(o); drawRcpEdit(); } catch (e) { alert(e.message); } };
+  if ($('rPdf')) $('rPdf').onclick = async () => { if (!(await ready())) return; const x = ST.rcpOpen; try { await pdfOf(rcpPages(x), fname(x)); } catch (e) { alert(e.message); } };
+  $('rSee').onclick = () => showPaper(rcpPages(gone ? r : val()), { title: K.name });
+  if ($('rCancel')) $('rCancel').onclick = async () => { if (!(await okBox(K.name + ' ' + r.no + ' を取消にしますか？\n（取消にすると中身は直せなくなります）', '取消にする'))) return; const o = Object.assign({}, r, { state: '取消' }); try { await saveRcp(o); ST.dirty = false; ST.rcpOpen = plain(o); drawRcpEdit(); } catch (e) { alert(e.message); } };
   if ($('stkR')) $('stkR').onclick = async () => { const v = await stkEdit(r); if (v === undefined) return; const o = Object.assign({}, r, { sticky: v }); try { await saveRcp(o); r.sticky = v; const d = ST.dirty; drawRcpEdit(); ST.dirty = d; } catch (e) { alert('付箋を保存できませんでした：' + e.message); } };
 }
 
@@ -1097,16 +1131,64 @@ function drawRcpEdit() {
 const CLOSES = [['5', '5日'], ['10', '10日'], ['15', '15日'], ['20', '20日'], ['25', '25日'], ['31', '月末']], PMS = [['0', '当月'], ['1', '翌月'], ['2', '翌々月'], ['3', '3か月後']], PDAYS = [['5', '5日'], ['10', '10日'], ['15', '15日'], ['20', '20日'], ['25', '25日'], ['31', '末日']];
 function drawCust() {
   const q = ST.cq || '', only = ST.conly;
-  const list = ST.custs.filter(c => (!only || c.termsCheck) && (!q || [c.code, c.name, c.kana, c.dept, c.person, (c.sticky || {}).t].join(' ').includes(q)));
-  M.innerHTML = '<div class="card"><div class="row"><b>得意先</b><input id="cq" placeholder="さがす" value="' + esc(q) + '" style="width:220px;"><label><input type="checkbox" id="co"' + (only ? ' checked' : '') + '> 要確認だけ</label><span class="note">要確認 ' + ST.custs.filter(c => c.termsCheck).length + ' 社</span><span class="sp"></span><button class="b dark" id="nc">＋ 新しい得意先</button></div>' +
+  const sel = ST.cSel;   // 選ぶ形のとき { ids: Set }
+  const list = ST.custs.filter(c => !c.deleted && (!only || c.termsCheck) && (!q || [c.code, c.name, c.kana, c.dept, c.person, (c.sticky || {}).t].join(' ').includes(q)));
+  M.innerHTML = '<div class="card"><div class="row"><b>得意先</b><input id="cq" placeholder="さがす" value="' + esc(q) + '" style="width:220px;"><label><input type="checkbox" id="co"' + (only ? ' checked' : '') + '> 要確認だけ</label><span class="note">要確認 ' + ST.custs.filter(c => c.termsCheck).length + ' 社</span><span class="sp"></span><button class="b' + (sel ? ' dark' : '') + '" id="cSelB">' + (sel ? '選ぶのをやめる' : '選んで Excel・削除') + '</button><button class="b dark" id="nc">＋ 新しい得意先</button></div>' +
+    (sel ? '<div class="row" style="margin-top:8px;padding:8px 10px;background:#eef4f0;border-radius:6px;"><b>選んだ得意先：<span id="cSelN">' + sel.ids.size + '</span> 社</b><button class="b sm" id="cAll">見えている物を全部選ぶ</button><button class="b sm" id="cNone">選ぶのを外す</button><span class="sp"></span><button class="b dark" id="cXls">Excel に出す</button><button class="b danger" id="cDel">削除</button></div>' : '') +
     '<div class="note" style="margin-top:6px;">「要確認」は販売らくだに支払いの決まりが入っていなかった（または締め日だけだった）ので、仮に「月末締め・翌月末払い」などを入れた得意先です。確かめて保存すると消えます。</div></div>' +
-    '<div class="card"><div class="wrapx"><table class="t"><thead><tr><th>コード</th><th>会社名</th><th>部署・担当</th><th>支払いの決まり</th><th>送り方</th><th>付箋メモ</th><th></th></tr></thead><tbody>' +
-    list.map(c => '<tr class="link" data-id="' + esc(c.id) + '"' + (c.active === false ? ' style="opacity:.55;"' : '') + '><td>' + esc(c.code) + '</td><td>' + esc(c.name) + '</td><td>' + esc([c.dept, c.person].filter(Boolean).join('　')) + '</td><td>' + esc(SK.termsLabel(c.terms)) + (c.termsCheck ? ' <span class="tag mid">要確認</span>' : '') + '</td><td>' + esc(c.sendBy || '') + '</td>' + stkCell(c, 'cust') + '<td>' + (c.active === false ? '<span class="tag">使わない</span>' : '') + '</td></tr>').join('') + '</tbody></table></div></div>';
+    '<div class="card"><div class="wrapx"><table class="t"><thead><tr>' + (sel ? '<th style="width:34px;"></th>' : '') + '<th>コード</th><th>会社名</th><th>部署・担当</th><th>支払いの決まり</th><th>送り方</th><th>付箋メモ</th><th></th></tr></thead><tbody>' +
+    list.map(c => '<tr class="link" data-id="' + esc(c.id) + '"' + (c.active === false ? ' style="opacity:.55;"' : '') + '>' + (sel ? '<td data-ck="1"><input type="checkbox" data-cs="' + esc(c.id) + '"' + (sel.ids.has(c.id) ? ' checked' : '') + ' style="width:20px;height:20px;"></td>' : '') + '<td>' + esc(c.code) + '</td><td>' + esc(c.name) + '</td><td>' + esc([c.dept, c.person].filter(Boolean).join('　')) + '</td><td>' + esc(SK.termsLabel(c.terms)) + (c.termsCheck ? ' <span class="tag mid">要確認</span>' : '') + '</td><td>' + esc(c.sendBy || '') + '</td>' + stkCell(c, 'cust') + '<td>' + (c.active === false ? '<span class="tag">使わない</span>' : '') + '</td></tr>').join('') + '</tbody></table></div></div>';
   $('cq').oninput = () => { ST.cq = $('cq').value; drawCust(); $('cq').focus(); $('cq').setSelectionRange(99, 99); };
   $('co').onchange = () => { ST.conly = $('co').checked; drawCust(); };
+  $('cSelB').onclick = () => { ST.cSel = sel ? null : { ids: new Set() }; drawCust(); };
+  if (sel) {
+    M.querySelectorAll('[data-ck]').forEach(td => td.onclick = ev => ev.stopPropagation());
+    M.querySelectorAll('[data-cs]').forEach(b => b.onchange = () => { if (b.checked) sel.ids.add(b.dataset.cs); else sel.ids.delete(b.dataset.cs); $('cSelN').textContent = sel.ids.size; });
+    $('cAll').onclick = () => { list.forEach(c => sel.ids.add(c.id)); drawCust(); };
+    $('cNone').onclick = () => { sel.ids.clear(); drawCust(); };
+    $('cXls').onclick = () => custExport([...sel.ids].map(id => ST.custs.find(c => c.id === id)).filter(Boolean));
+    $('cDel').onclick = () => custDelete([...sel.ids].map(id => ST.custs.find(c => c.id === id)).filter(Boolean));
+  }
   $('nc').onclick = () => { const mx = Math.max(0, ...ST.custs.map(c => Number(c.code) || 0)); editCust({ id: newId('c'), code: String(mx + 1).padStart(4, '0'), name: '', honor: '様', terms: plain(ST.cfg.defTerms), sendBy: '紙', active: true, isNew: true }); };
   M.querySelectorAll('tr.link').forEach(tr => tr.onclick = () => editCust(plain(ST.custs.find(c => c.id === tr.dataset.id))));
   wireStk(M, id => plain(ST.custs.find(c => c.id === id)), async c => { if (await saveCustSticky(c)) drawCust(); });
+}
+/* 得意先を Excel に出す：項目を選ぶ窓を出す */
+const CUST_COLS = [['code', 'コード'], ['name', '会社名'], ['kana', 'フリガナ'], ['dept', '部署'], ['person', '担当者'], ['honor', '敬称'], ['zip', '郵便番号'], ['addr1', '住所1'], ['addr2', '住所2'], ['tel', 'TEL'], ['fax', 'FAX'], ['email', 'メール'], ['terms', '支払いの決まり'], ['sendBy', '送り方'], ['active', '使う'], ['memo', 'メモ'], ['sticky', '付箋メモ']];
+function custExport(list) {
+  if (!list.length) return alert('得意先を選んでください（左の四角を押す）。');
+  const w = document.createElement('div'); w.id = 'ask';
+  w.innerHTML = '<div class="card" style="max-width:560px;"><h2>Excel に出す（' + list.length + ' 社）</h2><div class="note">出す項目を選んでください。</div><div class="row" style="margin:8px 0;"><button class="b sm" id="xa">全部選ぶ</button><button class="b sm" id="xn">全部外す</button></div>' +
+    '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px 10px;">' + CUST_COLS.map(c => '<label style="display:flex;gap:6px;align-items:center;"><input type="checkbox" data-xc="' + c[0] + '" checked style="width:18px;height:18px;">' + c[1] + '</label>').join('') + '</div>' +
+    '<div class="row" style="margin-top:14px;"><span class="sp"></span><button class="b" id="xx">やめる</button><button class="b dark" id="xo">Excel をダウンロード</button></div></div>';
+  document.body.appendChild(w);
+  const boxes = [...w.querySelectorAll('[data-xc]')];
+  w.querySelector('#xa').onclick = () => boxes.forEach(b => b.checked = true);
+  w.querySelector('#xn').onclick = () => boxes.forEach(b => b.checked = false);
+  w.querySelector('#xx').onclick = () => w.remove();
+  w.querySelector('#xo').onclick = async () => {
+    const cols = CUST_COLS.filter(c => boxes.find(b => b.dataset.xc === c[0] && b.checked));
+    if (!cols.length) return alert('項目を1つ以上選んでください。');
+    const v = (c, k) => k === 'terms' ? SK.termsLabel(c.terms) : k === 'active' ? (c.active === false ? '使わない' : '使う') : k === 'sticky' ? ((stickyOf(c) || {}).t || '') : (c[k] == null ? '' : c[k]);
+    const rows = [cols.map(c => c[1])].concat(list.slice().sort((a, b) => String(a.code).localeCompare(String(b.code))).map(c => cols.map(k => v(c, k[0]))));
+    try { await xlsxOf([{ name: '得意先', rows, cols: cols.map(c => ({ wch: ['name', 'addr1', 'addr2', 'memo', 'sticky'].includes(c[0]) ? 30 : ['terms', 'email', 'dept', 'kana'].includes(c[0]) ? 20 : 11 })) }], '得意先_' + today().replace(/-/g, '') + '.xlsx'); w.remove(); } catch (e) { alert(e.message); }
+  };
+}
+/* 得意先の削除：行は消さずに「削除」の印を付けて画面から隠す（スプレッドシートには残る）。入金がまだの請求書がある得意先は知らせる */
+async function custDelete(list) {
+  if (!list.length) return alert('得意先を選んでください（左の四角を押す）。');
+  const open = list.map(c => ({ c, n: ST.invs.filter(i => i.custId === c.id && ['未入金', '期日超え', '一部入金'].includes(stateOf(i))).length })).filter(x => x.n);
+  const msg = list.length + ' 社の得意先を削除しますか？\n' + list.slice(0, 8).map(c => '・' + c.code + ' ' + c.name).join('\n') + (list.length > 8 ? '\n…ほか ' + (list.length - 8) + ' 社' : '') +
+    (open.length ? '\n\n※入金がまだの請求書がある得意先があります：\n' + open.map(x => '・' + x.c.name + '（' + x.n + ' 枚）').join('\n') : '') +
+    '\n\n請求書・入金はそのまま残ります。得意先はスプレッドシートに「削除」の印を付けて残し、画面と請求書の得意先の選び方から消えます。';
+  if (!(await okBox(msg, '削除する'))) return;
+  busy('削除しています…');
+  try {
+    for (const c0 of list) { const c = plain(c0); c.deleted = nowStr() + ' ' + (ST.me.name || ''); c.active = false; await gas('saveCust', { c }); await store.put(C.cust, c.id, c); ST.custs = ST.custs.filter(x => x.id !== c.id).concat([c]); }
+    ST.custs.sort((x, y) => String(x.code).localeCompare(String(y.code)));
+    ST.cSel = { ids: new Set() };
+  } catch (e) { alert('削除できませんでした：' + e.message); } finally { busy(''); }
+  drawCust();
 }
 /* 得意先の付箋だけを保存する */
 async function saveCustSticky(c) {
@@ -1227,6 +1309,8 @@ function drawCfg() {
     S('自社の締め（決算）', '<select id="oc">' + Array.from({ length: 12 }, (_, k) => k + 1).map(m => '<option value="' + m + '"' + (fyEnd() === m ? ' selected' : '') + '>' + m + '月末で締める（' + (m % 12 + 1) + '/1〜' + m + '月末）</option>').join('') + '</select>', '1年の締め。請求書・入金・領収書の一覧と提出データで「年度ごと」を選べます（2026-11-06 ユーザー：3/1〜2月末）。') +
     S('支払いの決まりの初め', '<span class="row" style="gap:4px;flex-wrap:nowrap;"><select id="dc">' + CLOSES.map(o => '<option value="' + o[0] + '"' + (String(Math.min(31, g.defTerms.close)) === o[0] ? ' selected' : '') + '>' + o[1] + '</option>').join('') + '</select><select id="dm">' + PMS.map(o => '<option value="' + o[0] + '"' + (String(g.defTerms.months) === o[0] ? ' selected' : '') + '>' + o[1] + '</option>').join('') + '</select><select id="dd">' + PDAYS.map(o => '<option value="' + o[0] + '"' + (String(Math.min(31, g.defTerms.day)) === o[0] ? ' selected' : '') + '>' + o[1] + '</option>').join('') + '</select></span>', '新しい得意先の初めの値。') +
     S('領収書の但し書き', I('rp', g.rcpPurpose), '新しい領収書の初めの値。') +
+    S('相殺伝票の番号', '<span class="row" style="gap:4px;flex-wrap:nowrap;">' + I('on_p', g.offNo.prefix) + I('on_d', g.offNo.digits, 1) + I('on_n', g.offNo.next, 1) + '</span>', '次は「' + esc(g.offNo.prefix + String(g.offNo.next).padStart(g.offNo.digits, '0')) + '」。') +
+    S('相殺伝票の内容', I('op', g.offPurpose), '新しい相殺伝票の「内容」の初めの値。') +
     '</div><div class="card"><h2>付箋の色の決まり</h2><div class="note">色ごとに、何に使うかを書いておけます。付箋を貼る画面の色の選び方と、請求書の一覧の上に出ます。空の色は出しません。</div>' +
     STK.map(x => S('<span class="stk ' + x[0] + '">' + x[1] + '</span>', '<input data-sr="' + x[0] + '" value="' + esc(((g.stkRules || {})[x[0]]) || '') + '" placeholder="例：入金の確認がいる">', '')).join('') +
     '</div><div class="card"><h2>送り状</h2>' +
@@ -1244,7 +1328,7 @@ function drawCfg() {
       company: { name: $('c_name').value.trim(), zip: $('c_zip').value.trim(), addr: $('c_addr').value.trim(), tel: $('c_tel').value.trim(), fax: $('c_fax').value.trim(), regNo: $('c_reg').value.trim() },
       bank: $('bank').value.trim(), greeting: $('greet').value, stamps: $('stp').checked, rates: readRates(), taxRound: $('tr').value, amtRound: $('ar').value,
       invNo: { prefix: $('in_p').value.trim(), digits: num($('in_d').value) || 5, next: num($('in_n').value) || 1 }, rcpNo: { prefix: $('rn_p').value.trim(), digits: num($('rn_d').value) || 5, next: num($('rn_n').value) || 1 },
-      defTerms: { close: Number($('dc').value), months: Number($('dm').value), day: Number($('dd').value) }, rcpPurpose: $('rp').value, coverPerson: $('cp').value, coverText: $('ct').value, memoTax: $('mt').value, fyEnd: Number($('oc').value) || 2, stkRules: Object.fromEntries([...M.querySelectorAll('[data-sr]')].map(e => [e.dataset.sr, e.value.trim()])),
+      defTerms: { close: Number($('dc').value), months: Number($('dm').value), day: Number($('dd').value) }, rcpPurpose: $('rp').value, offNo: { prefix: $('on_p').value.trim() || 'K', digits: num($('on_d').value) || 5, next: num($('on_n').value) || 1 }, offPurpose: $('op').value, coverPerson: $('cp').value, coverText: $('ct').value, memoTax: $('mt').value, fyEnd: Number($('oc').value) || 2, stkRules: Object.fromEntries([...M.querySelectorAll('[data-sr]')].map(e => [e.dataset.sr, e.value.trim()])),
       approvers: [...M.querySelectorAll('[data-apk]')].map(tr => { const u = tr.querySelector('[data-ap="uid"]'), uid = u.value, p = (ST.people || []).find(x => x.uid === uid); return { label: tr.querySelector('[data-ap="label"]').value.trim() || '承認', uid, name: uid ? (p ? p.name : (u.selectedOptions[0] || {}).textContent || uid) : '', stamp: tr.querySelector('[data-ap="stamp"]').value }; })
     };
   }
