@@ -29,6 +29,7 @@
   button.b.danger { border-color: var(--warn); color: var(--warn); }
   button.b.sm { padding: 4px 9px; font-size: .85rem; }
   button.b:disabled { opacity: .5; cursor: default; }
+  table.ed input[readonly] { background: #f1f3f2; color: #333; }
   input, select, textarea { font: inherit; padding: 6px 8px; border: 1.5px solid #7f8f85; border-radius: 5px; background: #fff; color: var(--ink); min-width: 0; }
   textarea { width: 100%; min-height: 60px; }
   textarea.paperw { font-size: 15px; line-height: 1.7; padding: 6px 10px; font-family: 'BIZ UDMincho Medium','BIZ UD明朝 Medium','BIZ UDMincho','Yu Mincho','YuMincho','Hiragino Mincho ProN','Noto Serif JP',serif; box-sizing: content-box; }   /* 1em＝全角1字。紙と同じ字数で折り返す */
@@ -129,12 +130,12 @@
 <main id="m"></main>
 <div id="busy"></div>
 
-<script src="calc.js?v=Ver.請求20261106-28"></script>
+<script src="calc.js?v=Ver.請求20261106-29"></script>
 <script type="module">
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
-import { getFirestore, collection, doc, getDoc, getDocs, setDoc, deleteDoc, writeBatch, runTransaction } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
-const APP_VER = 'Ver.請求20261106-28';   // 版の名前は「Ver.請求YYYYMMDD-NN」（ユーザー指示 2026-11-06）
+import { getFirestore, collection, doc, getDoc, getDocs, setDoc, deleteDoc, writeBatch, runTransaction, onSnapshot } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
+const APP_VER = 'Ver.請求20261106-29';   // 版の名前は「Ver.請求YYYYMMDD-NN」（ユーザー指示 2026-11-06）
 const API = 'https://script.google.com/macros/s/AKfycbzpJgqJOqQz5180PQF2S3kVN7TWg0c1dnyUUUNuCZtzy5_pmKEhAkw5w3gqSj31EEA1/exec';   // Apps Script「請求管理」（ポータル・給与とは別）
 /* ログインは給与アプリと同じ（ユーザー指示 2026-11-05）：ポータルの Firebase、メールとパスワード。入れるのはマスターと「請求管理」の権限（users.canInvoice）がある人 */
 const app = initializeApp({ apiKey: 'AIzaSyDVR4p4DO4s9h70uPlXUVlhNcMP9-YkQ5Q', authDomain: 'genba-portal-9077b.firebaseapp.com', projectId: 'genba-portal-9077b' });
@@ -206,7 +207,7 @@ async function checkVer() {
     if (m && m[1] !== APP_VER) { ST.newVer = m[1]; if (canAutoUpd()) { showUpdate(); $('upd').textContent = '新しいVer（' + m[1] + '）に入れ替えています…'; refreshApp(); } else showUpdate(); }
   } catch (e) {}
 }
-document.addEventListener('visibilitychange', checkVer); setInterval(checkVer, 600000); setTimeout(checkVer, 3000);
+document.addEventListener('visibilitychange', checkVer); setInterval(checkVer, 60000); setTimeout(checkVer, 3000);   // 1分ごと（AIテスト 2026-11-06：入れ替わりが数分遅れた）
 if ('serviceWorker' in navigator && !LOCAL) navigator.serviceWorker.register('sw.js').catch(() => {});
 
 /* サーバー（スプレッドシートの請求管理DBを書く） */
@@ -226,6 +227,40 @@ async function gas(action, data) {
   if (!d || !d.ok) throw new Error((d && d.m) || 'サーバーでエラーが発生しました。');
   return d.v;
 }
+
+/* ===== スプレッドシートへ後から書く順番待ちの列（提案7・ユーザー決定 2026-11-06：保存をさらに速く）。
+   保存は「画面の写し（Firestore）に書く → すぐ終わり」。スプレッドシート（正本・直した記録）には、この列から順に書く。
+   列はこのパソコンの中（localStorage）に置く。書けなかったら自動でやり直す。閉じても、次に開いたときに続きを書く。
+   スプレッドシート側は1つずつ「受け取り番号」を覚えていて、同じ物を2回書かない ===== */
+const QK = () => 'skQ_' + ((ST.me && ST.me.uid) || '');
+const qGet = () => { try { return JSON.parse(localStorage.getItem(QK()) || '[]'); } catch (e) { return []; } };
+const qSet = a => { localStorage.setItem(QK(), JSON.stringify(a)); qShow(); };
+const Q = { run: false, fail: 0, err: '', ng: [] };
+function qAdd(action, data, label) { const a = qGet(); a.push({ k: newId('q'), action, data, label: label || '', at: nowStr() }); qSet(a); qRun(); }
+function qShow() {
+  let e = $('qst'); if (!e) { e = document.createElement('span'); e.id = 'qst'; const la = $('loadAt'); if (!la) return; la.parentNode.insertBefore(e, la); }
+  const n = qGet().length;
+  e.innerHTML = n ? (Q.err ? '<span class="tag ng" title="' + esc(Q.err) + '">スプレッドシートに書けていません ' + n + ' 件（自動でやり直します）</span>　' : '<span class="tag mid">スプレッドシートへ書いています ' + n + ' 件</span>　') : '';
+}
+async function qRun() {
+  if (Q.run || !ST.me) return;
+  Q.run = true;
+  try {
+    for (;;) {
+      const a = qGet(); if (!a.length) break;
+      const batch = a.slice(0, 15);
+      let r;
+      try { r = await gas('batch', { items: batch.map(x => ({ k: x.k, action: x.action, data: x.data })) }); }
+      catch (e) { Q.err = e.message || String(e); Q.fail++; qShow(); await new Promise(ok => setTimeout(ok, Math.min(60000, 3000 * Math.pow(2, Q.fail)))); continue; }   // 通信・ログイン切れ・混み合い：消さずにやり直す
+      Q.err = ''; Q.fail = 0;
+      const done = new Set(batch.map(x => x.k));
+      qSet(qGet().filter(x => !done.has(x.k)));
+      ((r && r.ng) || []).forEach(n => { const x = batch.find(b => b.k === n.k) || {}; Q.ng.push(n); okBox('スプレッドシートに書けませんでした（' + (x.label || '') + '）：\n' + n.m + '\n\n画面の写しとスプレッドシートが違っています。上の「読み込み直す」を押して中身を確かめ、もう一度保存してください。', 'OK', true); });
+    }
+  } finally { Q.run = false; qShow(); }
+}
+window.addEventListener('online', () => qRun());
+document.addEventListener('visibilitychange', () => { if (!document.hidden) qRun(); });
 
 /* 画面のデータの置き場（Firestore の写し）。記録の正本はスプレッドシート（請求管理DB）。
    保存は「スプレッドシートに書く → 書けたら Firestore の写しを書く」の順（給与と同じく、写しと正本をそろえる）。
@@ -294,7 +329,9 @@ const OWNERS = ['sh@excureduct.co.jp', 'mh@excureduct.com'];   // オーナー�
 const isOwner = () => !!(ST.me && OWNERS.includes(ST.me.uid));
 const DEF_APV = [{ label: '代表者承認', name: '比嘉 伸治', uid: 'sh@excureduct.co.jp', stamp: 'maru' }, { label: '経理承認', name: '比嘉 美紀', uid: 'mh@excureduct.com', stamp: 'higa' }, { label: '担当者承認', name: '', uid: '', stamp: '' }];
 const STAMP_NAMES = [['maru', '代表者印（丸印）'], ['higa', '比嘉の印'], ['kaku', '角印'], ['', 'なし（名前の文字）']];
-const needApv = inv => !inv.fixed && inv.state !== '取消';   // 販売らくだから写した請求書（もう出した物）は承認なしで印刷できる
+/* 承認が要る請求書：このアプリで作った物と、販売らくだから写した 2026年度（切替後 2026/3/1〜）の物（提案2・ユーザー決定 2026-11-06：運用後にまとめて承認する）。
+   切替前（2026/2月末まで）の写しは承認なし。取消は承認なし */
+const needApv = inv => inv.state !== '取消' && (!inv.fixed || String(inv.date || '') >= '2026-03-01');
 const apvNeed = () => (ST.cfg.approvers || []).map((a, k) => a.uid ? k : -1).filter(k => k >= 0);
 const approved = inv => !needApv(inv) || apvNeed().every(k => inv.approvals && inv.approvals[k]);
 const apvLeft = inv => apvNeed().filter(k => !(inv.approvals && inv.approvals[k])).map(k => ST.cfg.approvers[k].name || ('欄' + (k + 1)));
@@ -384,12 +421,74 @@ async function boot() {
     $('reload').onclick = async e => { e.preventDefault(); if (ST.dirty && !(await okBox('保存していない変更があります。捨てて読み込み直しますか？', '読み込み直す'))) return; ST.dirty = false; ST.yearData = {}; boot(); };
     if (!ST.hasCfg && !ST.custs.length) ST.tab = 'cfg';
     draw();
+    qShow(); qRun(); liveOn(); apvBadge();
   } catch (e) { M.innerHTML = '<div class="card"><div class="msg">' + esc(e.message) + '</div></div>'; }
   busy('');
+}
+/* ===== ほかの人の保存をすぐ画面に出す（提案1・ユーザー決定 2026-11-06）。
+   画面の写し（Firestore）が変わると知らせが来るので、一覧を出し直し、上に「承認待ち ○件」を出す。
+   入力の途中・小窓が開いているときは出し直さず、終わってから出す ===== */
+function liveOn() {
+  if (LOCAL) return;
+  (ST.unsub || []).forEach(f => { try { f(); } catch (e) {} }); ST.unsub = [];
+  const now = () => Date.now();
+  const apply = (key, col) => s => {
+    let ch = false;
+    s.docChanges().forEach(x => {
+      const v = { ...x.doc.data(), id: x.doc.id };
+      const cur = ST[key].find(o => o.id === v.id);
+      if (x.type === 'removed' || (v.expireAt && v.expireAt < now())) { if (cur) { ST[key] = ST[key].filter(o => o.id !== v.id); ch = true; } return; }
+      if (cur && String(cur.updatedAt || '') === String(v.updatedAt || '') && JSON.stringify(cur.payments || null) === JSON.stringify(v.payments || null)) return;   // 同じ中身
+      if (key === 'invs') { tidyInv(v); Object.values(ST.yearData).forEach(a => { const k = a.findIndex(o => o.id === v.id); if (k >= 0) a[k] = v; }); Object.values(ST.rangeData || {}).forEach(a => { const k = a.findIndex(o => o.id === v.id); if (k >= 0) a[k] = v; }); }
+      ST[key] = ST[key].filter(o => o.id !== v.id).concat([v]);
+      if (key === 'custs') ST.custs.sort((a, b) => String(a.code).localeCompare(String(b.code)));
+      ch = true;
+      if (key === 'invs' && ST.edit && ST.edit.id === v.id && !s.metadata.hasPendingWrites && String(ST.edit.updatedAt || '') !== String(v.updatedAt || '')) liveEdited(v);
+    });
+    if (ch) { apvBadge(); liveRedraw(); }
+  };
+  ST.unsub.push(onSnapshot(collection(db, C.inv), apply('invs'), () => {}));
+  ST.unsub.push(onSnapshot(collection(db, C.rcp), apply('rcps'), () => {}));
+  ST.unsub.push(onSnapshot(collection(db, C.cust), apply('custs'), () => {}));
+}
+/* 開いている請求書をほかの人が保存した */
+function liveEdited(v) {
+  if (!$('sv') && !$('see')) return;   // 請求書の画面ではない
+  if (!ST.dirty && !document.querySelector('#ask')) { ST.edit = plain(v); drawInvEdit(); liveNote('この請求書を ' + (v.updatedBy || 'ほかの人') + ' が ' + String(v.updatedAt || '').slice(11, 16) + ' に保存したので、最新の中身に入れ替えました。'); return; }
+  liveNote('この請求書を ' + (v.updatedBy || 'ほかの人') + ' が ' + String(v.updatedAt || '').slice(11, 16) + ' に保存しました。いま直している中身は保存できません（保存すると止まります）。「読み込み直す」を押してから直してください。', true);
+}
+function liveNote(t, red) {
+  const old = $('liveN'); if (old) old.remove();
+  const e = document.createElement('div'); e.id = 'liveN'; e.className = 'card' + (red ? ' err' : ''); e.style.cssText = 'border-left:6px solid ' + (red ? 'var(--warn)' : 'var(--accent)') + ';font-weight:700;';
+  e.textContent = t; M.insertBefore(e, M.firstChild);
+}
+/* 一覧を出し直す（スクロールの位置と、打っていた欄はそのまま） */
+let LIVE_T = 0;
+function liveRedraw() {
+  clearTimeout(LIVE_T);
+  LIVE_T = setTimeout(async () => {
+    if (ST.dirty || document.querySelector('#ask') || $('busy').style.display === 'flex' || ST.payBatch) { LIVE_T = setTimeout(liveRedraw, 3000); return; }
+    const y = window.scrollY, fa = document.activeElement, fid = fa && fa.id, sel = fa && fa.selectionStart;
+    if ($('lst') && ST.tab === 'inv') await drawInvList();
+    else if ($('pl') && ST.tab === 'pay') drawPay();
+    else if (ST.tab === 'rcp' && !ST.rcpOpen && $('rl')) drawRcp();
+    else return;
+    window.scrollTo(0, y);
+    if (fid && $(fid)) { $(fid).focus({ preventScroll: true }); try { if (sel != null) $(fid).setSelectionRange(sel, sel); } catch (e) {} }
+  }, 400);
+}
+/* 上の「承認待ち ○件」。押すと、自分の承認待ちの一覧を出す */
+function apvBadge() {
+  let e = $('apvB'); if (!e) { e = document.createElement('a'); e.id = 'apvB'; e.href = '#'; const la = $('loadAt'); if (!la) return; la.parentNode.insertBefore(e, la); }
+  const n = ST.me ? ST.invs.filter(i => myApvBox(i) >= 0).length : 0;
+  e.style.display = n ? '' : 'none';
+  e.innerHTML = '<span class="tag org" style="font-size:.95rem;">承認待ち ' + n + ' 件</span>　';
+  e.onclick = async ev => { ev.preventDefault(); if (ST.dirty && !(await okBox('保存していない変更があります。捨てて移りますか？', '捨てて移る'))) return; ST.dirty = false; const P = lt('invPer', ''); P.per = 'range'; P.from = KIRIKAE; P.to = '2099-12-31'; ST.filt = 'mine'; ST.q = ''; ST.tab = 'inv'; draw(); };
 }
 const OFF_ON = false;   // 相殺伝票を使うか（2026-11-06 ユーザー：今は使わない。要るときに true）
 const TABS = [['inv', '請求書'], ['pay', '入金'], ['rcp', '領収書'], ['cov', '送り状'], ['off', '相殺伝票'], ['cust', '得意先'], ['sub', '提出データ'], ['cfg', '設定']];
 function draw() {
+  ST.payBatch = false;
   if (ST.tab === 'off' && !OFF_ON) ST.tab = 'inv';
   $('nav').innerHTML = TABS.map(t => '<button data-t="' + t[0] + '" class="' + (ST.tab === t[0] ? 'on' : '') + '"' + (t[0] === 'off' && !OFF_ON ? ' disabled title="相殺伝票は今は使いません" style="opacity:.35;cursor:not-allowed;"' : '') + '>' + t[1] + '</button>').join('');
   $('nav').querySelectorAll('button').forEach(b => b.onclick = async () => { if (ST.dirty && !(await okBox('保存していない変更があります。捨てて移りますか？', '捨てて移る'))) return; ST.dirty = false; ST.tab = b.dataset.t; ST.rcpOpen = null; draw(); });
@@ -398,11 +497,32 @@ function draw() {
 }
 
 /* ===== 請求書の一覧 ===== */
+/* 昔の年（写しが消えた年）の請求書は、このパソコンの中（IndexedDB）に覚えておく（AIテスト 2026-11-06：すべての時期が11秒）。
+   スプレッドシート側が年ごとに「変わった印」を持っていて、変わった年だけ読み直す。ログアウトで消す */
+const IDB = {
+  db: null,
+  open() { if (this.db) return this.db; this.db = new Promise((ok, ng) => { const r = indexedDB.open('seikyu', 1); r.onupgradeneeded = () => r.result.createObjectStore('years'); r.onsuccess = () => ok(r.result); r.onerror = () => ng(r.error); }); return this.db; },
+  async get(k) { try { const d = await this.open(); return await new Promise(ok => { const q = d.transaction('years').objectStore('years').get(k); q.onsuccess = () => ok(q.result || null); q.onerror = () => ok(null); }); } catch (e) { return null; } },
+  async put(k, v) { try { const d = await this.open(); await new Promise(ok => { const t = d.transaction('years', 'readwrite'); t.objectStore('years').put(v, k); t.oncomplete = ok; t.onerror = ok; }); } catch (e) {} }
+};
+async function sheetYears(years) {
+  const need = years.map(String).filter(y => !ST.yearData[y]);
+  if (!need.length) return;
+  if (LOCAL) { for (const y of need) ST.yearData[y] = (await gas('year', { year: y })).map(tidyInv); return; }
+  const have = {}, cached = {};
+  for (const y of need) { const c = await IDB.get('y' + y); if (c) { cached[y] = c; have[y] = c.rev; } }
+  busy((need.length > 1 ? need[0] + '〜' + need[need.length - 1] : need[0]) + '年の請求書を読んでいます…');
+  let r; try { r = await gas('years', { years: need, have }); } finally { busy(''); }
+  for (const y of need) {
+    if (r.data && r.data[y]) { ST.yearData[y] = r.data[y].map(tidyInv); IDB.put('y' + y, { rev: r.revs[y], list: r.data[y] }); }
+    else ST.yearData[y] = cached[y] ? cached[y].list.map(tidyInv) : [];
+  }
+}
 async function invsOfYear(y) {
   y = String(y);
   const live = ST.invs.filter(i => String(i.date).slice(0, 4) === y);
   if (liveYear(y)) return live;
-  if (!ST.yearData[y]) { busy(y + '年の請求書をスプレッドシートから読んでいます…'); try { ST.yearData[y] = (await gas('year', { year: y })).map(tidyInv); } finally { busy(''); } }
+  await sheetYears([y]);
   const ids = new Set(live.map(i => i.id));
   return live.concat(ST.yearData[y].filter(i => !ids.has(i.id)));
 }
@@ -413,9 +533,10 @@ async function invsOfRange(from, to) {
   const live = ST.invs.filter(i => i.date >= from && i.date <= to);
   const yrs = []; for (let y = Number(from.slice(0, 4)); y <= Math.min(Number(to.slice(0, 4)), new Date().getFullYear() + 1); y++) yrs.push(String(y));
   if (yrs.every(liveYear)) return live;
-  if (!ST.rangeData[key]) { busy('請求書をスプレッドシートから読んでいます…'); try { ST.rangeData[key] = (await gas('range', { from, to })).map(tidyInv); } finally { busy(''); } }
+  const old = yrs.filter(y => !liveYear(y) && Number(y) >= 2000);
+  await sheetYears(old);   // 年ごとに覚えた物を使う（変わった年だけ読み直す）
   const ids = new Set(live.map(i => i.id));
-  return live.concat(ST.rangeData[key].filter(i => !ids.has(i.id)));
+  return live.concat(old.flatMap(y => ST.yearData[y] || []).filter(i => i.date >= from && i.date <= to && !ids.has(i.id)));
 }
 /* 期間の欄（入金・領収書の一覧。データは手元にある物を期間でしぼる） */
 function perBar(key, label) {
@@ -474,6 +595,23 @@ async function doApprove(inv, k, on) {
   try { await saveInv(inv, on ? '承認' : '承認を取り消し'); return true; } catch (e) { alert('承認を保存できませんでした：' + e.message); return false; }
 }
 
+/* まとめて承認（提案2）。自分の欄だけ押す。1枚ずつ最新を確かめてから保存する */
+async function apvMany(list) {
+  const tot = list.reduce((s, i) => s + calcOf(i).total, 0);
+  if (!(await okBox(list.length + ' 枚（合計 ¥' + yen(tot) + '）を、まとめて承認します。\n番号：' + list.slice(0, 12).map(i => i.no).join('、') + (list.length > 12 ? ' ほか' : '') + '\n' + ST.me.name + ' の印を押します。', 'まとめて承認する'))) return;
+  const bad = []; let n = 0; ST.hold = true;
+  try { for (const i0 of list) {
+    const inv = plain(i0), k = myApvBox(inv); if (k < 0) continue;
+    busy('承認しています… ' + (++n) + ' / ' + list.length);
+    try {
+      await staleCheck(C.inv, inv, '請求書');
+      const a = ST.cfg.approvers[k]; inv.approvals = Object.assign({}, inv.approvals || {}); inv.approvals[k] = { uid: ST.me.uid, name: ST.me.name, stamp: a.stamp || '', at: nowStr() };
+      await saveInv(inv, '承認（まとめて）');
+    } catch (e) { bad.push(inv.no + '：' + e.message); }
+  } } finally { ST.hold = false; busy(''); }
+  await okBox(bad.length ? '承認できなかった物があります（' + bad.length + ' 枚）：\n' + bad.join('\n') : n + ' 枚を承認しました。', 'OK', true);
+  drawInvList();
+}
 async function drawInvList() {
   const seq = ST.drawSeq = (ST.drawSeq || 0) + 1;
   const y0 = new Date().getFullYear(), years = []; for (let y = y0 + 1; y >= 2011; y--) years.push(String(y));
@@ -481,7 +619,7 @@ async function drawInvList() {
   M.innerHTML = '<div class="card"><div class="row"><b style="font-size:1.1rem;">請求書</b><label class="ltl">発行日の期間 <select id="yr">' + years.map(y => '<option value="' + y + '"' + (y === P.per ? ' selected' : '') + '>' + y + '年</option>').join('') + '<option value="all"' + (P.per === 'all' ? ' selected' : '') + '>すべての時期</option><option value="range"' + (P.per === 'range' ? ' selected' : '') + '>いつからいつまで</option>' + closeOpt(P.per === 'close') + '</select></label>' +
     (P.per === 'close' ? fySel('id="cm"', P.cm) : '') +
     (P.per === 'range' ? '<input type="date" id="rf1" value="' + esc(P.from || (y0 + '-01-01')) + '">〜<input type="date" id="rf2" value="' + esc(P.to || today()) + '"><button class="b sm" id="rgo">この期間で出す</button>' : '') +
-    '<select id="fl"><option value="all">すべて</option><option value="open">入金がまだの物</option><option value="late">期日超え</option><option value="paid">入金済み</option><option value="apv">未承認の物</option><option value="cancel">取消</option></select>' +
+    '<select id="fl"><option value="all">すべて</option><option value="open">入金がまだの物</option><option value="late">期日超え</option><option value="paid">入金済み</option><option value="apv">未承認の物</option><option value="mine">自分の承認待ち</option><option value="resend">直したあと送り直していない</option><option value="cancel">取消</option></select>' +
     '<input id="q" placeholder="さがす（番号・得意先・件名・金額・付箋）" style="width:240px;" value="' + esc(ST.q) + '"><span class="sp"></span><button class="b dark" id="nw">＋ 新しい請求書</button></div>' +
     '<div id="ltb"></div>' + (stkLegend() ? '<div style="margin-top:6px;font-size:.9rem;"><b style="margin-right:6px;">付箋の色</b>' + stkLegend() + '</div>' : '') + '<div class="note" style="margin-top:6px;">入金がまだの請求書は、期間に関係なく「入金」の画面にも出ます。行を押すと開きます。月ごとに区切って出します。</div></div><div class="card" id="lst">読み込んでいます…</div>';
   $('fl').value = ST.filt;
@@ -506,6 +644,8 @@ async function drawInvList() {
       if (ST.filt === 'paid' && x.st !== '入金済み') return false;
       if (ST.filt === 'cancel' && x.st !== '取消') return false;
       if (ST.filt === 'apv' && approved(x.i)) return false;
+      if (ST.filt === 'mine' && myApvBox(x.i) < 0) return false;
+      if (ST.filt === 'resend' && !x.i.resend) return false;
       // 金額でも探せる（ユーザー指示 2026-11-06：電子帳簿保存法の「金額で探せる」。カンマ・円・¥はあってもなくてもよい。合計・税抜・消費税のどれかに入っていれば当たり）
       const qn = q.replace(/[,，¥￥円\s]/g, ''), byAmt = /^\d+$/.test(qn) && [x.c.total, x.c.sub, x.c.tax].some(v => String(Math.round(Number(v) || 0)).includes(qn));
       if (q && !byAmt && ![x.i.no, x.name, x.i.title, (x.i.to || {}).person, (stickyOf(x.i) || {}).t].join(' ').includes(q)) return false;
@@ -513,10 +653,12 @@ async function drawInvList() {
     }));
     const sumOf = a => a.filter(x => x.st !== '取消').reduce((s, x) => s + x.c.total, 0);
     const row = x => { const k = myApvBox(x.i); return '<tr class="link" data-id="' + esc(x.i.id) + '"><td><b>' + esc(x.i.no || '（番号なし）') + '</b></td><td>' + dShort(x.i.date) + '</td><td>' + esc(x.name) + '</td><td>' + esc(x.i.title || ((x.i.lines || []).find(l => l.name) || {}).name || '') + '</td><td class="n">' + yen(x.c.total) + '</td><td>' + dShort(x.i.due) + '</td><td>' + stTag(x.st) + '</td>' +
-      '<td style="white-space:nowrap;">' + apvTag(x.i) + (k >= 0 ? ' <button class="b sm dark" data-apvl="' + esc(x.i.id) + '" data-k="' + k + '">承認する</button>' : '') + '</td><td>' + (preSw(x.i) ? '<span class="tag pre">切替前</span>' : esc(x.i.sentBy || '')) + (x.i.sentAt && x.i.sentAt !== '不明' ? ' <span class="note">' + dShort(x.i.sentAt) + '</span>' : '') + (!x.i.sentAt && x.i.sentBy !== '不明' && !preSw(x.i) && x.st !== '取消' ? ' <span class="tag mid">まだ送っていない</span>' : '') + '</td>' + stkCell(x.i, 'inv') + '</tr>'; };
-    $('lst').innerHTML = rows.length ? '<div class="wrapx"><table class="t"><thead><tr><th>番号</th><th>発行日</th><th>得意先</th><th>件名・品名</th><th class="n">合計</th><th>入金予定日</th><th>入金</th><th>承認</th><th>送り方</th><th>付箋メモ</th></tr></thead><tbody>' +
+      '<td style="white-space:nowrap;">' + apvTag(x.i) + (k >= 0 ? ' <button class="b sm dark" data-apvl="' + esc(x.i.id) + '" data-k="' + k + '">承認する</button>' : '') + '</td><td>' + (preSw(x.i) ? '<span class="tag pre">切替前</span>' : esc(x.i.sentBy || '')) + (x.i.sentAt && x.i.sentAt !== '不明' ? ' <span class="note">' + dShort(x.i.sentAt) + '</span>' : '') + (!x.i.sentAt && x.i.sentBy !== '不明' && !preSw(x.i) && x.st !== '取消' ? ' <span class="tag mid">まだ送っていない</span>' : '') + (x.i.resend && x.st !== '取消' ? ' <span class="tag ng">直したあと送り直していない</span>' : '') + '</td>' + stkCell(x.i, 'inv') + '</tr>'; };
+    const mine = rows.filter(x => myApvBox(x.i) >= 0);
+    $('lst').innerHTML = (mine.length ? '<div class="row" style="margin-bottom:8px;"><span class="note">いま出ている中で、自分（' + esc(ST.me.name) + '）の承認待ちが <b>' + mine.length + ' 枚</b>あります。</span><button class="b dark" id="apvAll">この ' + mine.length + ' 枚をまとめて承認する</button></div>' : '') + (rows.length ? '<div class="wrapx"><table class="t"><thead><tr><th>番号</th><th>発行日</th><th>得意先</th><th>件名・品名</th><th class="n">合計</th><th>入金予定日</th><th>入金</th><th>承認</th><th>送り方</th><th>付箋メモ</th></tr></thead><tbody>' +
       ltGroups('inv', rows).map(g => monRow(g, 10, '合計 ' + yen(sumOf(g.rows)) + ' 円') + g.rows.map(row).join('')).join('') +
-      '</tbody><tfoot><tr><td colspan="4">' + rows.length + ' 枚（取消を除いた合計）</td><td class="n">' + yen(sumOf(rows)) + '</td><td colspan="5"></td></tr></tfoot></table></div>' : '<div class="note">当てはまる請求書はありません。</div>';
+      '</tbody><tfoot><tr><td colspan="4">' + rows.length + ' 枚（取消を除いた合計）</td><td class="n">' + yen(sumOf(rows)) + '</td><td colspan="5"></td></tr></tfoot></table></div>' : '<div class="note">当てはまる請求書はありません。</div>');
+    if ($('apvAll')) $('apvAll').onclick = () => apvMany(mine.map(x => x.i));
     $('lst').querySelectorAll('tr.link').forEach(tr => tr.onclick = () => openInv(plain(list.find(i => i.id === tr.dataset.id))));
     wireStk($('lst'), id => list.find(i => i.id === id), async i => { if (await saveInvSticky(i)) { const k = list.findIndex(x => x.id === i.id); list[k] = Object.assign(list[k], { sticky: i.sticky }); fill(); } });
     $('lst').querySelectorAll('[data-apvl]').forEach(b => b.onclick = async ev => { ev.stopPropagation(); const i = list.find(x => x.id === b.dataset.apvl); if (await doApprove(i, +b.dataset.k, true)) drawInvList(); });
@@ -575,18 +717,24 @@ async function saveInv(inv, why) {
   if (!inv.createdAt) { inv.createdAt = nowStr(); inv.createdBy = ST.me.name; }
   inv.updatedAt = nowStr(); inv.updatedBy = ST.me.name;
   const d = plain(inv); delete d.isNew; delete d.fromSheet;
-  busy('保存しています…');
+  const sheetData = { inv: plain(d), calc: { sub: c.sub, tax: c.tax, total: c.total, groups: c.groups, payState: stateOf(d) }, why: why || '', at: nowStr() };
+  if (!ST.hold) busy('保存しています…');
   try {
-    await gas('saveInv', { inv: d, calc: { sub: c.sub, tax: c.tax, total: c.total, groups: c.groups, payState: stateOf(d) }, why: why || '' });
     d.expireAt = expireOf(d);
-    try { await store.put(C.inv, d.id, d); } catch (e) { throw new Error('スプレッドシートには書けましたが、画面の写しを書けませんでした（' + e.message + '）。開き直してください。'); }
-  } finally { busy(''); }
+    await store.put(C.inv, d.id, d);   // 画面の写しに先に書く（提案7）
+  } finally { if (!ST.hold) busy(''); }
+  qAdd('saveInv', sheetData, '請求書 ' + d.no + ' ' + (why || ''));   // スプレッドシートには後から（順番待ち）
+  setTimeout(apvBadge, 0);   // 承認待ちの数を出し直す
   ST.invs = ST.invs.filter(x => x.id !== d.id).concat([d]);
   Object.values(ST.yearData).forEach(a => { const k = a.findIndex(x => x.id === d.id); if (k >= 0) a[k] = d; });
   delete inv.isNew; delete inv.fromSheet;
   return d;
 }
 function openInv(inv) { ST.edit = inv; ST.dirty = false; drawInvEdit(); }
+/* 合計の欄（明細を打つたびに、ここだけ書き直す） */
+const totHtml = c => c.groups.map(g => '<div><span>' + esc(SK.groupLabel(g)) + ' 対象（税抜）</span><span>' + yen(g.base) + '</span></div>' + (g.rate ? '<div><span>　消費税（' + g.rate + '%）</span><span>' + yen(g.tax) + '</span></div>' : '')).join('') +
+  '<div><span>税抜合計</span><span>' + yen(c.sub) + '</span></div><div><span>消費税</span><span>' + yen(c.tax) + '</span></div><div class="sum"><span>合計（今回ご請求額）</span><span>¥' + yen(c.total) + '</span></div>' +
+  (c.missing.length ? '<div class="msg">発行日に使う税率が設定にありません：' + esc(c.missing.map(SK.kindName).join('・')) + '</div>' : '');
 /* 請求書の画面の承認の欄（3つ）。自分の欄だけ押せる */
 function apvCard(inv) {
   if (!needApv(inv) || inv.isNew) return inv.isNew ? '<div class="card"><div class="note">保存すると番号が付き、承認（' + apvNeed().map(k => ST.cfg.approvers[k].name).join('・') + '）を受けられます。印刷・PDFは承認が全部済んでからです。</div></div>' : '';
@@ -597,6 +745,10 @@ function apvCard(inv) {
         (mine ? (r ? '<button class="b sm" data-apv="' + k + '" data-on="0">取り消す</button>' : '<button class="b sm dark" data-apv="' + k + '" data-on="1">承認する</button>') : '') + '</div></div>'; }).join('') + '</div></div></div>';
 }
 function drawInvEdit() {
+  /* 描き直しても、打っていた欄に戻す（AIテスト 2026-11-06：日付・得意先を変えると入力の場所が消えた） */
+  const fa = document.activeElement, fr = fa && M.contains(fa) && fa.closest ? fa.closest('tr[data-k]') : null;
+  const fkey = !fa || !M.contains(fa) ? null : fa.id ? '#' + fa.id : fr && fa.dataset.f ? '#ln tr[data-k="' + fr.dataset.k + '"] [data-f="' + fa.dataset.f + '"]' : fa.dataset && fa.dataset.to ? '[data-to="' + fa.dataset.to + '"]' : null;
+  setTimeout(() => { if (!fkey) return; const e = M.querySelector(fkey); if (e && document.activeElement !== e) e.focus({ preventScroll: true }); }, 0);
   const inv = ST.edit, ro = !!inv.fixed, c = calcOf(inv), st = stateOf(inv), cust = custOf(inv.custId);
   const to = inv.to || {};
   const custOpts = '<option value="">（得意先を選ぶ）</option>' + ST.custs.filter(x => x.active !== false || x.id === inv.custId).map(x => '<option value="' + esc(x.id) + '"' + (x.id === inv.custId ? ' selected' : '') + '>' + esc(x.code + '　' + x.name + (x.dept ? '　' + x.dept : '') + (x.person ? '　' + x.person : '')) + '</option>').join('');
@@ -604,11 +756,11 @@ function drawInvEdit() {
     ? '<tr class="txt" data-k="' + k + '"><td colspan="5">' + '<textarea data-f="name" rows="' + Math.min(6, Math.max(1, Math.ceil(wlen(l.name || '') / 30))) + '" placeholder="文字だけの行（見出し・説明など）"' + (ro ? ' disabled' : '') + '>' + esc(l.name || '') + '</textarea>' + '</td><td></td><td>' + '<textarea data-f="memo" rows="' + Math.min(6, Math.max(1, Math.ceil(wlen(l.memo || '') / 12))) + '"' + (ro ? ' disabled' : '') + '>' + esc(l.memo || '') + '</textarea>' + '</td><td style="white-space:nowrap;">' + (ro ? '' : '<button class="b sm" data-a="up">↑</button><button class="b sm" data-a="dn">↓</button><button class="b sm danger" data-a="rm">×</button>') + '</td></tr>'
     : '<tr data-k="' + k + '"><td>' + '<textarea data-f="name" rows="' + Math.min(6, Math.max(1, Math.ceil(wlen((l.code ? l.code + '　' : '') + (l.name || '')) / 30))) + '"' + (ro ? ' disabled' : '') + '>' + esc((l.code ? l.code + '　' : '') + (l.name || '')) + '</textarea>' + '</td>' +
       '<td><input data-f="qty" class="n" value="' + (l.qty == null ? '' : l.qty) + '"' + (ro ? ' disabled' : '') + '></td><td><input data-f="unit" list="units" value="' + esc(l.unit || '') + '"' + (ro ? ' disabled' : '') + '></td><td><input data-f="price" class="n" value="' + (l.price == null ? '' : yen(l.price)) + '"' + (ro ? ' disabled' : '') + '></td>' +
-      '<td><input data-f="amount" class="n" value="' + yen(SK.lineAmount(l, ST.cfg)) + '" title="数量×単価で出ます。数量・単価を空にすると金額を手で入れられます"' + (ro || (l.qty != null && l.price != null) ? ' disabled' : '') + '></td>' +
+      '<td><input data-f="amount" class="n" value="' + yen(SK.lineAmount(l, ST.cfg)) + '" title="数量×単価で出ます。数量・単価を空にすると金額を手で入れられます"' + (ro ? ' disabled' : (l.qty != null && l.price != null) ? ' readonly' : '') + '></td>' +
       '<td><select data-f="tax"' + (ro ? ' disabled' : '') + '>' + SK.KINDS.map(t => '<option value="' + t[0] + '"' + (t[0] === (l.tax || 'std') ? ' selected' : '') + '>' + t[1] + '</option>').join('') + '</select></td>' +
       '<td>' + '<textarea data-f="memo" rows="' + Math.min(6, Math.max(1, Math.ceil(wlen(l.memo || '') / 12))) + '"' + (ro ? ' disabled' : '') + '>' + esc(l.memo || '') + '</textarea>' + '</td><td style="white-space:nowrap;">' + (ro ? '' : '<button class="b sm" data-a="up">↑</button><button class="b sm" data-a="dn">↓</button><button class="b sm danger" data-a="rm">×</button>') + '</td></tr>';
   const pays = inv.payments || [], paid = SK.paid(inv);
-  M.innerHTML = '<div class="card"><div class="row"><button class="b" id="back">← 一覧へ</button><b style="font-size:1.1rem;">請求書 ' + esc(inv.no || '（新しい請求書・保存すると番号が付きます）') + '</b>' + stTag(st) + (inv.state === '取消' ? '' : '') + '<span class="sp"></span>' +
+  M.innerHTML = '<div class="card"><div class="row"><button class="b" id="back">← 一覧へ</button><b style="font-size:1.1rem;">請求書 ' + esc(inv.no || '（新しい請求書・保存すると番号が付きます）') + '</b>' + stTag(st) + (inv.resend && inv.state !== '取消' ? '<span class="tag ng">送ったあとに直しました。送り直してください</span>' : '') + (inv.state === '取消' ? '' : '') + '<span class="sp"></span>' +
     (ro ? '' : '<button class="b dark" id="sv">保存</button>') + (inv.state === '取消' ? '' : '<button class="b" id="pr">' + (wantCover(inv) ? '印刷（送り状つき）' : '印刷') + '</button><button class="b" id="pdf">PDFで保存</button>') + '<button class="b" id="see">紙を見る</button></div>' +
     (ro ? '<div class="note" style="margin-top:8px;">販売らくだから写した請求書です。中身は直せません（入金は入れられます）。同じ中身で新しく作るときは「複製」を押してください。</div>' : '') + '</div>' +
     (inv.isNew ? '' : stkPanel(inv, 'stkE')) + apvCard(inv) +
@@ -625,10 +777,7 @@ function drawInvEdit() {
     '<div class="card"><h2>明細</h2><div class="note" style="margin:-4px 0 8px;padding:6px 10px;background:#fff8e1;border-left:4px solid #e0b100;border-radius:4px;font-size:.92rem;"><b>月ごとにまとめた請求のときは、品名の右の「備考」に「○月分」「○月分出来高」のように書いてください。</b>（インボイスの決まりの「取引年月日」を示すため）</div><div class="wrapx"><table class="ed"><thead><tr><th>品名</th><th style="width:70px;">数量</th><th style="width:64px;">単位</th><th style="width:110px;">単価</th><th style="width:120px;">金額</th><th style="width:110px;">税</th><th style="width:170px;">備考</th><th style="width:110px;"></th></tr></thead><tbody id="ln">' +
     (inv.lines || []).map(lineRow).join('') + '</tbody></table></div><datalist id="units">' + ['式', '一式', 'm', '㎡', '台', '箇所', '本', '個', '枚', '人工', '時間', '日', 'kg', 'セット'].map(u => '<option value="' + u + '">').join('') + '</datalist>' +
     (ro ? '' : '<div class="row" style="margin-top:8px;"><button class="b sm" id="addL">＋ 行を足す</button><button class="b sm" id="addT">＋ 文字だけの行</button></div>') +
-    '<div class="row" style="margin-top:12px;align-items:flex-start;"><div style="flex:1;min-width:260px;"><label class="f">備考（請求書の下に出ます）</label><textarea id="nt"' + (ro ? ' disabled' : '') + '>' + esc(inv.note || '') + '</textarea></div><div class="tot">' +
-    c.groups.map(g => '<div><span>' + esc(SK.groupLabel(g)) + ' 対象（税抜）</span><span>' + yen(g.base) + '</span></div>' + (g.rate ? '<div><span>　消費税（' + g.rate + '%）</span><span>' + yen(g.tax) + '</span></div>' : '')).join('') +
-    '<div><span>税抜合計</span><span>' + yen(c.sub) + '</span></div><div><span>消費税</span><span>' + yen(c.tax) + '</span></div><div class="sum"><span>合計（今回ご請求額）</span><span>¥' + yen(c.total) + '</span></div>' +
-    (c.missing.length ? '<div class="msg">発行日に使う税率が設定にありません：' + esc(c.missing.map(SK.kindName).join('・')) + '</div>' : '') + '</div></div></div>' +
+    '<div class="row" style="margin-top:12px;align-items:flex-start;"><div style="flex:1;min-width:260px;"><label class="f">備考（請求書の下に出ます）</label><textarea id="nt"' + (ro ? ' disabled' : '') + '>' + esc(inv.note || '') + '</textarea></div><div class="tot" id="tot">' + totHtml(c) + '</div></div></div>' +
     (inv.isNew ? '' : '<div class="card"><div class="row"><h2 style="margin:0;">入金</h2>' + stTag(st) + '<span class="note">入金済み ' + yen(paid) + ' 円 ／ 残り ' + yen(Math.max(0, c.total - paid)) + ' 円</span><span class="sp"></span><button class="b dark" id="addP">入金を入れる</button></div>' +
       (pays.length ? '<table class="t" style="margin-top:8px;"><thead><tr><th>入金日</th><th class="n">入金額</th><th class="n">振込手数料</th><th>方法</th><th>メモ</th><th>入れた人</th><th></th></tr></thead><tbody>' + pays.map((p, k) => '<tr><td>' + (p.date ? dShort(p.date) : '不明') + '</td><td class="n">' + yen(p.amount) + '</td><td class="n">' + yen(p.fee) + '</td><td>' + esc(p.how) + '</td><td>' + esc(p.memo) + '</td><td class="note">' + esc(p.by) + ' ' + esc(String(p.at || '').slice(0, 16)) + '</td><td><button class="b sm danger" data-pr="' + k + '">消す</button></td></tr>').join('') + '</tbody></table>' : '<div class="note" style="margin-top:6px;">まだ入金はありません。</div>') + '</div>') +
     '<div class="card"><div class="row"><span class="note">' + (inv.createdAt ? '作成 ' + esc(inv.createdAt) + ' ' + esc(inv.createdBy || '') : '') + (inv.updatedAt ? '　最後に保存 ' + esc(inv.updatedAt) + ' ' + esc(inv.updatedBy || '') : '') + (inv.sentAt ? '　送った日 ' + esc(inv.sentAt === '不明' ? '不明' : dShort(inv.sentAt)) : '') + '</span><span class="sp"></span>' +
@@ -638,7 +787,8 @@ function drawInvEdit() {
   const re = () => { readForm(); drawInvEdit(); ST.dirty = true; };
   function readForm() {
     if (ro) { inv.due = $('due').value; inv.sentBy = $('sb').value; return; }
-    inv.date = $('dt').value; inv.due = $('due').value; inv.title = $('tt').value; inv.taxMode = taxIncl(inv) && ro ? inv.taxMode : 'out';   // 税抜だけ（2026-11-06） inv.sentBy = $('sb').value; inv.note = $('nt').value;
+    inv.date = $('dt').value; inv.due = $('due').value; inv.title = $('tt').value; inv.taxMode = taxIncl(inv) && ro ? inv.taxMode : 'out';   // 税抜だけ（2026-11-06）
+    inv.sentBy = $('sb').value; inv.note = $('nt').value;   // 2026-11-06 AIテスト：この2つが上の説明書きの中に入っていて、送り方・備考が保存されていなかった
     M.querySelectorAll('[data-to]').forEach(e => { inv.to[e.dataset.to] = e.value; });
     $('ln').querySelectorAll('tr').forEach(tr => {
       const l = inv.lines[+tr.dataset.k], g = f => { const e = tr.querySelector('[data-f="' + f + '"]'); return e ? e.value : undefined; };
@@ -653,11 +803,30 @@ function drawInvEdit() {
   $('back').onclick = async () => { if (ST.dirty && !(await okBox('保存していない変更があります。捨てて一覧へ戻りますか？', '捨てて戻る'))) return; ST.dirty = false; draw(); };
   M.querySelectorAll('input,select,textarea').forEach(e => { e.addEventListener('input', mark); });
   if (!ro) {
-    $('cu').onchange = () => { readForm(); const x = custOf($('cu').value); if (x) setCust(inv, x); drawInvEdit(); ST.dirty = true; };
-    $('dt').onchange = () => { readForm(); const x = custOf(inv.custId); if (x) inv.due = SK.dueOf(inv.date, x.terms || ST.cfg.defTerms); drawInvEdit(); ST.dirty = true; };
+    /* 得意先・発行日を変えたときも、表は描き直さずに入る欄だけ書き換える（Tab で次の欄へ移れるように） */
+    const putHead = () => {
+      $('due').value = inv.due || ''; $('sb').value = inv.sentBy || '紙';
+      M.querySelectorAll('[data-to]').forEach(e => { e.value = inv.to[e.dataset.to] || (e.dataset.to === 'honor' ? '様' : ''); });
+      const t = inv.to || {}, sm = M.querySelector('details summary'); if (sm) sm.textContent = '宛名（' + ([t.name, t.dept, t.person].filter(Boolean).join('　') || '未入力') + '　' + (t.honor || '') + '）を直す';
+      const x = custOf(inv.custId), tn = $('dueA') && $('dueA').nextElementSibling; if (tn) tn.textContent = x ? SK.termsLabel(x.terms) + (x.termsCheck ? '（要確認）' : '') : '';
+      $('tot').innerHTML = totHtml(calcOf(inv)); ST.dirty = true;
+    };
+    $('cu').onchange = () => { readForm(); const x = custOf($('cu').value); if (x) setCust(inv, x); putHead(); };
+    $('dt').onchange = () => { readForm(); const x = custOf(inv.custId); if (x) inv.due = SK.dueOf(inv.date, x.terms || ST.cfg.defTerms); putHead(); };
     $('dueA').onclick = () => { readForm(); const x = custOf(inv.custId); inv.due = SK.dueOf(inv.date, (x && x.terms) || ST.cfg.defTerms); drawInvEdit(); ST.dirty = true; };
     $('tm').onchange = re;
-    $('ln').querySelectorAll('input[data-f="qty"],input[data-f="price"],input[data-f="amount"],select[data-f="tax"]').forEach(e => e.onchange = re);
+    /* 数量・単価・金額・税を変えたときは、表を描き直さず金額と合計だけ書き直す（AIテスト 2026-11-06：数量を打って Tab を押すと表が描き直され、次に打った単位・単価が消えた） */
+    const nums = () => {
+      readForm();
+      $('ln').querySelectorAll('tr').forEach(tr => {
+        const l = inv.lines[+tr.dataset.k], a = tr.querySelector('[data-f="amount"]'); if (!l || !a || l.type === 'text') return;
+        const auto = l.qty != null && l.price != null; a.readOnly = auto;   // disabled にすると Tab で次の欄へ移れない（AIテスト 2026-11-06）
+        if (auto || document.activeElement !== a) a.value = yen(SK.lineAmount(l, ST.cfg));
+        const p = tr.querySelector('[data-f="price"]'); if (p && document.activeElement !== p && l.price != null) p.value = yen(l.price);
+      });
+      $('tot').innerHTML = totHtml(calcOf(inv)); ST.dirty = true;
+    };
+    $('ln').querySelectorAll('input[data-f="qty"],input[data-f="price"],input[data-f="amount"],select[data-f="tax"]').forEach(e => e.onchange = nums);
     $('ln').querySelectorAll('button[data-a]').forEach(b => b.onclick = () => {
       readForm(); const k = +b.closest('tr').dataset.k, L = inv.lines;
       if (b.dataset.a === 'rm') L.splice(k, 1); else if (b.dataset.a === 'up' && k > 0) [L[k - 1], L[k]] = [L[k], L[k - 1]]; else if (b.dataset.a === 'dn' && k < L.length - 1) [L[k + 1], L[k]] = [L[k], L[k + 1]];
@@ -669,7 +838,10 @@ function drawInvEdit() {
       readForm();
       if (!inv.custId && !inv.to.name) return alert('得意先を選んでください。');
       if (!inv.date) return alert('発行日を入れてください。');
-      if (inv.approvals && Object.keys(inv.approvals).length) { if (!(await okBox('この請求書は承認の印が押してあります。\n直して保存すると、承認はやり直しになります。保存しますか？', '保存する'))) return; inv.approvals = {}; }
+      /* 紙に出る中身が変わったときだけ承認をやり直す（送り方だけ変えたときなどは残す）。スプレッドシート側も同じ決まりで確かめる（提案4） */
+      const prev = [...ST.invs, ...Object.values(ST.yearData).flat()].find(x => x.id === inv.id), changed = inv.isNew || !prev || SK.contentKey(prev) !== SK.contentKey(inv);
+      if (changed && inv.approvals && Object.keys(inv.approvals).length) { if (!(await okBox('この請求書は承認の印が押してあります。\n中身を直して保存すると、承認はやり直しになります。保存しますか？', '保存する'))) return; inv.approvals = {}; }
+      if (changed && !inv.isNew && inv.sentAt && inv.sentAt !== '不明') inv.resend = true;   // 送ったあとに直した → 送り直しが要る（提案5）
       try { const was = inv.isNew; await saveInv(inv, was ? '新しく作成' : '直した'); ST.dirty = false; drawInvEdit(); alert('保存しました（' + inv.no + '）。'); } catch (e) { alert('保存できませんでした：' + e.message); }
     };
   } else {
@@ -689,9 +861,9 @@ function drawInvEdit() {
     readForm(); if (!(await needSaved()) || !(await needApproved())) return;
     let cv = null;
     if (wantCover(inv)) { cv = await coverForm(inv); if (cv === undefined) return; }   // 紙で送るときは、毎回 送り状の画面で中身を入れてから印刷（ユーザー指示 2026-11-06）
-    printPages(invPages(inv, cv));
-    if (cv) { if (inv.sentAt !== cv.date) { try { await freshen(C.inv, inv, null, '請求書'); } catch (e) { return alert(e.message); } inv.sentAt = cv.date; try { await saveInv(inv, '送った日（送り状の日付）'); drawInvEdit(); } catch (e) { alert('送った日を保存できませんでした：' + e.message); } } }   // 送り状の日付＝送った日（ユーザー指示 2026-11-06）
-    else if (!inv.sentAt || inv.sentAt === '不明') { if (await okBox('印刷しました。送った日を今日（' + dShort(today()) + '）にしますか？', '今日にする')) { inv.sentAt = today(); try { await saveInv(inv, '送った日'); drawInvEdit(); } catch (e) { alert(e.message); } } }
+    await printPages(invPages(inv, cv));
+    if (cv) { if (inv.sentAt !== cv.date) { try { await freshen(C.inv, inv, null, '請求書'); } catch (e) { return alert(e.message); } inv.sentAt = cv.date; delete inv.resend; try { await saveInv(inv, '送った日（送り状の日付）'); drawInvEdit(); } catch (e) { alert('送った日を保存できませんでした：' + e.message); } } }   // 送り状の日付＝送った日（ユーザー指示 2026-11-06）
+    else if (!inv.sentAt || inv.sentAt === '不明') { if (await okBox('印刷しました。送った日を今日（' + dShort(today()) + '）にしますか？', '今日にする')) { inv.sentAt = today(); delete inv.resend; try { await saveInv(inv, '送った日'); drawInvEdit(); } catch (e) { alert(e.message); } } }
   };
   if ($('pdf')) $('pdf').onclick = async () => { readForm(); if (!(await needSaved()) || !(await needApproved())) return; try { await pdfOf(invPages(inv, null), '請求書_' + inv.no + '_' + (inv.to.name || '') + '.pdf', { lock: true }); } catch (e) { alert(e.message); } };   // 取引先に渡す物だけ書き換え禁止
   if ($('stkE')) $('stkE').onclick = async () => { if (await saveInvSticky(inv)) { readForm(); const d = ST.dirty; drawInvEdit(); ST.dirty = d; } };
@@ -710,7 +882,7 @@ function drawInvEdit() {
       if (!(await okBox((p.date ? dShort(p.date) : '日付不明') + ' の入金 ' + yen(p.amount) + ' 円を消しますか？', '消す'))) return;
       inv.payments.splice(+b.dataset.pr, 1); try { await saveInv(inv, '入金を消した'); drawInvEdit(); } catch (e) { alert(e.message); }
     });
-    $('sent').onclick = async () => { const r = await formBox('送った日', [{ k: 'd', label: '送った日', type: 'date', value: inv.sentAt && inv.sentAt !== '不明' ? inv.sentAt : today() }]); if (!r) return; readForm(); inv.sentAt = r.d; try { await saveInv(inv, '送った日'); ST.dirty = false; drawInvEdit(); } catch (e) { alert(e.message); } };
+    $('sent').onclick = async () => { const r = await formBox('送った日', [{ k: 'd', label: '送った日', type: 'date', value: inv.sentAt && inv.sentAt !== '不明' ? inv.sentAt : today() }]); if (!r) return; readForm(); inv.sentAt = r.d; delete inv.resend; try { await saveInv(inv, '送った日'); ST.dirty = false; drawInvEdit(); } catch (e) { alert(e.message); } };
     $('hist').onclick = () => showHist(inv, '請求書');
     $('dup').onclick = () => {
       // 承認・付箋は写さない。宛名は今の得意先台帳の物（会社名が変わった得意先のため）
@@ -1033,7 +1205,7 @@ async function coverEdit(c) {
       busy('保存しています…');
       try { await gas('saveCov', { c: plain(o) }); } catch (e) { busy(''); return alert('保存できませんでした：' + e.message); } finally { busy(''); }
       ST.covCache = {};
-      if (print) printPages([coverPage({}, o)]);
+      if (print) await printPages([coverPage({}, o)]);
       end(o); if (ST.tab === 'cov') drawCov();
     };
     w.querySelector('[data-x="save"]').onclick = () => save(false);
@@ -1050,7 +1222,12 @@ function showPaper(pages, opt) {
   if (opt.onNote) w.querySelectorAll('[data-note]').forEach(e => e.onclick = () => opt.onNote(w));
 }
 /* 印刷：見えない枠に紙を並べてブラウザの印刷の画面を出す。窓付き封筒に合わせるため、倍率100%・余白なしで印刷する */
-function printPages(pages) {
+async function printPages(pages) {
+  /* このパソコンで初めて印刷するときに、印刷の画面の設定を知らせる（AIテスト 2026-11-06：倍率・余白がずれると封筒の窓に合わない。画面からは印刷の画面の設定を決められない） */
+  if (localStorage.getItem('skPrintTip') !== '1') {
+    await okBox('印刷の画面で、次の3つを確かめてから印刷してください（窓付き封筒の位置がずれないように）。\n・倍率：100（「既定」のままでよい）\n・余白：なし\n・用紙サイズ：A4\nこの知らせは、このパソコンでは初めの1回だけ出します（設定のいちばん上の「印刷の注意」でもう一度見られます）。', 'わかった', true);
+    localStorage.setItem('skPrintTip', '1');
+  }
   const f = document.createElement('iframe'); f.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0;';
   document.body.appendChild(f);
   const base = location.href.replace(/[^/]*([?#].*)?$/, '');
@@ -1122,11 +1299,12 @@ function drawPay() {
   M.innerHTML = '<div class="row" style="margin-bottom:14px;"><div class="stat red"><span class="note">入金予定日を過ぎた物</span><b>' + cnt(late) + ' 枚　' + yen(sum(late)) + ' 円</b></div>' +
     '<div class="stat"><span class="note">2週間以内に予定日が来る物</span><b>' + cnt(x => !late(x) && x.i.due && x.i.due <= soon) + ' 枚　' + yen(sum(x => !late(x) && x.i.due && x.i.due <= soon)) + ' 円</b></div>' +
     '<div class="stat"><span class="note">入金がまだの物（全部）</span><b>' + open.length + ' 枚　' + yen(sum(() => true)) + ' 円</b></div></div>' +
-    '<div class="card"><h2 style="font-size:1.1rem;">入金がまだの請求書</h2><div class="row lt">' + eraBar('pay') + perBar('pay', '入金予定日') + '</div>' + ltBar('pay', base, ['due', 'dateD', 'dateA', 'name', 'amt'], '入金予定日') + '<div id="pl" style="margin-top:10px;"></div>' +
+    '<div class="card"><div class="row"><h2 style="font-size:1.1rem;margin:0;">入金がまだの請求書</h2><span class="sp"></span><button class="b dark" id="pbat">まとめて入金を入れる</button></div><div class="row lt">' + eraBar('pay') + perBar('pay', '入金予定日') + '</div>' + ltBar('pay', base, ['due', 'dateD', 'dateA', 'name', 'amt'], '入金予定日') + '<div id="pl" style="margin-top:10px;"></div>' +
     '<div class="note" style="margin-top:8px;">入金予定日は得意先の「支払いの決まり」から出します。違うときは請求書の画面で直せます。赤い物は予定日を過ぎています。入金予定日の月ごとに区切って出します。番号を押すと請求書が開きます。</div></div>' +
     '<div class="card"><h2>最近の入金（2か月）</h2>' + (recent.length ? '<div class="wrapx"><table class="t"><thead><tr><th>入金日</th><th>番号</th><th>得意先</th><th class="n">入金額</th><th class="n">振込手数料</th><th>方法</th><th>メモ</th></tr></thead><tbody>' + recent.map(x => '<tr><td>' + dShort(x.p.date) + '</td><td>' + esc(x.i.no) + '</td><td>' + esc((x.i.to || {}).name) + '</td><td class="n">' + yen(x.p.amount) + '</td><td class="n">' + yen(x.p.fee) + '</td><td>' + esc(x.p.how) + '</td><td>' + esc(x.p.memo) + '</td></tr>').join('') + '</tbody></table></div>' : '<div class="note">ありません。</div>') + '</div>';
+  let shown = [];
   function fill() {
-    const rows = ltApply('pay', base.filter(x => perOk('pay', x.mon))), tot = a => a.reduce((s, x) => s + x.amt, 0);
+    const rows = shown = ltApply('pay', base.filter(x => perOk('pay', x.mon))), tot = a => a.reduce((s, x) => s + x.amt, 0);
     const row = x => '<tr' + (late(x) ? ' style="background:#fff6f5;"' : '') + '><td>' + stTag(x.st) + '</td><td>' + (x.i.due ? dShort(x.i.due) : '<span class="tag ng">予定日なし</span>') + (late(x) ? ' <span class="note" style="color:var(--warn);font-weight:700;">' + Math.round((SK.parse(t0) - SK.parse(x.i.due)) / 86400000) + '日過ぎ</span>' : '') + '</td><td><a href="#" data-o="' + esc(x.i.id) + '"><b>' + esc(x.i.no) + '</b></a></td><td>' + dShort(x.i.date) + '</td><td>' + esc(x.name) + '</td><td class="n">' + yen(x.c.total) + '</td><td class="n">' + yen(SK.paid(x.i)) + '</td><td class="n"><b>' + yen(x.amt) + '</b></td>' + stkCell(x.i, 'pay') + '<td style="white-space:nowrap;"><button class="b sm dark" data-p="' + esc(x.i.id) + '">入金を入れる</button></td></tr>';
     $('pl').innerHTML = rows.length ? '<div class="wrapx"><table class="t"><thead><tr><th>状態</th><th>入金予定日</th><th>番号</th><th>発行日</th><th>得意先</th><th class="n">請求額</th><th class="n">入金済み</th><th class="n">残り</th><th>付箋メモ</th><th></th></tr></thead><tbody>' +
       ltGroups('pay', rows).map(g => monRow(g, 10, '残り ' + yen(tot(g.rows)) + ' 円') + g.rows.map(row).join('')).join('') +
@@ -1136,6 +1314,46 @@ function drawPay() {
     $('pl').querySelectorAll('[data-o]').forEach(a => a.onclick = e => { e.preventDefault(); ST.tab = 'inv'; draw(); openInv(plain(ST.invs.find(i => i.id === a.dataset.o))); });
   }
   ltWire('pay', drawPay); fill();   // 上の数字（期日超えなど）も選んだデータで出し直す
+  $('pbat').onclick = () => payBatch(shown);
+}
+/* 入金をまとめて入れる画面（提案6・ユーザー決定 2026-11-06）。いま出ている「入金がまだの請求書」を並べ、入れた行だけまとめて保存する */
+function payBatch(rows) {
+  if (!rows.length) return alert('入金がまだの請求書が出ていません。');
+  ST.payBatch = true;
+  const HOW = ['振込', '現金', '相殺', '小切手', '電子記録債権', 'その他'];
+  M.innerHTML = '<div class="card"><div class="row"><button class="b" id="pbBack">← 入金の画面へ</button><b style="font-size:1.1rem;">まとめて入金を入れる</b><span class="sp"></span><label class="ltl">入金日をまとめて <input type="date" id="pbD" value="' + today() + '"></label><button class="b sm" id="pbDA">チェックした行に入れる</button></div>' +
+    '<div class="note" style="margin-top:6px;">入金額を入れた行に自動でチェックが付きます。チェックした行だけ保存します。入金額＋振込手数料で請求額に届けば「入金済み」になります。</div></div>' +
+    '<div class="card"><div class="wrapx"><table class="t" id="pbT"><thead><tr><th><input type="checkbox" id="pbAll" title="全部"></th><th>入金予定日</th><th>番号</th><th>得意先</th><th class="n">残り</th><th>入金日</th><th class="n">入金額</th><th class="n">振込手数料</th><th>方法</th><th>メモ</th></tr></thead><tbody>' +
+    rows.map((x, k) => '<tr data-k="' + k + '"><td><input type="checkbox" data-c></td><td>' + dShort(x.i.due) + '</td><td><b>' + esc(x.i.no) + '</b></td><td>' + esc(x.name) + '</td><td class="n">' + yen(x.amt) + '</td>' +
+      '<td><input type="date" data-f="date" value="' + today() + '"></td><td><input data-f="amount" class="n" style="width:110px;" placeholder="' + yen(x.amt) + '"></td><td><input data-f="fee" class="n" style="width:80px;" value="0"></td>' +
+      '<td><select data-f="how">' + HOW.map(h => '<option>' + h + '</option>').join('') + '</select></td><td><input data-f="memo" style="width:140px;"></td></tr>').join('') +
+    '</tbody></table></div><div class="row" style="margin-top:10px;"><span class="note" id="pbN">チェック 0 件</span><span class="sp"></span><button class="b dark" id="pbSave">チェックした物をまとめて保存</button></div></div>';
+  const trs = [...$('pbT').querySelectorAll('tbody tr')];
+  const cnt = () => { const n = trs.filter(tr => tr.querySelector('[data-c]').checked).length; $('pbN').textContent = 'チェック ' + n + ' 件'; ST.dirty = n > 0; };
+  trs.forEach(tr => {
+    tr.querySelector('[data-f="amount"]').addEventListener('input', e => { if (e.target.value.trim()) tr.querySelector('[data-c]').checked = true; cnt(); });
+    tr.querySelector('[data-c]').onchange = e => { const a = tr.querySelector('[data-f="amount"]'); if (e.target.checked && !a.value.trim()) a.value = yen(rows[+tr.dataset.k].amt); cnt(); };
+  });
+  $('pbAll').onchange = e => { trs.forEach(tr => { tr.querySelector('[data-c]').checked = e.target.checked; const a = tr.querySelector('[data-f="amount"]'); if (e.target.checked && !a.value.trim()) a.value = yen(rows[+tr.dataset.k].amt); }); cnt(); };
+  $('pbDA').onclick = () => { const d = $('pbD').value; trs.forEach(tr => { if (tr.querySelector('[data-c]').checked) tr.querySelector('[data-f="date"]').value = d; }); };
+  $('pbBack').onclick = async () => { if (ST.dirty && !(await okBox('入れた入金はまだ保存していません。捨てて戻りますか？', '捨てて戻る'))) return; ST.dirty = false; ST.payBatch = false; drawPay(); };
+  $('pbSave').onclick = async () => {
+    const todo = trs.filter(tr => tr.querySelector('[data-c]').checked).map(tr => { const g = f => tr.querySelector('[data-f="' + f + '"]').value; return { x: rows[+tr.dataset.k], p: { date: g('date'), amount: num(g('amount')) || 0, fee: num(g('fee')) || 0, how: g('how'), memo: g('memo').trim(), at: nowStr(), by: ST.me.name } }; });
+    if (!todo.length) return alert('保存する行にチェックを付けてください。');
+    const bad0 = todo.filter(t => !t.p.date || !(t.p.amount || t.p.fee)); if (bad0.length) return alert('入金日と金額を入れてください：' + bad0.map(t => t.x.i.no).join('、'));
+    if (!(await okBox(todo.length + ' 件の入金（合計 ' + yen(todo.reduce((s, t) => s + t.p.amount, 0)) + ' 円）を保存します。', '保存する'))) return;
+    ST.dirty = false; ST.hold = true; const bad = []; let n = 0;
+    try {
+      for (const t of todo) {
+        busy('入金を保存しています… ' + (++n) + ' / ' + todo.length);
+        try { const inv = plain(ST.invs.find(i => i.id === t.x.i.id) || t.x.i); await freshen(C.inv, inv, null, '請求書'); inv.payments = (inv.payments || []).concat([t.p]); await saveInv(inv, '入金 ' + yen(t.p.amount) + '円（まとめて）'); }
+        catch (e) { bad.push(t.x.i.no + '：' + e.message); }
+      }
+    } finally { ST.hold = false; busy(''); }
+    ST.payBatch = false;
+    await okBox(bad.length ? '保存できなかった物があります（' + bad.length + ' 件）：\n' + bad.join('\n') : todo.length + ' 件の入金を保存しました。', 'OK', true);
+    drawPay();
+  };
 }
 
 /* ===== 領収書（ユーザー指示 2026-11-05：作れるように。今までの分は写さない）と相殺伝票（2026-11-06） =====
@@ -1176,7 +1394,8 @@ async function saveRcp(r) {
   if (!r.from) r.from = curFrom();
   if (!r.createdAt) { r.createdAt = nowStr(); r.createdBy = ST.me.name; }
   busy('保存しています…');
-  try { await gas('saveRcp', { r: plain(r) }); r.expireAt = endOfMarch(String(r.date).slice(0, 4)); await store.put(C.rcp, r.id, r); } finally { busy(''); }
+  const rq = plain(r); try { r.expireAt = endOfMarch(String(r.date).slice(0, 4)); await store.put(C.rcp, r.id, r); } finally { busy(''); }
+  qAdd('saveRcp', { r: rq }, (r.kind === 'offset' ? '相殺伝票 ' : '領収書 ') + (r.no || ''));   // スプレッドシートには後から（提案7）
   ST.rcps = ST.rcps.filter(x => x.id !== r.id).concat([r]);
 }
 async function newReceipt(inv) {
@@ -1278,7 +1497,7 @@ function drawRcpEdit() {
   const ready = async () => !ST.dirty || await save();   // 直していたら保存してから
   const fname = x => K.name + '_' + x.no + '_' + x.toName + '.pdf';
   if ($('rSave')) $('rSave').onclick = save;
-  if ($('rPrint')) $('rPrint').onclick = async () => { if (await ready()) printPages(rcpPages(ST.rcpOpen)); };
+  if ($('rPrint')) $('rPrint').onclick = async () => { if (await ready()) await printPages(rcpPages(ST.rcpOpen)); };
   if ($('rPdf')) $('rPdf').onclick = async () => { if (!(await ready())) return; const x = ST.rcpOpen; try { await pdfOf(rcpPages(x), fname(x)); } catch (e) { alert(e.message); } };
   $('rSee').onclick = () => showPaper(rcpPages(gone ? r : val()), { title: K.name });
   $('rHist').onclick = () => showHist(r, K.name);
@@ -1343,7 +1562,7 @@ async function custDelete(list) {
   if (!(await okBox(msg, '削除する'))) return;
   busy('削除しています…');
   try {
-    for (const c0 of list) { const c = plain(c0); await freshen(C.cust, c, null, '得意先'); c.deleted = nowStr() + ' ' + (ST.me.name || ''); c.active = false; c.updatedAt = nowStr(); c.updatedBy = ST.me.name; await gas('saveCust', { c }); await store.put(C.cust, c.id, c); ST.custs = ST.custs.filter(x => x.id !== c.id).concat([c]); }
+    for (const c0 of list) { const c = plain(c0); await freshen(C.cust, c, null, '得意先'); c.deleted = nowStr() + ' ' + (ST.me.name || ''); c.active = false; c.updatedAt = nowStr(); c.updatedBy = ST.me.name; await store.put(C.cust, c.id, c); qAdd('saveCust', { c: plain(c) }, '得意先 ' + c.code); ST.custs = ST.custs.filter(x => x.id !== c.id).concat([c]); }
     ST.custs.sort((x, y) => String(x.code).localeCompare(String(y.code)));
     ST.cSel = { ids: new Set() };
   } catch (e) { alert('削除できませんでした：' + e.message); } finally { busy(''); }
@@ -1354,7 +1573,7 @@ async function saveCustSticky(c) {
   const v = await stkEdit(c); if (v === undefined) return false;
   const b = plain(ST.custs.find(x => x.id === c.id) || c); b.sticky = v;
   busy('保存しています…');
-  try { await freshen(C.cust, b, null, '得意先'); b.sticky = v; b.updatedAt = nowStr(); b.updatedBy = ST.me.name; await gas('saveCust', { c: b }); await store.put(C.cust, b.id, b); ST.custs = ST.custs.filter(x => x.id !== b.id).concat([b]).sort((x, y) => String(x.code).localeCompare(String(y.code))); c.sticky = v; return true; }
+  try { await freshen(C.cust, b, null, '得意先'); b.sticky = v; b.updatedAt = nowStr(); b.updatedBy = ST.me.name; await store.put(C.cust, b.id, b); qAdd('saveCust', { c: plain(b) }, '得意先 ' + b.code); ST.custs = ST.custs.filter(x => x.id !== b.id).concat([b]).sort((x, y) => String(x.code).localeCompare(String(y.code))); c.sticky = v; return true; }
   catch (e) { alert('付箋を保存できませんでした：' + e.message); return false; } finally { busy(''); }
 }
 function editCust(c) {
@@ -1379,7 +1598,7 @@ function editCust(c) {
     if (ST.custs.some(x => x.id !== c.id && x.code === c.code)) return alert('コード ' + c.code + ' はほかの得意先が使っています。');
     c.termsCheck = false; c.termsText = SK.termsLabel(c.terms); delete c.isNew;
     busy('保存しています…');
-    try { await staleCheck(C.cust, c, '得意先'); c.updatedAt = nowStr(); c.updatedBy = ST.me.name; await gas('saveCust', { c: plain(c) }); await store.put(C.cust, c.id, c); ST.custs = ST.custs.filter(x => x.id !== c.id).concat([c]).sort((a, b) => String(a.code).localeCompare(String(b.code))); alert('保存しました。'); editCust(c); }
+    try { await staleCheck(C.cust, c, '得意先'); c.updatedAt = nowStr(); c.updatedBy = ST.me.name; await store.put(C.cust, c.id, c); qAdd('saveCust', { c: plain(c) }, '得意先 ' + c.code); ST.custs = ST.custs.filter(x => x.id !== c.id).concat([c]).sort((a, b) => String(a.code).localeCompare(String(b.code))); alert('保存しました。'); editCust(c); }
     catch (e) { alert('保存できませんでした：' + e.message); } finally { busy(''); }
   };
   if ($('mk')) $('mk').onclick = () => { ST.tab = 'inv'; draw(); openInv(newInv(c)); ST.dirty = true; };
@@ -1418,14 +1637,17 @@ async function drawSub() {
   let md; try { md = await rangeData(from, to); } catch (e) { if (seq === ST.drawSeq && $('sb')) $('sb').innerHTML = '<div class="msg">' + esc(e.message) + '</div>'; return; }
   if (seq !== ST.drawSeq || !$('sb')) return;   // 読んでいる間に期間や画面が変わった
   const tot = a => a.reduce((s, i) => s + calcOf(i).total, 0);
+  /* 承認がまだの請求書は PDF に入れない（提案3・ユーザー決定 2026-11-06）。Excel の一覧には入れる */
+  const okI = md.issued.filter(approved), ngI = md.issued.filter(i => !approved(i)), okP = md.paidIn.filter(approved), ngP = md.paidIn.filter(i => !approved(i));
+  const ngNote = a => a.length ? '<div class="note" style="color:var(--warn);font-weight:700;">承認がまだの ' + a.length + ' 枚は PDF に入れません：' + esc(a.slice(0, 15).map(i => i.no).join('、') + (a.length > 15 ? ' ほか' : '')) + '</div>' : '';
   const lab = P.mode === 'mon' ? P.ym.replace('-', '年') + '月' : P.mode === 'close' ? fyLabel(P.cm || closeYm(today())) : from.replace(/-/g, '') + '-' + to.replace(/-/g, ''), labJ = P.mode === 'mon' ? lab : P.mode === 'close' ? closeName(P.cm || closeYm(today())) : dJp(from) + '〜' + dJp(to);
   $('sb').innerHTML = '<div class="note" style="margin-bottom:8px;">期間：<b>' + esc(labJ) + '</b></div><table class="t"><tbody>' +
-    '<tr><td><b>請求書（PDF）</b><div class="note">' + esc(labJ) + 'に出した請求書（取消を除く）。印鑑つき、1枚ずつ。</div></td><td class="n">' + md.issued.length + ' 枚　' + yen(tot(md.issued)) + ' 円</td><td><button class="b dark" id="p1"' + (md.issued.length ? '' : ' disabled') + '>PDFをダウンロード</button></td></tr>' +
-    '<tr><td><b>入金分（PDF）</b><div class="note">' + esc(labJ) + 'に入金があった請求書。</div></td><td class="n">' + md.paidIn.length + ' 枚</td><td><button class="b dark" id="p2"' + (md.paidIn.length ? '' : ' disabled') + '>PDFをダウンロード</button></td></tr>' +
+    '<tr><td><b>請求書（PDF）</b><div class="note">' + esc(labJ) + 'に出した請求書（取消を除く）。印鑑つき、1枚ずつ。</div>' + ngNote(ngI) + '</td><td class="n">' + okI.length + ' 枚　' + yen(tot(okI)) + ' 円</td><td><button class="b dark" id="p1"' + (okI.length ? '' : ' disabled') + '>PDFをダウンロード</button></td></tr>' +
+    '<tr><td><b>入金分（PDF）</b><div class="note">' + esc(labJ) + 'に入金があった請求書。</div>' + ngNote(ngP) + '</td><td class="n">' + okP.length + ' 枚</td><td><button class="b dark" id="p2"' + (okP.length ? '' : ' disabled') + '>PDFをダウンロード</button></td></tr>' +
     '<tr><td><b>一覧（Excel）</b><div class="note">シート「請求書」「入金」「' + esc(dJp(to)) + '時点の未入金」の3つ。</div></td><td class="n">未入金 ' + md.unpaid.length + ' 枚</td><td><button class="b dark" id="x1">Excelをダウンロード</button></td></tr></tbody></table>';
   const pagesOf = list => list.flatMap(i => invPages(i, null));
-  $('p1').onclick = async () => { try { await pdfOf(() => pagesOf(md.issued), lab + '_請求書.pdf'); } catch (e) { alert(e.message); } };
-  $('p2').onclick = async () => { try { await pdfOf(() => pagesOf(md.paidIn), lab + '_入金分.pdf'); } catch (e) { alert(e.message); } };
+  $('p1').onclick = async () => { try { await pdfOf(() => pagesOf(okI), lab + '_請求書.pdf'); } catch (e) { alert(e.message); } };
+  $('p2').onclick = async () => { try { await pdfOf(() => pagesOf(okP), lab + '_入金分.pdf'); } catch (e) { alert(e.message); } };
   $('x1').onclick = async () => {
     try {
       const gtxt = c => c.groups.map(g => SK.groupLabel(g) + ' ' + yen(g.base) + (g.rate ? '（税' + yen(g.tax) + '）' : '')).join(' / ');
@@ -1449,7 +1671,7 @@ function drawCfg() {
   const rateRows = (g.rates || []).map((r, k) => '<tr data-k="' + k + '"><td><select data-r="kind"><option value="std"' + (r.kind === 'std' ? ' selected' : '') + '>標準税率</option><option value="red"' + (r.kind === 'red' ? ' selected' : '') + '>軽減税率</option></select></td><td><input data-r="rate" value="' + esc(r.rate) + '" style="width:70px;text-align:right;"> %</td><td><input data-r="from" type="date" value="' + esc(r.from) + '"></td><td><button class="b sm danger" data-rm="' + k + '">消す</button></td></tr>').join('');
   const empty = !ST.hasCfg && !ST.custs.length;
   M.innerHTML = (empty ? '<div class="card" style="border-color:var(--accent);"><h2>はじめに：販売らくだのデータを読み込む</h2><div class="note">PC で販売らくだの写しから作った「seikyu_import.json」（請求システム／移行）を読み込み、スプレッドシート（請求管理DB）と画面の写しを作ります。販売らくだには触りません。</div><div class="row" style="margin-top:10px;"><button class="b dark" id="imp">読み込む</button></div></div>' : '') +
-    '<div class="card" style="border-color:var(--accent);"><div class="row"><span>アプリの版：<b>' + APP_VER + '</b>' + (ST.newVer ? '　<span class="tag mid">新しい版があります：' + esc(ST.newVer) + '</span>' : '') + '</span><span class="sp"></span><button class="b dark" id="rf">最新の版にする</button></div><div class="note" style="margin-top:4px;">新しい版が出ると、画面の上に知らせが出ます。入力の途中でなければ自動で入れ替わります。このボタンでも入れ替えられます。</div></div>' +
+    '<div class="card" style="border-color:var(--accent);"><div class="row"><span>アプリの版：<b>' + APP_VER + '</b>' + (ST.newVer ? '　<span class="tag mid">新しい版があります：' + esc(ST.newVer) + '</span>' : '') + '</span><span class="sp"></span><button class="b" id="ptip">印刷の注意</button><button class="b dark" id="rf">最新の版にする</button></div><div class="note" style="margin-top:4px;">新しい版が出ると、画面の上に知らせが出ます。入力の途中でなければ自動で入れ替わります。このボタンでも入れ替えられます。</div></div>' +
     '<div class="card"><div class="row"><h2 style="margin:0;">設定</h2><span class="sp"></span><button class="b dark" id="sv">保存</button></div>' +
     S('会社名', I('c_name', co.name), 'これから作る請求書・領収書と送り状に出ます。前に作った請求書・領収書は、作ったときの会社名・住所・振込先のままです。') + S('郵便番号', I('c_zip', co.zip), '') + S('住所', I('c_addr', co.addr), '2026-11-05 ユーザー決定：戸ノ内町5丁目10-16。') +
     S('TEL', I('c_tel', co.tel), '') + S('FAX', I('c_fax', co.fax), '') + S('登録番号', I('c_reg', co.regNo), '適格請求書発行事業者の登録番号（T＋13けた）。請求書に必ず出します。') +
@@ -1485,6 +1707,7 @@ function drawCfg() {
     '</div><div class="card"><h2>税理士さんへのメモ</h2><textarea id="mt" style="min-height:90px;">' + esc(g.memoTax) + '</textarea><div class="note">提出データの画面のボタンで見られます（送り方・締め切りなど）。</div></div>' +
     '';
   $('rf').onclick = refreshApp;
+  $('ptip').onclick = () => { localStorage.removeItem('skPrintTip'); okBox('印刷の画面で、次の3つを確かめてから印刷してください（窓付き封筒の位置がずれないように）。\n・倍率：100（「既定」のままでよい）\n・余白：なし\n・用紙サイズ：A4', 'わかった', true).then(() => localStorage.setItem('skPrintTip', '1')); };
   if ($('pdfPw')) {
     $('pdfPwShow').onchange = () => { $('pdfPw').type = $('pdfPwShow').checked ? 'text' : 'password'; };
     $('pdfPwSv').onclick = async () => {
@@ -1558,8 +1781,8 @@ function drawLogin() {
   $('go').onclick = async () => { try { await signInWithEmailAndPassword(auth, $('em').value.trim(), $('pw').value); } catch (e) { $('lm').textContent = 'ログインできませんでした。'; } };
   $('pw').onkeydown = e => { if (e.key === 'Enter') $('go').click(); };
 }
-$('out').onclick = async e => { e.preventDefault(); if (LOCAL) return; await signOut(auth); location.reload(); };
-window.addEventListener('beforeunload', e => { if (ST.dirty) { e.preventDefault(); e.returnValue = ''; } });
+$('out').onclick = async e => { e.preventDefault(); if (LOCAL) return; if (qGet().length && !(await okBox('スプレッドシートにまだ書いていない保存が ' + qGet().length + ' 件あります。\nログアウトすると、次にこのパソコンでログインしたときに続きを書きます。ログアウトしますか？', 'ログアウトする'))) return; try { indexedDB.deleteDatabase('seikyu'); } catch (x) {} await signOut(auth); location.reload(); };   // 手元に覚えた昔の請求書も消す
+window.addEventListener('beforeunload', e => { if (ST.dirty || (ST.me && qGet().length)) { e.preventDefault(); e.returnValue = ''; } });   // スプレッドシートへ書く前に閉じるときも止める
 if (LOCAL) boot(); else onAuthStateChanged(auth, u => { if (u) boot(); else drawLogin(); });
 window.skTest = { ST, invPages, coverPage, rcpPages, showPaper, calcOf, stateOf, store, MEM, pdfOf, xlsxOf, monthData, approved, stickyOf, paginate, rowH, openInv, newInv, custOf };   // 試しで中を見る用
 </script>

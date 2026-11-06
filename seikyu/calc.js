@@ -126,5 +126,16 @@
 
   // 金額の表示
   SK.yen = n => (Number(n) || 0).toLocaleString('ja-JP');
+
+  /* 請求書の「紙に出る中身」をそろえた文字（2026-11-06）。中身が変わったかを比べる。
+     ほかの人の承認を外せるのは中身が変わったときだけ（スプレッドシート側の請求.js の skKey_ と同じ決まり。変えるときは両方） */
+  const kn = v => v == null || v === '' ? null : Number(v);
+  SK.contentKey = i => {
+    const t = (i && i.to) || {};
+    return JSON.stringify([String(i.date || ''), String(i.custId || ''), ['name', 'dept', 'person', 'honor', 'zip', 'addr1', 'addr2', 'code'].map(k => String(t[k] == null ? '' : t[k])),
+      String(i.title || ''), i.taxMode === 'in' ? 'in' : 'out', String(i.due || ''), String(i.note || ''),
+      (i.lines || []).map(l => l.type === 'text' ? ['text', String(l.name || ''), String(l.memo || '')]
+        : ['item', (l.code ? l.code + '　' : '') + String(l.name || ''), kn(l.qty), String(l.unit || ''), kn(l.price), l.qty == null || l.qty === '' || l.price == null || l.price === '' ? kn(l.amountFix) : null, String(l.tax || 'std'), String(l.memo || '')])]);
+  };
   if (typeof module !== 'undefined' && module.exports) module.exports = SK; else root.SK = SK;
 })(this);
