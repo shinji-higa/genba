@@ -125,12 +125,12 @@
 <main id="m"></main>
 <div id="busy"></div>
 
-<script src="calc.js?v=Ver.請求20261106-10"></script>
+<script src="calc.js?v=Ver.請求20261106-11"></script>
 <script type="module">
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
 import { getFirestore, collection, doc, getDoc, getDocs, setDoc, deleteDoc, writeBatch, runTransaction } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
-const APP_VER = 'Ver.請求20261106-10';   // 版の名前は「Ver.請求YYYYMMDD-NN」（ユーザー指示 2026-11-06）
+const APP_VER = 'Ver.請求20261106-11';   // 版の名前は「Ver.請求YYYYMMDD-NN」（ユーザー指示 2026-11-06）
 const API = 'https://script.google.com/macros/s/AKfycbzpJgqJOqQz5180PQF2S3kVN7TWg0c1dnyUUUNuCZtzy5_pmKEhAkw5w3gqSj31EEA1/exec';   // Apps Script「請求管理」（ポータル・給与とは別）
 /* ログインは給与アプリと同じ（ユーザー指示 2026-11-05）：ポータルの Firebase、メールとパスワード。入れるのはマスターと「請求管理」の権限（users.canInvoice）がある人 */
 const app = initializeApp({ apiKey: 'AIzaSyDVR4p4DO4s9h70uPlXUVlhNcMP9-YkQ5Q', authDomain: 'genba-portal-9077b.firebaseapp.com', projectId: 'genba-portal-9077b' });
@@ -244,6 +244,9 @@ const liveYear = y => Date.now() <= endOfMarch(y);
    o.sticky = { c: 'y'|'g'|'b'|'r', t: 文字 }。販売らくだから写した請求書は、販売らくだの付箋（色・メモ）を初めの付箋にする ===== */
 const STK = [['y', '黄'], ['g', '緑'], ['b', '青'], ['r', '赤'], ['p', '紫'], ['k', 'ピンク']];   // 紫・ピンクは 2026-11-06 に足した
 const RAKU_STK = { 1: 'g', 2: 'b', 3: 'r' };
+const stkRule = c => String(((ST.cfg || {}).stkRules || {})[c] || '').trim();   // 色の決まり（設定の「付箋の色の決まり」。ユーザー指示 2026-11-06）
+const stkLabel = x => x[1] + (stkRule(x[0]) ? '：' + stkRule(x[0]) : '');
+const stkLegend = () => STK.filter(x => stkRule(x[0])).map(x => '<span class="stk ' + x[0] + '" style="margin-right:4px;">' + esc(stkLabel(x)) + '</span>').join('');
 function stickyOf(o) {
   if (!o) return null;
   if (o.sticky) return (o.sticky.t || o.sticky.c) ? o.sticky : null;
@@ -269,10 +272,11 @@ async function saveInvSticky(inv) {
 function wireStk(root, find, after) { root.querySelectorAll('[data-stk]').forEach(td => td.onclick = async ev => { ev.stopPropagation(); const o = find(td.dataset.stk); if (o && await after(o)) ; }); }
 async function stkEdit(o) {   // 付箋の画面。OK なら新しい sticky、やめたら undefined
   const s = stickyOf(o) || { c: 'y', t: '' };
-  const r = await formBox('付箋メモ', [{ k: 'c', label: '色', type: 'select', opts: STK.map(x => x[1]).concat(['（付箋をはがす）']), value: (STK.find(x => x[0] === s.c) || STK[0])[1] }, { k: 't', label: 'メモ', type: 'area', value: s.t }], '貼る');
+  const L = STK.map(stkLabel);
+  const r = await formBox('付箋メモ', [{ k: 'c', label: '色' + (STK.some(x => stkRule(x[0])) ? '（色の決まりは設定で書けます）' : ''), type: 'select', opts: L.concat(['（付箋をはがす）']), value: L[Math.max(0, STK.findIndex(x => x[0] === s.c))] }, { k: 't', label: 'メモ', type: 'area', value: s.t }], '貼る');
   if (!r) return undefined;
   if (r.c === '（付箋をはがす）') return { c: '', t: '' };
-  return { c: (STK.find(x => x[1] === r.c) || STK[0])[0], t: r.t.trim() };
+  return { c: (STK[L.indexOf(r.c)] || STK[0])[0], t: r.t.trim() };
 }
 
 /* ===== 承認（ユーザー指示 2026-11-06：担当者が作り、比嘉 伸治・比嘉 美紀の2人が承認してから印刷・PDF。承認の欄は3つ）。
@@ -320,7 +324,7 @@ const DEF_CFG = {
   invNo: { prefix: 'S', digits: 5, next: 1 }, rcpNo: { prefix: 'R', digits: 5, next: 1 },
   defTerms: { close: 31, months: 1, day: 31 }, greeting: '下記の通りご請求申し上げます。',
   coverPerson: '比嘉 美紀', coverText: '拝啓　時下ますますご清栄のことと心よりお喜び申し上げます。平素は格別のお引き立てを賜り、厚く御礼を申し上げます。\n　さて、早速ではございますが下記の書類をお送りいたします。よろしくご査収くださいますよう、お願い申し上げます。',
-  stamps: true, rcpPurpose: 'ダクト工事代として', memoTax: '', approvers: DEF_APV, fyEnd: 2
+  stamps: true, rcpPurpose: 'ダクト工事代として', memoTax: '', approvers: DEF_APV, fyEnd: 2, stkRules: {}
 };
 const ST = { stamps: {}, me: null, cfg: plain(DEF_CFG), custs: [], invs: [], rcps: [], tab: 'inv', year: String(new Date().getFullYear()), yearData: {}, q: '', filt: 'all' };
 const cfgMerge = c => { const o = Object.assign(plain(DEF_CFG), c || {}); o.company = Object.assign(plain(DEF_CFG.company), (c || {}).company || {}); if (!Array.isArray(o.approvers) || o.approvers.length !== 3) o.approvers = plain(DEF_APV); return o; };
@@ -461,7 +465,7 @@ async function drawInvList() {
     (P.per === 'range' ? '<input type="date" id="rf1" value="' + esc(P.from || (y0 + '-01-01')) + '">〜<input type="date" id="rf2" value="' + esc(P.to || today()) + '"><button class="b sm" id="rgo">この期間で出す</button>' : '') +
     '<select id="fl"><option value="all">すべて</option><option value="open">入金がまだの物</option><option value="late">期日超え</option><option value="paid">入金済み</option><option value="apv">未承認の物</option><option value="cancel">取消</option></select>' +
     '<input id="q" placeholder="さがす（番号・得意先・件名・付箋）" style="width:240px;" value="' + esc(ST.q) + '"><span class="sp"></span><button class="b dark" id="nw">＋ 新しい請求書</button></div>' +
-    '<div id="ltb"></div><div class="note" style="margin-top:6px;">入金がまだの請求書は、期間に関係なく「入金」の画面にも出ます。行を押すと開きます。月ごとに区切って出します。</div></div><div class="card" id="lst">読み込んでいます…</div>';
+    '<div id="ltb"></div>' + (stkLegend() ? '<div style="margin-top:6px;font-size:.9rem;"><b style="margin-right:6px;">付箋の色</b>' + stkLegend() + '</div>' : '') + '<div class="note" style="margin-top:6px;">入金がまだの請求書は、期間に関係なく「入金」の画面にも出ます。行を押すと開きます。月ごとに区切って出します。</div></div><div class="card" id="lst">読み込んでいます…</div>';
   $('fl').value = ST.filt;
   $('yr').onchange = () => { P.per = $('yr').value; if (/^\d{4}$/.test(P.per)) ST.year = P.per; drawInvList(); };
   if ($('rgo')) $('rgo').onclick = () => { P.from = $('rf1').value; P.to = $('rf2').value; if (!P.from || !P.to || P.from > P.to) return alert('期間の「いつから」「いつまで」を入れてください。'); drawInvList(); };
@@ -1167,6 +1171,8 @@ function drawCfg() {
     S('自社の締め（決算）', '<select id="oc">' + Array.from({ length: 12 }, (_, k) => k + 1).map(m => '<option value="' + m + '"' + (fyEnd() === m ? ' selected' : '') + '>' + m + '月末で締める（' + (m % 12 + 1) + '/1〜' + m + '月末）</option>').join('') + '</select>', '1年の締め。請求書・入金・領収書の一覧と提出データで「年度ごと」を選べます（2026-11-06 ユーザー：3/1〜2月末）。') +
     S('支払いの決まりの初め', '<span class="row" style="gap:4px;flex-wrap:nowrap;"><select id="dc">' + CLOSES.map(o => '<option value="' + o[0] + '"' + (String(Math.min(31, g.defTerms.close)) === o[0] ? ' selected' : '') + '>' + o[1] + '</option>').join('') + '</select><select id="dm">' + PMS.map(o => '<option value="' + o[0] + '"' + (String(g.defTerms.months) === o[0] ? ' selected' : '') + '>' + o[1] + '</option>').join('') + '</select><select id="dd">' + PDAYS.map(o => '<option value="' + o[0] + '"' + (String(Math.min(31, g.defTerms.day)) === o[0] ? ' selected' : '') + '>' + o[1] + '</option>').join('') + '</select></span>', '新しい得意先の初めの値。') +
     S('領収書の但し書き', I('rp', g.rcpPurpose), '新しい領収書の初めの値。') +
+    '</div><div class="card"><h2>付箋の色の決まり</h2><div class="note">色ごとに、何に使うかを書いておけます。付箋を貼る画面の色の選び方と、請求書の一覧の上に出ます。空の色は出しません。</div>' +
+    STK.map(x => S('<span class="stk ' + x[0] + '">' + x[1] + '</span>', '<input data-sr="' + x[0] + '" value="' + esc(((g.stkRules || {})[x[0]]) || '') + '" placeholder="例：入金の確認がいる">', '')).join('') +
     '</div><div class="card"><h2>送り状</h2>' +
     S('担当', I('cp', g.coverPerson), '送り状の画面の「担当（送り主）」の初めの値です。印刷のたびに変えられます。') +
     SW('本文', '<textarea id="ct" class="paperw" style="width:44.8em;max-width:calc(100% - 22px);min-height:9em;">' + esc(g.coverText) + '</textarea>', '送り状の画面の「送り文」の初めの値です。印刷のたびに変えられます。欄の幅は紙の1行（' + CV_TEXT_W + ' 字）と同じです。改行した所は紙でも改行します。') +
@@ -1182,7 +1188,7 @@ function drawCfg() {
       company: { name: $('c_name').value.trim(), zip: $('c_zip').value.trim(), addr: $('c_addr').value.trim(), tel: $('c_tel').value.trim(), fax: $('c_fax').value.trim(), regNo: $('c_reg').value.trim() },
       bank: $('bank').value.trim(), greeting: $('greet').value, stamps: $('stp').checked, rates: readRates(), taxRound: $('tr').value, amtRound: $('ar').value,
       invNo: { prefix: $('in_p').value.trim(), digits: num($('in_d').value) || 5, next: num($('in_n').value) || 1 }, rcpNo: { prefix: $('rn_p').value.trim(), digits: num($('rn_d').value) || 5, next: num($('rn_n').value) || 1 },
-      defTerms: { close: Number($('dc').value), months: Number($('dm').value), day: Number($('dd').value) }, rcpPurpose: $('rp').value, coverPerson: $('cp').value, coverText: $('ct').value, memoTax: $('mt').value, fyEnd: Number($('oc').value) || 2,
+      defTerms: { close: Number($('dc').value), months: Number($('dm').value), day: Number($('dd').value) }, rcpPurpose: $('rp').value, coverPerson: $('cp').value, coverText: $('ct').value, memoTax: $('mt').value, fyEnd: Number($('oc').value) || 2, stkRules: Object.fromEntries([...M.querySelectorAll('[data-sr]')].map(e => [e.dataset.sr, e.value.trim()])),
       approvers: [...M.querySelectorAll('[data-apk]')].map(tr => { const u = tr.querySelector('[data-ap="uid"]'), uid = u.value, p = (ST.people || []).find(x => x.uid === uid); return { label: tr.querySelector('[data-ap="label"]').value.trim() || '承認', uid, name: uid ? (p ? p.name : (u.selectedOptions[0] || {}).textContent || uid) : '', stamp: tr.querySelector('[data-ap="stamp"]').value }; })
     };
   }
