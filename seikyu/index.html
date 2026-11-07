@@ -145,12 +145,12 @@
 <main id="m"></main>
 <div id="busy"></div>
 
-<script src="calc.js?v=Ver.請求20261107-20"></script>
+<script src="calc.js?v=Ver.請求20261107-21"></script>
 <script type="module">
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
 import { getFirestore, collection, doc, getDoc, getDocs, setDoc, deleteDoc, writeBatch, runTransaction, onSnapshot, deleteField, query, where } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
-const APP_VER = 'Ver.請求20261107-20';   // 版の名前は「Ver.請求YYYYMMDD-NN」（ユーザー指示 2026-11-06）
+const APP_VER = 'Ver.請求20261107-21';   // 版の名前は「Ver.請求YYYYMMDD-NN」（ユーザー指示 2026-11-06）
 const API = 'https://script.google.com/macros/s/AKfycbzpJgqJOqQz5180PQF2S3kVN7TWg0c1dnyUUUNuCZtzy5_pmKEhAkw5w3gqSj31EEA1/exec';   // Apps Script「請求管理」（ポータル・給与とは別）
 /* ログインは給与アプリと同じ（ユーザー指示 2026-11-05）：ポータルの Firebase、メールとパスワード。入れるのはマスターと「請求管理」の権限（users.canInvoice）がある人 */
 const app = initializeApp({ apiKey: 'AIzaSyDVR4p4DO4s9h70uPlXUVlhNcMP9-YkQ5Q', authDomain: 'genba-portal-9077b.firebaseapp.com', projectId: 'genba-portal-9077b' });
@@ -418,7 +418,7 @@ const approved = inv => !needApv(inv) || apvNeed().every(k => inv.approvals && i
 const apvLeft = inv => apvNeed().filter(k => !(inv.approvals && inv.approvals[k])).map(k => ST.cfg.approvers[k].name || ('欄' + (k + 1)));
 
 /* ===== 一覧の並べ方・しぼり込み（ユーザー指示 2026-11-06：請求書・領収書・入金は 会社名・時期・月 で並べ替え） ===== */
-const SORTS = { dateD: '日付の新しい順', dateA: '日付の古い順', name: '会社名の順', amt: '金額の大きい順', due: '入金予定日の早い順' };
+const SORTS = { dateD: '日付の新しい順', dateA: '日付の古い順', name: '会社名の順', amt: '金額の大きい順', due: '入金予定日の早い順', stk: '付箋の順（色ごと）' };
 function lt(key, def) { ST.lt = ST.lt || {}; return (ST.lt[key] = ST.lt[key] || { sort: def, mon: '', name: '' }); }
 /* rows：[{ date, name, amt, due, ... }]。dateLabel：月で分けるときの日付の名前 */
 function ltBar(key, rows, sorts, dateLabel) {
@@ -433,7 +433,8 @@ function ltApply(key, rows) {
   const s = lt(key);
   const out = rows.filter(r => (!s.mon || String(r.mon || r.date || '').slice(0, 7) === s.mon) && (!s.name || r.name === s.name));
   const by = { dateD: (a, b) => String(b.date).localeCompare(String(a.date)) || String(b.no).localeCompare(String(a.no)), dateA: (a, b) => String(a.date).localeCompare(String(b.date)) || String(a.no).localeCompare(String(b.no)),
-    name: (a, b) => nameKey(a).localeCompare(nameKey(b), 'ja') || String(b.date).localeCompare(String(a.date)), amt: (a, b) => (b.amt || 0) - (a.amt || 0), due: (a, b) => String(a.due || '9').localeCompare(String(b.due || '9')) };
+    name: (a, b) => nameKey(a).localeCompare(nameKey(b), 'ja') || String(b.date).localeCompare(String(a.date)), amt: (a, b) => (b.amt || 0) - (a.amt || 0), due: (a, b) => String(a.due || '9').localeCompare(String(b.due || '9')),
+    stk: (a, b) => { const sa = stickyOf(a.i || a.r || a), sb = stickyOf(b.i || b.r || b), rk = x => x ? Math.max(0, STK.findIndex(k => k[0] === (x.c || 'y'))) : 99; return rk(sa) - rk(sb) || String((sa || {}).t || '').localeCompare(String((sb || {}).t || ''), 'ja') || String(b.date).localeCompare(String(a.date)) || String(b.no).localeCompare(String(a.no)); } };   // 付箋のある物が先、色（黄・緑・青・赤・紫・ピンク）の順、同じ色は書いた字の順
   return out.sort(by[s.sort] || by.dateD);
 }
 /* 会社名の順は「株式会社」「（株）」などを除いて並べる */
@@ -733,7 +734,7 @@ async function drawInvList() {
   catch (e) { $('lst').innerHTML = '<div class="msg">' + esc(e.message) + '</div>'; return; }
   if (seq !== ST.drawSeq || !$('lst')) return;   // 読んでいる間に期間や画面が変わった
   const base = list.map(i => { const c = calcOf(i); return { i, c, st: stateOf(i), date: i.date, no: i.no, name: (i.to || {}).name || '', custId: i.custId, amt: c.total, due: i.due }; });
-  $('ltb').innerHTML = ltBar('inv', base, ['dateD', 'dateA', 'name', 'amt', 'due'], '発行日');
+  $('ltb').innerHTML = ltBar('inv', base, ['dateD', 'dateA', 'name', 'amt', 'due', 'stk'], '発行日');
   ltWire('inv', fill);
   function fill() {
     const q = ST.q.trim();
@@ -1699,7 +1700,6 @@ async function saveCustSticky(c) {
   catch (e) { alert('付箋を保存できませんでした：' + e.message); return false; } finally { busy(''); }
 }
 function editCust(c) {
-  const code0 = c.isNew ? '' : String(c.code || '');   // 開いたときのコード（変えたときだけ、ほかと同じでないか確かめる）
   const t = c.terms || {}, sel = (id, opts, v) => '<select id="' + id + '" style="width:100%;">' + opts.map(o => '<option value="' + o[0] + '"' + (String(v) === o[0] ? ' selected' : '') + '>' + o[1] + '</option>').join('') + '</select>';
   const F = (k, l) => '<div><label class="f">' + l + '</label><input data-c="' + k + '" value="' + esc(c[k] || '') + '"></div>';
   M.innerHTML = '<div class="card"><div class="row"><button class="b" id="back">← 一覧へ</button><b style="font-size:1.1rem;">得意先 ' + esc(c.code) + '　' + esc(c.name) + '</b>' + (c.termsCheck ? '<span class="tag mid">要確認</span>' : '') + '<span class="sp"></span><button class="b dark" id="sv">保存</button></div></div>' + (c.isNew ? '' : stkPanel(c, 'stkC')) +
@@ -1719,8 +1719,8 @@ function editCust(c) {
   headBar(M.querySelector('.card'), $('sv'));
   $('sv').onclick = async () => {
     rd(); if (!c.name) return alert('会社名を入れてください。');
-    // 販売らくだで元から同じコードだった得意先（0099・0101・0119）は、コードを変えなければ保存できる（2026-11-07：保存のたびに止まっていた）
-    if (String(c.code) !== code0 && ST.custs.some(x => x.id !== c.id && !x.deleted && x.code === c.code)) return alert('コード ' + c.code + ' はほかの得意先が使っています。');
+    // 同じコードは受け付けない（ユーザー決定 2026-11-07：同じ会社でも担当者が違えばコードは分ける。販売らくだで同じだった物は写すときに付け直す）
+    if (ST.custs.some(x => x.id !== c.id && x.code === c.code)) return alert('コード ' + c.code + ' はほかの得意先が使っています。');
     c.termsCheck = false; c.termsText = SK.termsLabel(c.terms); delete c.isNew;
     busy('保存しています…');
     try { await staleCheck(C.cust, c, '得意先'); c.updatedAt = nowStr(); c.updatedBy = ST.me.name; await putQ(C.cust, c, 'saveCust', { c: plain(c) }, '得意先 ' + c.code); ST.custs = ST.custs.filter(x => x.id !== c.id).concat([c]).sort((a, b) => String(a.code).localeCompare(String(b.code))); alert('保存しました。'); editCust(c); }
