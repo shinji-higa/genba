@@ -145,12 +145,12 @@
 <main id="m"></main>
 <div id="busy"></div>
 
-<script src="calc.js?v=Ver.請求20261107-22"></script>
+<script src="calc.js?v=Ver.請求20261107-23"></script>
 <script type="module">
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
 import { getFirestore, collection, doc, getDoc, getDocs, setDoc, deleteDoc, writeBatch, runTransaction, onSnapshot, deleteField, query, where } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
-const APP_VER = 'Ver.請求20261107-22';   // 版の名前は「Ver.請求YYYYMMDD-NN」（ユーザー指示 2026-11-06）
+const APP_VER = 'Ver.請求20261107-23';   // 版の名前は「Ver.請求YYYYMMDD-NN」（ユーザー指示 2026-11-06）
 const API = 'https://script.google.com/macros/s/AKfycbzpJgqJOqQz5180PQF2S3kVN7TWg0c1dnyUUUNuCZtzy5_pmKEhAkw5w3gqSj31EEA1/exec';   // Apps Script「請求管理」（ポータル・給与とは別）
 /* ログインは給与アプリと同じ（ユーザー指示 2026-11-05）：ポータルの Firebase、メールとパスワード。入れるのはマスターと「請求管理」の権限（users.canInvoice）がある人 */
 const app = initializeApp({ apiKey: 'AIzaSyDVR4p4DO4s9h70uPlXUVlhNcMP9-YkQ5Q', authDomain: 'genba-portal-9077b.firebaseapp.com', projectId: 'genba-portal-9077b' });
@@ -823,6 +823,8 @@ async function saveInv(inv, why) {
   const d = plain(inv); delete d.isNew; delete d.fromSheet;
   const prevI = [...ST.invs, ...Object.values(ST.yearData).flat()].find(x => x.id === d.id);
   const sheetData = { prevDate: prevI ? prevI.date : '', inv: plain(d), calc: { sub: c.sub, tax: c.tax, total: c.total, groups: c.groups, payState: stateOf(d) }, why: why || '', at: nowStr() };
+  // スプレッドシートの明細の「税率」の列に、その日の税率を入れる（AIテスト 2026-11-07：アプリで作った行だけ空だった）。中身の印には入らない
+  sheetData.inv.lines = (sheetData.inv.lines || []).map(l => l.type === 'text' || (l.rate != null && l.rate !== '') ? l : Object.assign({}, l, { rate: SK.rateOf(l.tax || 'std', d.date, ST.cfg.rates) }));
   if (!ST.hold) busy('保存しています…');
   try {
     d.expireAt = expireOf(d);
@@ -943,6 +945,7 @@ function drawInvEdit() {
       readForm();
       if (!inv.custId && !inv.to.name) return alert('得意先を選んでください。');
       if (!inv.date) return alert('発行日を入れてください。');
+      try { await staleCheck(C.inv, inv, '請求書'); } catch (e) { return alert('保存できませんでした：' + e.message); }   // 古い画面なら、承認の確かめより先に知らせる（AIテスト 2026-11-07）
       /* 紙に出る中身が変わったときだけ承認をやり直す（送り方だけ変えたときなどは残す）。スプレッドシート側も同じ決まりで確かめる（提案4） */
       const prev = [...ST.invs, ...Object.values(ST.yearData).flat()].find(x => x.id === inv.id), changed = inv.isNew || !prev || SK.contentKey(prev) !== SK.contentKey(inv);
       if (changed && inv.approvals && Object.keys(inv.approvals).length) { if (!(await okBox('この請求書は承認の印が押してあります。\n中身を直して保存すると、承認はやり直しになります。保存しますか？', '保存する'))) return; inv.approvals = {}; }
