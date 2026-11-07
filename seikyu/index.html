@@ -145,12 +145,12 @@
 <main id="m"></main>
 <div id="busy"></div>
 
-<script src="calc.js?v=Ver.請求20261107-19"></script>
+<script src="calc.js?v=Ver.請求20261107-20"></script>
 <script type="module">
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
 import { getFirestore, collection, doc, getDoc, getDocs, setDoc, deleteDoc, writeBatch, runTransaction, onSnapshot, deleteField, query, where } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
-const APP_VER = 'Ver.請求20261107-19';   // 版の名前は「Ver.請求YYYYMMDD-NN」（ユーザー指示 2026-11-06）
+const APP_VER = 'Ver.請求20261107-20';   // 版の名前は「Ver.請求YYYYMMDD-NN」（ユーザー指示 2026-11-06）
 const API = 'https://script.google.com/macros/s/AKfycbzpJgqJOqQz5180PQF2S3kVN7TWg0c1dnyUUUNuCZtzy5_pmKEhAkw5w3gqSj31EEA1/exec';   // Apps Script「請求管理」（ポータル・給与とは別）
 /* ログインは給与アプリと同じ（ユーザー指示 2026-11-05）：ポータルの Firebase、メールとパスワード。入れるのはマスターと「請求管理」の権限（users.canInvoice）がある人 */
 const app = initializeApp({ apiKey: 'AIzaSyDVR4p4DO4s9h70uPlXUVlhNcMP9-YkQ5Q', authDomain: 'genba-portal-9077b.firebaseapp.com', projectId: 'genba-portal-9077b' });
@@ -1699,6 +1699,7 @@ async function saveCustSticky(c) {
   catch (e) { alert('付箋を保存できませんでした：' + e.message); return false; } finally { busy(''); }
 }
 function editCust(c) {
+  const code0 = c.isNew ? '' : String(c.code || '');   // 開いたときのコード（変えたときだけ、ほかと同じでないか確かめる）
   const t = c.terms || {}, sel = (id, opts, v) => '<select id="' + id + '" style="width:100%;">' + opts.map(o => '<option value="' + o[0] + '"' + (String(v) === o[0] ? ' selected' : '') + '>' + o[1] + '</option>').join('') + '</select>';
   const F = (k, l) => '<div><label class="f">' + l + '</label><input data-c="' + k + '" value="' + esc(c[k] || '') + '"></div>';
   M.innerHTML = '<div class="card"><div class="row"><button class="b" id="back">← 一覧へ</button><b style="font-size:1.1rem;">得意先 ' + esc(c.code) + '　' + esc(c.name) + '</b>' + (c.termsCheck ? '<span class="tag mid">要確認</span>' : '') + '<span class="sp"></span><button class="b dark" id="sv">保存</button></div></div>' + (c.isNew ? '' : stkPanel(c, 'stkC')) +
@@ -1718,7 +1719,8 @@ function editCust(c) {
   headBar(M.querySelector('.card'), $('sv'));
   $('sv').onclick = async () => {
     rd(); if (!c.name) return alert('会社名を入れてください。');
-    if (ST.custs.some(x => x.id !== c.id && x.code === c.code)) return alert('コード ' + c.code + ' はほかの得意先が使っています。');
+    // 販売らくだで元から同じコードだった得意先（0099・0101・0119）は、コードを変えなければ保存できる（2026-11-07：保存のたびに止まっていた）
+    if (String(c.code) !== code0 && ST.custs.some(x => x.id !== c.id && !x.deleted && x.code === c.code)) return alert('コード ' + c.code + ' はほかの得意先が使っています。');
     c.termsCheck = false; c.termsText = SK.termsLabel(c.terms); delete c.isNew;
     busy('保存しています…');
     try { await staleCheck(C.cust, c, '得意先'); c.updatedAt = nowStr(); c.updatedBy = ST.me.name; await putQ(C.cust, c, 'saveCust', { c: plain(c) }, '得意先 ' + c.code); ST.custs = ST.custs.filter(x => x.id !== c.id).concat([c]).sort((a, b) => String(a.code).localeCompare(String(b.code))); alert('保存しました。'); editCust(c); }
