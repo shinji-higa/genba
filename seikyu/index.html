@@ -145,12 +145,12 @@
 <main id="m"></main>
 <div id="busy"></div>
 
-<script src="calc.js?v=Ver.請求20261107-18"></script>
+<script src="calc.js?v=Ver.請求20261107-19"></script>
 <script type="module">
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
-import { getFirestore, collection, doc, getDoc, getDocs, setDoc, deleteDoc, writeBatch, runTransaction, onSnapshot } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
-const APP_VER = 'Ver.請求20261107-18';   // 版の名前は「Ver.請求YYYYMMDD-NN」（ユーザー指示 2026-11-06）
+import { getFirestore, collection, doc, getDoc, getDocs, setDoc, deleteDoc, writeBatch, runTransaction, onSnapshot, deleteField, query, where } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
+const APP_VER = 'Ver.請求20261107-19';   // 版の名前は「Ver.請求YYYYMMDD-NN」（ユーザー指示 2026-11-06）
 const API = 'https://script.google.com/macros/s/AKfycbzpJgqJOqQz5180PQF2S3kVN7TWg0c1dnyUUUNuCZtzy5_pmKEhAkw5w3gqSj31EEA1/exec';   // Apps Script「請求管理」（ポータル・給与とは別）
 /* ログインは給与アプリと同じ（ユーザー指示 2026-11-05）：ポータルの Firebase、メールとパスワード。入れるのはマスターと「請求管理」の権限（users.canInvoice）がある人 */
 const app = initializeApp({ apiKey: 'AIzaSyDVR4p4DO4s9h70uPlXUVlhNcMP9-YkQ5Q', authDomain: 'genba-portal-9077b.firebaseapp.com', projectId: 'genba-portal-9077b' });
@@ -253,6 +253,46 @@ const qGet = () => { try { return JSON.parse(localStorage.getItem(QK()) || '[]')
 const qSet = a => { localStorage.setItem(QK(), JSON.stringify(a)); qShow(); };
 const Q = { run: false, fail: 0, err: '', ng: [] };
 function qAdd(action, data, label) { const a = qGet(); a.push({ k: newId('q'), action, data, label: label || '', at: nowStr() }); qSet(a); qRun(); }
+/* どのパソコンからでも続きを書く（ユーザー決定 2026-11-07 「6は実行」）。
+   画面の写しの1枚ごとに「まだスプレッドシートに書いていない」の印（sq：書く中身ごと）を付けて保存する。
+   書けたら印を消す（1枚に1つの欄を上書き・消すだけなので溜まらない）。
+   誰かがアプリを開くと、2分以上たっても残っている印を見つけて続きを書く。
+   承認の保存だけは、スプレッドシートが「本人しか押せない」と止めるので、同じ人（どのパソコンでも）だけが続きを書く */
+const noSq = d => { const x = plain(d); ['inv', 'r', 'c'].forEach(k => { if (x[k]) delete x[k].sq; }); delete x.sq; return x; };
+async function putQ(col, o, action, data, label) {
+  const it = { k: newId('q'), action, data: noSq(data), label: label || '', at: nowStr(), by: ST.me.uid || '', byName: ST.me.name || '', c: col, id: o.id };
+  o.sq = { k: it.k, action, data: it.data, label: it.label, at: it.at, by: it.by, byName: it.byName };
+  try { await store.put(col, o.id, o); } catch (e) { delete o.sq; throw e; }
+  const a = qGet(); a.push(it); qSet(a); qRun();
+}
+async function qClear(x) {
+  if (!x.c || !x.id) return;
+  if (LOCAL) { const o = (MEM[x.c] || {})[x.id]; if (o && o.sq && o.sq.k === x.k) delete o.sq; return; }
+  try { const ref = doc(db, x.c, x.id); await runTransaction(db, async t => { const sn = await t.get(ref); if (sn.exists() && sn.data().sq && sn.data().sq.k === x.k) t.update(ref, { sq: deleteField() }); }); } catch (e) {}
+}
+async function qStale(x) {   // もう誰かが書いた（印が消えている）物は送らない（古いパソコンが後から古い中身で上書きしないように）
+  if (!x.c || !x.id) return false;
+  try { const o = await store.get(x.c, x.id); return !!(o && !o.sq); } catch (e) { return false; }
+}
+async function qAdopt() {
+  if (!ST.me) return;
+  const have = new Set(qGet().map(x => x.k)), add = [], old = Date.now() - 120000;
+  for (const c of [C.inv, C.rcp, C.cust]) {
+    let L;
+    try { L = LOCAL ? Object.entries(MEM[c] || {}).map(([id, v]) => ({ ...plain(v), id })) : (await getDocs(query(collection(db, c), where('sq.at', '>', '')))).docs.map(d => ({ ...d.data(), id: d.id })); } catch (e) { continue; }
+    L.forEach(o => {
+      const q = o.sq; if (!q || !q.k || have.has(q.k)) return;
+      if (new Date(String(q.at).replace(' ', 'T') + '+09:00').getTime() > old) return;   // 2分たっていない（保存したパソコンが今書いているところ）
+      const mine = q.by === ST.me.uid;
+      if (!mine && /承認/.test(q.label || '')) return;
+      const note = mine ? '' : '（' + (q.byName || 'ほかの人') + ' の保存の続きを ' + (ST.me.name || '') + ' が書いた）';
+      const data = q.action === 'saveInv' && note ? Object.assign({}, q.data, { why: String((q.data || {}).why || '') + note }) : q.data;
+      add.push({ k: q.k, action: q.action, data, label: (q.label || '') + note, at: q.at, by: q.by, byName: q.byName, c, id: o.id });
+    });
+  }
+  if (add.length) { qSet(qGet().concat(add)); qRun(); }
+}
+setInterval(() => { if (ST.me) qAdopt(); }, 180000);
 function qShow() {
   let e = $('qst'); if (!e) { e = document.createElement('span'); e.id = 'qst'; const la = $('loadAt'); if (!la) return; la.parentNode.insertBefore(e, la); }
   const n = qGet().length;
@@ -264,6 +304,8 @@ async function qRun() {
   try {
     for (;;) {
       const a = qGet(); if (!a.length) break;
+      const gone = []; for (const x of a.slice(0, 15)) if (await qStale(x)) gone.push(x.k);
+      if (gone.length) { qSet(qGet().filter(x => !gone.includes(x.k))); continue; }
       const batch = a.slice(0, 15);
       let r;
       try { r = await gas('batch', { items: batch.map(x => ({ k: x.k, action: x.action, data: x.data })) }); }
@@ -272,6 +314,7 @@ async function qRun() {
       yearRevBump(batch.filter(x => x.action === 'saveInv').flatMap(x => [String((x.data.inv || {}).date || '').slice(0, 4), String(x.data.prevDate || '').slice(0, 4)]));
       const done = new Set(batch.map(x => x.k));
       qSet(qGet().filter(x => !done.has(x.k)));
+      batch.forEach(x => qClear(x));   // 書けた（または止められた）物の印を消す
       ((r && r.ng) || []).forEach(n => { const x = batch.find(b => b.k === n.k) || {}; Q.ng.push(n); okBox('スプレッドシートに書けませんでした（' + (x.label || '') + '）：\n' + n.m + '\n\n画面の写しとスプレッドシートが違っています。上の「読み込み直す」を押して中身を確かめ、もう一度保存してください。', 'OK', true); });
     }
   } finally { Q.run = false; qShow(); }
@@ -459,7 +502,7 @@ async function boot() {
     $('reload').onclick = async e => { e.preventDefault(); if (ST.dirty && !(await okBox('保存していない変更があります。捨てて読み込み直しますか？', '読み込み直す'))) return; ST.dirty = false; ST.yearData = {}; boot(); };
     if (!ST.hasCfg && !ST.custs.length) ST.tab = 'cfg';
     draw();
-    qShow(); qRun(); liveOn(); apvBadge();
+    qShow(); qRun(); liveOn(); apvBadge(); setTimeout(qAdopt, 5000);
   } catch (e) { M.innerHTML = '<div class="card"><div class="msg">' + esc(e.message) + '</div></div>'; }
   busy('');
 }
@@ -778,9 +821,8 @@ async function saveInv(inv, why) {
   if (!ST.hold) busy('保存しています…');
   try {
     d.expireAt = expireOf(d);
-    await store.put(C.inv, d.id, d);   // 画面の写しに先に書く（提案7）
+    await putQ(C.inv, d, 'saveInv', sheetData, '請求書 ' + d.no + ' ' + (why || ''));   // 画面の写しに先に書き、スプレッドシートには後から（順番待ち・印つき）
   } finally { if (!ST.hold) busy(''); }
-  qAdd('saveInv', sheetData, '請求書 ' + d.no + ' ' + (why || ''));   // スプレッドシートには後から（順番待ち）
   setTimeout(apvBadge, 0);   // 承認待ちの数を出し直す
   ST.invs = ST.invs.filter(x => x.id !== d.id).concat([d]);
   Object.values(ST.yearData).forEach(a => { const k = a.findIndex(x => x.id === d.id); if (k >= 0) a[k] = d; });
@@ -1473,8 +1515,7 @@ async function saveRcp(r) {
   if (!r.from) r.from = curFrom();
   if (!r.createdAt) { r.createdAt = nowStr(); r.createdBy = ST.me.name; }
   busy('保存しています…');
-  const rq = plain(r); try { r.expireAt = endOfMarch(String(r.date).slice(0, 4)); await store.put(C.rcp, r.id, r); } finally { busy(''); }
-  qAdd('saveRcp', { r: rq }, (r.kind === 'offset' ? '相殺伝票 ' : '領収書 ') + (r.no || ''));   // スプレッドシートには後から（提案7）
+  const rq = plain(r); try { r.expireAt = endOfMarch(String(r.date).slice(0, 4)); await putQ(C.rcp, r, 'saveRcp', { r: rq }, (r.kind === 'offset' ? '相殺伝票 ' : '領収書 ') + (r.no || '')); } finally { busy(''); }   // スプレッドシートには後から（提案7・印つき）
   ST.rcps = ST.rcps.filter(x => x.id !== r.id).concat([r]);
 }
 async function newReceipt(inv) {
@@ -1643,7 +1684,7 @@ async function custDelete(list) {
   if (!(await okBox(msg, '削除する'))) return;
   busy('削除しています…');
   try {
-    for (const c0 of list) { const c = plain(c0); await freshen(C.cust, c, null, '得意先'); c.deleted = nowStr() + ' ' + (ST.me.name || ''); c.active = false; c.updatedAt = nowStr(); c.updatedBy = ST.me.name; await store.put(C.cust, c.id, c); qAdd('saveCust', { c: plain(c) }, '得意先 ' + c.code); ST.custs = ST.custs.filter(x => x.id !== c.id).concat([c]); }
+    for (const c0 of list) { const c = plain(c0); await freshen(C.cust, c, null, '得意先'); c.deleted = nowStr() + ' ' + (ST.me.name || ''); c.active = false; c.updatedAt = nowStr(); c.updatedBy = ST.me.name; await putQ(C.cust, c, 'saveCust', { c: plain(c) }, '得意先 ' + c.code); ST.custs = ST.custs.filter(x => x.id !== c.id).concat([c]); }
     ST.custs.sort((x, y) => String(x.code).localeCompare(String(y.code)));
     ST.cSel = { ids: new Set() };
   } catch (e) { alert('削除できませんでした：' + e.message); } finally { busy(''); }
@@ -1654,7 +1695,7 @@ async function saveCustSticky(c) {
   const v = await stkEdit(c); if (v === undefined) return false;
   const b = plain(ST.custs.find(x => x.id === c.id) || c); b.sticky = v;
   busy('保存しています…');
-  try { await freshen(C.cust, b, null, '得意先'); b.sticky = v; b.updatedAt = nowStr(); b.updatedBy = ST.me.name; await store.put(C.cust, b.id, b); qAdd('saveCust', { c: plain(b) }, '得意先 ' + b.code); ST.custs = ST.custs.filter(x => x.id !== b.id).concat([b]).sort((x, y) => String(x.code).localeCompare(String(y.code))); c.sticky = v; return true; }
+  try { await freshen(C.cust, b, null, '得意先'); b.sticky = v; b.updatedAt = nowStr(); b.updatedBy = ST.me.name; await putQ(C.cust, b, 'saveCust', { c: plain(b) }, '得意先 ' + b.code); ST.custs = ST.custs.filter(x => x.id !== b.id).concat([b]).sort((x, y) => String(x.code).localeCompare(String(y.code))); c.sticky = v; return true; }
   catch (e) { alert('付箋を保存できませんでした：' + e.message); return false; } finally { busy(''); }
 }
 function editCust(c) {
@@ -1680,7 +1721,7 @@ function editCust(c) {
     if (ST.custs.some(x => x.id !== c.id && x.code === c.code)) return alert('コード ' + c.code + ' はほかの得意先が使っています。');
     c.termsCheck = false; c.termsText = SK.termsLabel(c.terms); delete c.isNew;
     busy('保存しています…');
-    try { await staleCheck(C.cust, c, '得意先'); c.updatedAt = nowStr(); c.updatedBy = ST.me.name; await store.put(C.cust, c.id, c); qAdd('saveCust', { c: plain(c) }, '得意先 ' + c.code); ST.custs = ST.custs.filter(x => x.id !== c.id).concat([c]).sort((a, b) => String(a.code).localeCompare(String(b.code))); alert('保存しました。'); editCust(c); }
+    try { await staleCheck(C.cust, c, '得意先'); c.updatedAt = nowStr(); c.updatedBy = ST.me.name; await putQ(C.cust, c, 'saveCust', { c: plain(c) }, '得意先 ' + c.code); ST.custs = ST.custs.filter(x => x.id !== c.id).concat([c]).sort((a, b) => String(a.code).localeCompare(String(b.code))); alert('保存しました。'); editCust(c); }
     catch (e) { alert('保存できませんでした：' + e.message); } finally { busy(''); }
   };
   if ($('mk')) $('mk').onclick = () => { ST.tab = 'inv'; draw(); openInv(newInv(c)); ST.dirty = true; };
@@ -1867,7 +1908,7 @@ function drawLogin() {
 $('out').onclick = async e => { e.preventDefault(); if (LOCAL) return; if (qGet().length && !(await okBox('スプレッドシートにまだ書いていない保存が ' + qGet().length + ' 件あります。\nログアウトすると、次にこのパソコンでログインしたときに続きを書きます。ログアウトしますか？', 'ログアウトする'))) return; try { indexedDB.deleteDatabase('seikyu'); } catch (x) {} await signOut(auth); location.reload(); };   // 手元に覚えた昔の請求書も消す
 window.addEventListener('beforeunload', e => { if (ST.dirty || (ST.me && qGet().length)) { e.preventDefault(); e.returnValue = ''; } });   // スプレッドシートへ書く前に閉じるときも止める
 if (LOCAL) boot(); else onAuthStateChanged(auth, u => { if (u) boot(); else drawLogin(); });
-window.skTest = { ST, invPages, coverPage, rcpPages, showPaper, calcOf, stateOf, store, MEM, pdfOf, xlsxOf, monthData, approved, stickyOf, paginate, rowH, openInv, newInv, custOf };   // 試しで中を見る用
+window.skTest = { qAdopt, qGet, ST, invPages, coverPage, rcpPages, showPaper, calcOf, stateOf, store, MEM, pdfOf, xlsxOf, monthData, approved, stickyOf, paginate, rowH, openInv, newInv, custOf };   // 試しで中を見る用
 </script>
 </body>
 </html>
