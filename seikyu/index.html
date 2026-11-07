@@ -88,6 +88,7 @@
   /* 書類の画面の上の列（一覧へ〜紙を見る）は見出しにして、下へ動かしてもついて来る。ボタンの字は保存と同じ大きさ（ユーザー指示 2026-11-07） */
   .headcard { position: sticky; top: var(--hdH, 0px); z-index: 14; box-shadow: 0 4px 10px rgba(0,0,0,.12); }
   .headcard button.b { font-size: 1.25rem; }
+  .headcard button.b.big { padding: 8px 13px; min-height: 0; }   /* 見出しの保存は、ほかのボタンと同じ枠の大きさ（ユーザー指示 2026-11-07） */
   /* 一覧の「＋ 新しい〜」は右上についてくる（ユーザー指示 2026-11-07） */
   .newfloat { position: sticky; top: calc(var(--hdH, 0px) + 8px); height: 0; z-index: 16; display: flex; justify-content: flex-end; align-items: flex-start; pointer-events: none; }   /* align-items: flex-start が無いとボタンの高さが潰れる（2026-11-07 左モニターで見切れ） */
   .newfloat button { pointer-events: auto; box-shadow: 0 4px 14px rgba(0,0,0,.3); margin: 15px 17px 0 0; }
@@ -140,12 +141,12 @@
 <main id="m"></main>
 <div id="busy"></div>
 
-<script src="calc.js?v=Ver.請求20261107-04"></script>
+<script src="calc.js?v=Ver.請求20261107-05"></script>
 <script type="module">
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
 import { getFirestore, collection, doc, getDoc, getDocs, setDoc, deleteDoc, writeBatch, runTransaction, onSnapshot } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
-const APP_VER = 'Ver.請求20261107-04';   // 版の名前は「Ver.請求YYYYMMDD-NN」（ユーザー指示 2026-11-06）
+const APP_VER = 'Ver.請求20261107-05';   // 版の名前は「Ver.請求YYYYMMDD-NN」（ユーザー指示 2026-11-06）
 const API = 'https://script.google.com/macros/s/AKfycbzpJgqJOqQz5180PQF2S3kVN7TWg0c1dnyUUUNuCZtzy5_pmKEhAkw5w3gqSj31EEA1/exec';   // Apps Script「請求管理」（ポータル・給与とは別）
 /* ログインは給与アプリと同じ（ユーザー指示 2026-11-05）：ポータルの Firebase、メールとパスワード。入れるのはマスターと「請求管理」の権限（users.canInvoice）がある人 */
 const app = initializeApp({ apiKey: 'AIzaSyDVR4p4DO4s9h70uPlXUVlhNcMP9-YkQ5Q', authDomain: 'genba-portal-9077b.firebaseapp.com', projectId: 'genba-portal-9077b' });
