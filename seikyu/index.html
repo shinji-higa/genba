@@ -81,6 +81,8 @@
   #login { max-width: 360px; margin: 60px auto; }
   #login input { width: 100%; margin: 4px 0 10px; }
   #ask { position: fixed; inset: 0; z-index: 70; background: rgba(22,39,29,.45); display: flex; align-items: center; justify-content: center; padding: 16px; }
+  .savebar { position: sticky; bottom: 0; z-index: 15; display: flex; gap: 12px; align-items: center; flex-wrap: wrap; background: #fff; border-top: 2px solid var(--ink); padding: 10px 14px; margin-top: 14px; box-shadow: 0 -4px 12px rgba(0,0,0,.15); }   /* 保存ボタンを下に出したままにする（ユーザー指示 2026-11-07） */
+  button.b.big { font-size: 1.25rem; padding: 14px 40px; min-height: 56px; }
   #ask .card { width: 100%; max-width: 520px; margin: 0; max-height: 92vh; overflow: auto; }
   #upd { position: fixed; left: 50%; transform: translateX(-50%); top: 8px; z-index: 60; border: 0; border-radius: 18px; padding: 9px 16px; background: var(--accent); color: #fff; font: 700 13px inherit; box-shadow: 0 2px 8px rgba(0,0,0,.3); white-space: nowrap; cursor: pointer; }
   /* 保存しています・エラーは画面の真ん中に大きく出す（ユーザー指示 2026-11-06：どこかわからなかった） */
@@ -130,12 +132,12 @@
 <main id="m"></main>
 <div id="busy"></div>
 
-<script src="calc.js?v=Ver.請求20261106-31"></script>
+<script src="calc.js?v=Ver.請求20261107-01"></script>
 <script type="module">
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
 import { getFirestore, collection, doc, getDoc, getDocs, setDoc, deleteDoc, writeBatch, runTransaction, onSnapshot } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
-const APP_VER = 'Ver.請求20261106-31';   // 版の名前は「Ver.請求YYYYMMDD-NN」（ユーザー指示 2026-11-06）
+const APP_VER = 'Ver.請求20261107-01';   // 版の名前は「Ver.請求YYYYMMDD-NN」（ユーザー指示 2026-11-06）
 const API = 'https://script.google.com/macros/s/AKfycbzpJgqJOqQz5180PQF2S3kVN7TWg0c1dnyUUUNuCZtzy5_pmKEhAkw5w3gqSj31EEA1/exec';   // Apps Script「請求管理」（ポータル・給与とは別）
 /* ログインは給与アプリと同じ（ユーザー指示 2026-11-05）：ポータルの Firebase、メールとパスワード。入れるのはマスターと「請求管理」の権限（users.canInvoice）がある人 */
 const app = initializeApp({ apiKey: 'AIzaSyDVR4p4DO4s9h70uPlXUVlhNcMP9-YkQ5Q', authDomain: 'genba-portal-9077b.firebaseapp.com', projectId: 'genba-portal-9077b' });
@@ -183,6 +185,7 @@ function formBox(title, fields, okLabel) {
     const end = v => { w.remove(); done(v); };
     w.querySelector('[data-x="n"]').onclick = () => end(null);
     w.querySelector('[data-x="y"]').onclick = () => { const o = {}; w.querySelectorAll('[data-k]').forEach(e => { o[e.dataset.k] = e.value; }); end(o); };
+    if (/保存/.test(okLabel || '')) saveBar(w.querySelector('.card'), [[w.querySelector('[data-x="y"]'), okLabel, 1]]);   // 新しい領収書など
     const first = w.querySelector('[data-k]'); if (first) first.focus();
   });
 }
@@ -281,6 +284,15 @@ const store = {
 };
 const endOfMarch = y => new Date((Number(y) + 1) + '-03-31T23:59:59+09:00').getTime();
 const liveYear = y => Date.now() <= endOfMarch(y);
+/* 保存ボタンを大きく、下へ動かしても見えるように（ユーザー指示 2026-11-07：設定・請求書・得意先・送り状・領収書・まとめて入金）。
+   画面の下に帯を出し、押すと元のボタンを押したのと同じにする */
+function saveBar(host, list) {
+  if (!host) return; const old = host.querySelector(':scope > .savebar'); if (old) old.remove();
+  const bs = list.filter(x => x[0]); if (!bs.length) return;
+  const d = document.createElement('div'); d.className = 'savebar'; d.innerHTML = '<span class="sp"></span>';
+  bs.forEach(([el, label, dark]) => { const b = document.createElement('button'); b.className = 'b big' + (dark ? ' dark' : ''); b.textContent = label; b.onclick = () => el.click(); d.appendChild(b); });
+  host.appendChild(d);
+}
 
 
 /* ===== 付箋メモ（ユーザー指示 2026-11-06：全画面で付箋メモ。色も選べる。メモは見えるように）。
@@ -854,6 +866,7 @@ function drawInvEdit() {
     });
     $('addL').onclick = () => { readForm(); inv.lines.push({ type: 'item', name: '', qty: 1, unit: '式', price: null, tax: 'std' }); drawInvEdit(); ST.dirty = true; };
     $('addT').onclick = () => { readForm(); inv.lines.push({ type: 'text', name: '' }); drawInvEdit(); ST.dirty = true; };
+    saveBar(M, [[$('sv'), '保存', 1]]);
     $('sv').onclick = async () => {
       readForm();
       if (!inv.custId && !inv.to.name) return alert('得意先を選んでください。');
@@ -1228,6 +1241,7 @@ async function coverEdit(c) {
       if (print) await printPages([coverPage({}, o)]);
       end(o); if (ST.tab === 'cov') drawCov();
     };
+    saveBar(w.querySelector('.card'), [[w.querySelector('[data-x="save"]'), '保存'], [w.querySelector('[data-x="pr"]'), '保存して印刷', 1]]);
     w.querySelector('[data-x="save"]').onclick = () => save(false);
     w.querySelector('[data-x="pr"]').onclick = () => save(true);
     show();
@@ -1357,6 +1371,7 @@ function payBatch(rows) {
   $('pbAll').onchange = e => { trs.forEach(tr => { tr.querySelector('[data-c]').checked = e.target.checked; const a = tr.querySelector('[data-f="amount"]'); if (e.target.checked && !a.value.trim()) a.value = yen(rows[+tr.dataset.k].amt); }); cnt(); };
   $('pbDA').onclick = () => { const d = $('pbD').value; trs.forEach(tr => { if (tr.querySelector('[data-c]').checked) tr.querySelector('[data-f="date"]').value = d; }); };
   $('pbBack').onclick = async () => { if (ST.dirty && !(await okBox('入れた入金はまだ保存していません。捨てて戻りますか？', '捨てて戻る'))) return; ST.dirty = false; ST.payBatch = false; drawPay(); };
+  saveBar(M, [[$('pbSave'), 'チェックした物をまとめて保存', 1]]);
   $('pbSave').onclick = async () => {
     const todo = trs.filter(tr => tr.querySelector('[data-c]').checked).map(tr => { const g = f => tr.querySelector('[data-f="' + f + '"]').value; return { x: rows[+tr.dataset.k], p: { date: g('date'), amount: num(g('amount')) || 0, fee: num(g('fee')) || 0, how: g('how'), memo: g('memo').trim(), at: nowStr(), by: ST.me.name } }; });
     if (!todo.length) return alert('保存する行にチェックを付けてください。');
@@ -1516,6 +1531,7 @@ function drawRcpEdit() {
   }
   const ready = async () => !ST.dirty || await save();   // 直していたら保存してから
   const fname = x => K.name + '_' + x.no + '_' + x.toName + '.pdf';
+  saveBar(M, [[$('rSave'), '保存', 1]]);
   if ($('rSave')) $('rSave').onclick = save;
   if ($('rPrint')) $('rPrint').onclick = async () => { if (await ready()) await printPages(rcpPages(ST.rcpOpen)); };
   if ($('rPdf')) $('rPdf').onclick = async () => { if (!(await ready())) return; const x = ST.rcpOpen; try { await pdfOf(rcpPages(x), fname(x)); } catch (e) { alert(e.message); } };
@@ -1613,6 +1629,7 @@ function editCust(c) {
   const rd = () => { M.querySelectorAll('[data-c]').forEach(e => { c[e.dataset.c] = e.value.trim(); }); c.terms = { close: Number($('tc').value), months: Number($('tm').value), day: Number($('td').value) }; c.active = $('ac').value === '1'; };
   ['tc', 'tm', 'td'].forEach(id => $(id).onchange = () => { rd(); $('tl').textContent = SK.termsLabel(c.terms); });
   $('back').onclick = () => drawCust();
+  saveBar(M, [[$('sv'), '保存', 1]]);
   $('sv').onclick = async () => {
     rd(); if (!c.name) return alert('会社名を入れてください。');
     if (ST.custs.some(x => x.id !== c.id && x.code === c.code)) return alert('コード ' + c.code + ' はほかの得意先が使っています。');
@@ -1752,6 +1769,7 @@ function drawCfg() {
       approvers: [...M.querySelectorAll('[data-apk]')].map(tr => { const u = tr.querySelector('[data-ap="uid"]'), uid = u.value, p = (ST.people || []).find(x => x.uid === uid); return { label: tr.querySelector('[data-ap="label"]').value.trim() || '承認', uid, name: uid ? (p ? p.name : (u.selectedOptions[0] || {}).textContent || uid) : '', stamp: tr.querySelector('[data-ap="stamp"]').value }; })
     };
   }
+  saveBar(M, [[$('sv'), '保存', 1]]);
   $('sv').onclick = async () => {
     const v = readAll();
     if (v.rates.some(r => r.rate == null || !r.from)) return alert('税率の表に、税率か「いつから」が空の行があります。');
