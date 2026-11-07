@@ -141,12 +141,12 @@
 <main id="m"></main>
 <div id="busy"></div>
 
-<script src="calc.js?v=Ver.請求20261107-06"></script>
+<script src="calc.js?v=Ver.請求20261107-07"></script>
 <script type="module">
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
 import { getFirestore, collection, doc, getDoc, getDocs, setDoc, deleteDoc, writeBatch, runTransaction, onSnapshot } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
-const APP_VER = 'Ver.請求20261107-06';   // 版の名前は「Ver.請求YYYYMMDD-NN」（ユーザー指示 2026-11-06）
+const APP_VER = 'Ver.請求20261107-07';   // 版の名前は「Ver.請求YYYYMMDD-NN」（ユーザー指示 2026-11-06）
 const API = 'https://script.google.com/macros/s/AKfycbzpJgqJOqQz5180PQF2S3kVN7TWg0c1dnyUUUNuCZtzy5_pmKEhAkw5w3gqSj31EEA1/exec';   // Apps Script「請求管理」（ポータル・給与とは別）
 /* ログインは給与アプリと同じ（ユーザー指示 2026-11-05）：ポータルの Firebase、メールとパスワード。入れるのはマスターと「請求管理」の権限（users.canInvoice）がある人 */
 const app = initializeApp({ apiKey: 'AIzaSyDVR4p4DO4s9h70uPlXUVlhNcMP9-YkQ5Q', authDomain: 'genba-portal-9077b.firebaseapp.com', projectId: 'genba-portal-9077b' });
@@ -300,7 +300,7 @@ function headBar(card, save) { if (!card) return; card.classList.add('headcard')
 function floatNew(btn) {
   if (!btn) return; btn.classList.add('mid');
   const ph = btn.cloneNode(true); ph.removeAttribute('id'); ph.style.visibility = 'hidden'; ph.tabIndex = -1; btn.replaceWith(ph);   // 元の所は同じ幅を空けておく（ほかのボタンが動かない）
-  const h = document.createElement('div'); h.className = 'newfloat'; h.appendChild(btn); M.prepend(h);
+  const card = ph.closest('#m > .card'), h = document.createElement('div'); h.className = 'newfloat'; h.appendChild(btn); if (card) card.before(h); else M.prepend(h);   // ボタンのある欄の上から右上についてくる
 }
 function saveBar(host, list) {
   if (!host) return; const old = host.querySelector(':scope > .savebar'); if (old) old.remove();
@@ -1364,7 +1364,7 @@ function drawPay() {
     $('pl').querySelectorAll('[data-o]').forEach(a => a.onclick = e => { e.preventDefault(); ST.tab = 'inv'; draw(); openInv(plain(ST.invs.find(i => i.id === a.dataset.o))); });
   }
   ltWire('pay', drawPay); fill();   // 上の数字（期日超えなど）も選んだデータで出し直す
-  $('pbat').onclick = () => payBatch(shown);
+  $('pbat').onclick = () => payBatch(shown); floatNew($('pbat'));
 }
 /* 入金をまとめて入れる画面（提案6・ユーザー決定 2026-11-06）。いま出ている「入金がまだの請求書」を並べ、入れた行だけまとめて保存する */
 function payBatch(rows) {
