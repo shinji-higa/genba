@@ -81,7 +81,8 @@
   #login { max-width: 360px; margin: 60px auto; }
   #login input { width: 100%; margin: 4px 0 10px; }
   #ask { position: fixed; inset: 0; z-index: 70; background: rgba(22,39,29,.45); display: flex; align-items: center; justify-content: center; padding: 16px; }
-  .savebar { position: sticky; bottom: 0; z-index: 15; display: flex; gap: 12px; align-items: center; flex-wrap: wrap; background: #fff; border-top: 2px solid var(--ink); padding: 10px 14px; margin-top: 14px; box-shadow: 0 -4px 12px rgba(0,0,0,.15); }   /* 保存ボタンを下に出したままにする（ユーザー指示 2026-11-07） */
+  .savebar { position: sticky; bottom: 14px; z-index: 15; display: flex; justify-content: flex-end; gap: 10px; flex-wrap: wrap; margin-top: 12px; pointer-events: none; }   /* 保存ボタンだけが右下について来る（帯にしない。ユーザー指示 2026-11-07） */
+  .savebar button { pointer-events: auto; box-shadow: 0 4px 14px rgba(0,0,0,.35); }
   button.b.big { font-size: 1.25rem; padding: 14px 40px; min-height: 56px; }
   #ask .card { width: 100%; max-width: 520px; margin: 0; max-height: 92vh; overflow: auto; }
   #upd { position: fixed; left: 50%; transform: translateX(-50%); top: 8px; z-index: 60; border: 0; border-radius: 18px; padding: 9px 16px; background: var(--accent); color: #fff; font: 700 13px inherit; box-shadow: 0 2px 8px rgba(0,0,0,.3); white-space: nowrap; cursor: pointer; }
@@ -132,12 +133,12 @@
 <main id="m"></main>
 <div id="busy"></div>
 
-<script src="calc.js?v=Ver.請求20261107-01"></script>
+<script src="calc.js?v=Ver.請求20261107-02"></script>
 <script type="module">
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
 import { getFirestore, collection, doc, getDoc, getDocs, setDoc, deleteDoc, writeBatch, runTransaction, onSnapshot } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
-const APP_VER = 'Ver.請求20261107-01';   // 版の名前は「Ver.請求YYYYMMDD-NN」（ユーザー指示 2026-11-06）
+const APP_VER = 'Ver.請求20261107-02';   // 版の名前は「Ver.請求YYYYMMDD-NN」（ユーザー指示 2026-11-06）
 const API = 'https://script.google.com/macros/s/AKfycbzpJgqJOqQz5180PQF2S3kVN7TWg0c1dnyUUUNuCZtzy5_pmKEhAkw5w3gqSj31EEA1/exec';   // Apps Script「請求管理」（ポータル・給与とは別）
 /* ログインは給与アプリと同じ（ユーザー指示 2026-11-05）：ポータルの Firebase、メールとパスワード。入れるのはマスターと「請求管理」の権限（users.canInvoice）がある人 */
 const app = initializeApp({ apiKey: 'AIzaSyDVR4p4DO4s9h70uPlXUVlhNcMP9-YkQ5Q', authDomain: 'genba-portal-9077b.firebaseapp.com', projectId: 'genba-portal-9077b' });
@@ -285,12 +286,12 @@ const store = {
 const endOfMarch = y => new Date((Number(y) + 1) + '-03-31T23:59:59+09:00').getTime();
 const liveYear = y => Date.now() <= endOfMarch(y);
 /* 保存ボタンを大きく、下へ動かしても見えるように（ユーザー指示 2026-11-07：設定・請求書・得意先・送り状・領収書・まとめて入金）。
-   画面の下に帯を出し、押すと元のボタンを押したのと同じにする */
+   右下に大きいボタンを出して、下へ動かしてもついて来る。押すと元のボタンを押したのと同じ */
 function saveBar(host, list) {
   if (!host) return; const old = host.querySelector(':scope > .savebar'); if (old) old.remove();
   const bs = list.filter(x => x[0]); if (!bs.length) return;
-  const d = document.createElement('div'); d.className = 'savebar'; d.innerHTML = '<span class="sp"></span>';
-  bs.forEach(([el, label, dark]) => { const b = document.createElement('button'); b.className = 'b big' + (dark ? ' dark' : ''); b.textContent = label; b.onclick = () => el.click(); d.appendChild(b); });
+  const d = document.createElement('div'); d.className = 'savebar';
+  bs.forEach(([el, label, dark]) => { el.style.display = 'none'; const b = document.createElement('button'); b.className = 'b big' + (dark ? ' dark' : ''); b.textContent = label; b.onclick = () => el.click(); d.appendChild(b); });   // 上の小さい保存ボタンは隠し、ついて来る大きいボタン1つにする
   host.appendChild(d);
 }
 
