@@ -145,12 +145,12 @@
 <main id="m"></main>
 <div id="busy"></div>
 
-<script src="calc.js?v=Ver.請求20261107-16"></script>
+<script src="calc.js?v=Ver.請求20261107-17"></script>
 <script type="module">
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
 import { getFirestore, collection, doc, getDoc, getDocs, setDoc, deleteDoc, writeBatch, runTransaction, onSnapshot } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
-const APP_VER = 'Ver.請求20261107-16';   // 版の名前は「Ver.請求YYYYMMDD-NN」（ユーザー指示 2026-11-06）
+const APP_VER = 'Ver.請求20261107-17';   // 版の名前は「Ver.請求YYYYMMDD-NN」（ユーザー指示 2026-11-06）
 const API = 'https://script.google.com/macros/s/AKfycbzpJgqJOqQz5180PQF2S3kVN7TWg0c1dnyUUUNuCZtzy5_pmKEhAkw5w3gqSj31EEA1/exec';   // Apps Script「請求管理」（ポータル・給与とは別）
 /* ログインは給与アプリと同じ（ユーザー指示 2026-11-05）：ポータルの Firebase、メールとパスワード。入れるのはマスターと「請求管理」の権限（users.canInvoice）がある人 */
 const app = initializeApp({ apiKey: 'AIzaSyDVR4p4DO4s9h70uPlXUVlhNcMP9-YkQ5Q', authDomain: 'genba-portal-9077b.firebaseapp.com', projectId: 'genba-portal-9077b' });
@@ -1335,7 +1335,7 @@ async function pdfOf(pages, name, opt) {
 function pdfView(blob, name) {
   document.querySelectorAll('#ask.pdfv').forEach(x => x.remove());   // 2回押しても重ねない
   const url = URL.createObjectURL(blob), w = document.createElement('div'); w.id = 'ask'; w.className = 'pdfv';
-  w.innerHTML = '<div class="card" style="max-width:1500px;width:88%;height:90vh;max-height:90vh;display:flex;flex-direction:column;padding:10px 14px;overflow:hidden;"><div class="row"><b style="font-size:1.1rem;">' + esc(name) + '（中身の確認）</b><span class="sp"></span><span class="note" style="color:var(--warn);font-weight:700;">手書きは「このPDFを保存」では入りません。手書きごと保存するときは、PDFの右上の「↓」で、ファイル名を「' + esc(name) + '」に変えて保存してください。</span><button class="b" data-x="cp">名前をコピー</button><button class="b mid" data-x="n">閉じる</button><button class="b dark mid" data-x="s">このPDFを保存</button></div><iframe src="' + url + '#zoom=68" style="flex:1;width:100%;border:1px solid var(--line);margin-top:8px;"></iframe></div>';
+  w.innerHTML = '<div class="card" style="max-width:1500px;width:88%;height:90vh;max-height:90vh;display:flex;flex-direction:column;padding:10px 14px;overflow:hidden;"><div class="row"><b style="font-size:1.1rem;">' + esc(name) + '（中身の確認）</b><span class="sp"></span><button class="b mid" data-x="n">閉じる</button><button class="b dark mid" data-x="s">このPDFを保存</button></div><div class="row" style="margin-top:6px;"><span class="sp"></span><span class="note" style="color:var(--warn);font-weight:700;">手書きは「このPDFを保存」では入りません。手書きごと保存するときは、PDFの右上の「↓」で、ファイル名を「' + esc(name) + '」に変えて保存してください。</span><button class="b" data-x="cp">名前をコピー</button></div><iframe src="' + url + '#zoom=68" style="flex:1;width:100%;border:1px solid var(--line);margin-top:8px;"></iframe></div>';
   document.body.appendChild(w);
   const end = () => { w.remove(); URL.revokeObjectURL(url); };
   w.querySelector('[data-x="n"]').onclick = end;
