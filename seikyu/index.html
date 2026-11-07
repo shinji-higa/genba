@@ -141,12 +141,12 @@
 <main id="m"></main>
 <div id="busy"></div>
 
-<script src="calc.js?v=Ver.請求20261107-07"></script>
+<script src="calc.js?v=Ver.請求20261107-08"></script>
 <script type="module">
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
 import { getFirestore, collection, doc, getDoc, getDocs, setDoc, deleteDoc, writeBatch, runTransaction, onSnapshot } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
-const APP_VER = 'Ver.請求20261107-07';   // 版の名前は「Ver.請求YYYYMMDD-NN」（ユーザー指示 2026-11-06）
+const APP_VER = 'Ver.請求20261107-08';   // 版の名前は「Ver.請求YYYYMMDD-NN」（ユーザー指示 2026-11-06）
 const API = 'https://script.google.com/macros/s/AKfycbzpJgqJOqQz5180PQF2S3kVN7TWg0c1dnyUUUNuCZtzy5_pmKEhAkw5w3gqSj31EEA1/exec';   // Apps Script「請求管理」（ポータル・給与とは別）
 /* ログインは給与アプリと同じ（ユーザー指示 2026-11-05）：ポータルの Firebase、メールとパスワード。入れるのはマスターと「請求管理」の権限（users.canInvoice）がある人 */
 const app = initializeApp({ apiKey: 'AIzaSyDVR4p4DO4s9h70uPlXUVlhNcMP9-YkQ5Q', authDomain: 'genba-portal-9077b.firebaseapp.com', projectId: 'genba-portal-9077b' });
@@ -194,7 +194,7 @@ function formBox(title, fields, okLabel) {
     const end = v => { w.remove(); done(v); };
     w.querySelector('[data-x="n"]').onclick = () => end(null);
     w.querySelector('[data-x="y"]').onclick = () => { const o = {}; w.querySelectorAll('[data-k]').forEach(e => { o[e.dataset.k] = e.value; }); end(o); };
-    if (/保存/.test(okLabel || '')) saveBar(w.querySelector('.card'), [[w.querySelector('[data-x="y"]'), okLabel, 1]]);   // 新しい領収書など
+    if (/保存/.test(okLabel || '')) saveBar(w.querySelector('.card'), [[w.querySelector('[data-x="n"]'), 'やめる'], [w.querySelector('[data-x="y"]'), okLabel, 1]]);   // やめるも同じ大きさで左横に（ユーザー指示 2026-11-07）   // 新しい領収書など
     const first = w.querySelector('[data-k]'); if (first) first.focus();
   });
 }
@@ -1257,7 +1257,7 @@ async function coverEdit(c) {
       if (print) await printPages([coverPage({}, o)]);
       end(o); if (ST.tab === 'cov') drawCov();
     };
-    saveBar(w.querySelector('.card'), [[w.querySelector('[data-x="save"]'), '保存'], [w.querySelector('[data-x="pr"]'), '保存して印刷', 1]]);
+    saveBar(w.querySelector('.card'), [[w.querySelector('[data-x="n"]'), 'やめる'], [w.querySelector('[data-x="save"]'), '保存'], [w.querySelector('[data-x="pr"]'), '保存して印刷', 1]]);
     w.querySelector('[data-x="save"]').onclick = () => save(false);
     w.querySelector('[data-x="pr"]').onclick = () => save(true);
     show();
