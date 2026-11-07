@@ -32,6 +32,7 @@
   table.ed input[readonly] { background: #f1f3f2; color: #333; }
   input, select, textarea { font: inherit; padding: 6px 8px; border: 1.5px solid #7f8f85; border-radius: 5px; background: #fff; color: var(--ink); min-width: 0; }
   textarea { width: 100%; min-height: 60px; }
+  textarea.grow { field-sizing: content; min-height: 2.6em; resize: vertical; }   /* 但し書きなど：長くなったら折り返して全部見える（2026-11-07） */
   textarea.paperw { font-size: 15px; line-height: 1.7; padding: 6px 10px; font-family: 'BIZ UDMincho Medium','BIZ UD明朝 Medium','BIZ UDMincho','Yu Mincho','YuMincho','Hiragino Mincho ProN','Noto Serif JP',serif; box-sizing: content-box; }   /* 1em＝全角1字。紙と同じ字数で折り返す */
   label.f { display: block; font-size: .84rem; font-weight: 700; color: var(--sub); margin-bottom: 2px; }
   table.t { border-collapse: collapse; width: 100%; font-size: .9rem; }
@@ -141,12 +142,12 @@
 <main id="m"></main>
 <div id="busy"></div>
 
-<script src="calc.js?v=Ver.請求20261107-08"></script>
+<script src="calc.js?v=Ver.請求20261107-09"></script>
 <script type="module">
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
 import { getFirestore, collection, doc, getDoc, getDocs, setDoc, deleteDoc, writeBatch, runTransaction, onSnapshot } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
-const APP_VER = 'Ver.請求20261107-08';   // 版の名前は「Ver.請求YYYYMMDD-NN」（ユーザー指示 2026-11-06）
+const APP_VER = 'Ver.請求20261107-09';   // 版の名前は「Ver.請求YYYYMMDD-NN」（ユーザー指示 2026-11-06）
 const API = 'https://script.google.com/macros/s/AKfycbzpJgqJOqQz5180PQF2S3kVN7TWg0c1dnyUUUNuCZtzy5_pmKEhAkw5w3gqSj31EEA1/exec';   // Apps Script「請求管理」（ポータル・給与とは別）
 /* ログインは給与アプリと同じ（ユーザー指示 2026-11-05）：ポータルの Firebase、メールとパスワード。入れるのはマスターと「請求管理」の権限（users.canInvoice）がある人 */
 const app = initializeApp({ apiKey: 'AIzaSyDVR4p4DO4s9h70uPlXUVlhNcMP9-YkQ5Q', authDomain: 'genba-portal-9077b.firebaseapp.com', projectId: 'genba-portal-9077b' });
@@ -187,7 +188,7 @@ function formBox(title, fields, okLabel) {
     const w = document.createElement('div'); w.id = 'ask';
     w.innerHTML = '<div class="card"><h2>' + esc(title) + '</h2>' + fields.map(f => '<div style="margin-bottom:8px;"><label class="f">' + esc(f.label) + '</label>' +
       (f.type === 'select' ? '<select data-k="' + f.k + '" style="width:100%;">' + f.opts.map(o => '<option' + (o === f.value ? ' selected' : '') + '>' + esc(o) + '</option>').join('') + '</select>'
-        : f.type === 'area' ? '<textarea data-k="' + f.k + '">' + esc(f.value || '') + '</textarea>'
+        : f.type === 'area' ? '<textarea data-k="' + f.k + '" class="grow">' + esc(f.value || '') + '</textarea>'
           : '<input data-k="' + f.k + '" type="' + (f.type || 'text') + '" value="' + esc(f.value == null ? '' : f.value) + '" style="width:100%;' + (f.num ? 'text-align:right;' : '') + '">') + (f.note ? '<div class="note">' + esc(f.note) + '</div>' : '') + '</div>').join('') +
       '<div class="row" style="margin-top:12px;"><span class="sp"></span><button class="b" data-x="n">やめる</button><button class="b dark" data-x="y">' + esc(okLabel || 'OK') + '</button></div></div>';
     document.body.appendChild(w);
@@ -1458,7 +1459,7 @@ async function newReceipt(inv) {
     { k: 'date', label: '発行日', type: 'date', value: inv ? (SK.lastPayDate(inv) || today()) : today() },
     { k: 'mode', label: '金額の入れ方', type: 'select', opts: RCP_MODES.map(x => x[1]), value: RCP_MODES[0][1] },
     { k: 'amount', label: '金額（円。上で選んだ税込か税抜）', value: amt === '' ? '' : yen(amt), num: 1, note: inv ? '請求額 ' + yen(c.total) + ' 円' + (paid ? '、入金額 ' + yen(paid - (inv.payments || []).reduce((s, p) => s + (Number(p.fee) || 0), 0)) + ' 円（手数料を除く）' : '') : '' },
-    { k: 'purpose', label: '但し書き', value: ST.cfg.rcpPurpose },
+    { k: 'purpose', label: '但し書き', type: 'area', value: ST.cfg.rcpPurpose },   // 長くても全部見えるように折り返す（2026-11-07）
     { k: 'how', label: '受け取り方', type: 'select', opts: ['振込', '現金', '小切手', 'その他'], value: inv && inv.payments && inv.payments.length ? (inv.payments[inv.payments.length - 1].how || '振込') : '振込' }
   ], '作って保存');
   if (!res) return;
@@ -1466,7 +1467,7 @@ async function newReceipt(inv) {
   if (!res.toName || !v) return alert('宛名と金額を入れてください。');
   // 税率ごとの内訳：税込で請求書の全額なら請求書の内訳。ほかは発行日の標準税率で分ける（税抜なら消費税を足す）
   const am = rcpAmounts(v, mode, res.date, inv ? inv.id : ''), amount = am.amount, groups = am.groups;
-  const r = { id: newId('t'), no: '', date: res.date, toName: res.toName, honor: res.honor, amount, amtMode: mode, purpose: res.purpose, how: res.how, invId: inv ? inv.id : '', invNo: inv ? inv.no : '', groups, stamp: rcpDuty({ amount, groups }), state: '発行済み' };
+  const r = { id: newId('t'), no: '', date: res.date, toName: res.toName, honor: res.honor, amount, amtMode: mode, purpose: String(res.purpose || '').replace(/\s*\n\s*/g, ' '), how: res.how, invId: inv ? inv.id : '', invNo: inv ? inv.no : '', groups, stamp: rcpDuty({ amount, groups }), state: '発行済み' };
   try { await saveRcp(r); ST.tab = 'rcp'; ST.rcpOpen = plain(r); draw(); if (r.stamp == null) alert('1,000万円を超える領収書の収入印紙は、国税庁 No.7141 の表で確かめてください。'); } catch (e) { alert('保存できませんでした：' + e.message); }
 }
 
@@ -1477,14 +1478,14 @@ async function newOffset(inv) {
     { k: 'honor', label: '敬称', type: 'select', opts: ['様', '御中', '殿'], value: '御中' },
     { k: 'date', label: '相殺日', type: 'date', value: today() },
     { k: 'amount', label: '相殺する金額（円）', value: '', num: 1, note: inv ? '請求額 ' + yen(calcOf(inv).total) + ' 円、入金済み ' + yen(SK.paid(inv)) + ' 円' : '' },
-    { k: 'purpose', label: '内容', value: ST.cfg.offPurpose || '' },
+    { k: 'purpose', label: '内容', type: 'area', value: ST.cfg.offPurpose || '' },
     { k: 'invNo', label: '請求書の番号（あれば）', value: inv ? inv.no : '' }
   ], '作って保存');
   if (!res) return;
   const amount = num(res.amount) || 0;
   if (!res.toName || !amount) return alert('相手先と金額を入れてください。');
   const iv = inv || ST.invs.find(i => i.no === String(res.invNo || '').trim());
-  const r = { id: newId('t'), kind: 'offset', no: '', date: res.date, toName: res.toName, honor: res.honor, amount, purpose: res.purpose, invId: iv ? iv.id : '', invNo: String(res.invNo || '').trim(), state: '発行済み' };
+  const r = { id: newId('t'), kind: 'offset', no: '', date: res.date, toName: res.toName, honor: res.honor, amount, purpose: String(res.purpose || '').replace(/\s*\n\s*/g, ' '), invId: iv ? iv.id : '', invNo: String(res.invNo || '').trim(), state: '発行済み' };
   try { await saveRcp(r); ST.tab = 'off'; ST.rcpOpen = plain(r); draw(); } catch (e) { alert('保存できませんでした：' + e.message); }
 }
 
@@ -1519,7 +1520,7 @@ function drawRcpEdit() {
     '<div class="card"><div class="grid3" style="align-items:start;">' +
     F('toName', K.who, I('toName', r.toName)) + F('honor', '敬称', S('honor', r.honor || '様', ['様', '御中', '殿'])) + F('date', K.date, '<input data-r="date" type="date" value="' + esc(r.date) + '"' + (gone ? ' disabled' : '') + ' style="width:100%;">') +
     (off ? '' : F('amtMode', '金額の入れ方', S('amtMode', (RCP_MODES.find(x => x[0] === (r.amtMode || 'in')) || RCP_MODES[0])[1], RCP_MODES.map(x => x[1])))) +
-    F('amount', off ? '相殺する金額（円）' : (r.amtMode === 'ex' ? '金額（税抜・円）' : '金額（税込・円）'), I('amount', yen(!off && r.amtMode === 'ex' ? rcpBase(r) : r.amount), ' inputmode="numeric" style="text-align:right;"')) + F('purpose', K.what, I('purpose', r.purpose)) +
+    F('amount', off ? '相殺する金額（円）' : (r.amtMode === 'ex' ? '金額（税抜・円）' : '金額（税込・円）'), I('amount', yen(!off && r.amtMode === 'ex' ? rcpBase(r) : r.amount), ' inputmode="numeric" style="text-align:right;"')) + F('purpose', K.what, '<textarea data-r="purpose" class="grow"' + (gone ? ' disabled' : '') + '>' + esc(r.purpose || '') + '</textarea>') +
     (off ? F('invNo', '請求書の番号', I('invNo', r.invNo || '')) : F('how', '受け取り方', S('how', r.how || '振込', ['振込', '現金', '小切手', 'その他']))) +
     '</div><div class="row" style="margin-top:12px;gap:24px;align-items:flex-start;">' +
     (off ? '' : '<div><label class="f">請求書</label>' + (r.invNo ? '<a href="#" id="rInv"><b>' + esc(r.invNo) + '</b></a>' : '<span class="note">なし</span>') + '</div>' +
