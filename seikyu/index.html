@@ -145,12 +145,12 @@
 <main id="m"></main>
 <div id="busy"></div>
 
-<script src="calc.js?v=Ver.請求20261107-21"></script>
+<script src="calc.js?v=Ver.請求20261107-22"></script>
 <script type="module">
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
 import { getFirestore, collection, doc, getDoc, getDocs, setDoc, deleteDoc, writeBatch, runTransaction, onSnapshot, deleteField, query, where } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
-const APP_VER = 'Ver.請求20261107-21';   // 版の名前は「Ver.請求YYYYMMDD-NN」（ユーザー指示 2026-11-06）
+const APP_VER = 'Ver.請求20261107-22';   // 版の名前は「Ver.請求YYYYMMDD-NN」（ユーザー指示 2026-11-06）
 const API = 'https://script.google.com/macros/s/AKfycbzpJgqJOqQz5180PQF2S3kVN7TWg0c1dnyUUUNuCZtzy5_pmKEhAkw5w3gqSj31EEA1/exec';   // Apps Script「請求管理」（ポータル・給与とは別）
 /* ログインは給与アプリと同じ（ユーザー指示 2026-11-05）：ポータルの Firebase、メールとパスワード。入れるのはマスターと「請求管理」の権限（users.canInvoice）がある人 */
 const app = initializeApp({ apiKey: 'AIzaSyDVR4p4DO4s9h70uPlXUVlhNcMP9-YkQ5Q', authDomain: 'genba-portal-9077b.firebaseapp.com', projectId: 'genba-portal-9077b' });
@@ -677,11 +677,15 @@ const perOk = (key, d) => { const s = lt(key); if (s.per === 'close') { const r 
 /* 月ごとに分ける（並べ方はそのまま、月の中で並ぶ）。月の順は「古い順・入金予定日の早い順」のときだけ古い月から */
 function ltGroups(key, rows) {
   const s = lt(key), asc = s.sort === 'dateA' || s.sort === 'due', G = {};
+  if (s.sort === 'stk') {   // 付箋の順は月で分けず、付箋の色ごとにまとめる（2026-11-07）
+    rows.forEach(r => { const x = stickyOf(r.i || r.r || r), c = x ? (x.c || 'y') : '-'; (G[c] = G[c] || []).push(r); });
+    return [...STK.map(k => k[0]), '-'].filter(c => G[c]).map(c => ({ m: c, label: c === '-' ? '付箋なし' : (STK.find(k => k[0] === c) || [, ''])[1] + 'の付箋' + (stkRule(c) ? '（' + stkRule(c) + '）' : ''), rows: G[c] }));
+  }
   rows.forEach(r => { const m = String(r.mon || r.date || '').slice(0, 7) || '----'; (G[m] = G[m] || []).push(r); });
   return Object.keys(G).sort((a, b) => asc ? a.localeCompare(b) : b.localeCompare(a)).map(m => ({ m, rows: G[m] }));
 }
 const monLabel = m => m === '----' ? '日付なし' : m.slice(0, 4) + '年' + Number(m.slice(5, 7)) + '月';
-const monRow = (g, cols, sumTxt) => '<tr class="mh"><td colspan="' + cols + '"><b>' + monLabel(g.m) + '</b><span class="mhn">' + g.rows.length + ' 件' + (sumTxt ? '　' + sumTxt : '') + '</span></td></tr>';
+const monRow = (g, cols, sumTxt) => '<tr class="mh"><td colspan="' + cols + '"><b>' + esc(g.label || monLabel(g.m)) + '</b><span class="mhn">' + g.rows.length + ' 件' + (sumTxt ? '　' + sumTxt : '') + '</span></td></tr>';
 /* 承認の表示（ユーザー指示 2026-11-06：「まだ」ではなく「未承認」。緑は完了） */
 const apvTag = i => preSw(i) ? '<span class="tag pre">切替前</span>' : !needApv(i) ? '' : approved(i) ? '<span class="tag ok">承認済み</span>' : '<span class="tag org">未承認</span>';
 const myApvBox = i => needApv(i) && !approved(i) ? (ST.cfg.approvers || []).findIndex((a, k) => a.uid && a.uid === ST.me.uid && !(i.approvals && i.approvals[k])) : -1;
