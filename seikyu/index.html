@@ -32,6 +32,7 @@
   table.ed input[readonly] { background: #f1f3f2; color: #333; }
   input, select, textarea { font: inherit; padding: 6px 8px; border: 1.5px solid #7f8f85; border-radius: 5px; background: #fff; color: var(--ink); min-width: 0; }
   textarea { width: 100%; min-height: 60px; }
+  input:disabled, select:disabled, textarea:disabled { background: #dfe3e0; border-style: dashed; color: var(--ink); -webkit-text-fill-color: var(--ink); opacity: 1; cursor: not-allowed; }   /* 直せない欄は灰色にして見て分かるように。字は濃いまま（2026-11-08） */
   textarea.grow { field-sizing: content; min-height: 2.6em; resize: vertical; }   /* 但し書きなど：長くなったら折り返して全部見える（2026-11-07） */
   textarea.paperw { font-size: 15px; line-height: 1.7; padding: 6px 10px; font-family: 'BIZ UDMincho Medium','BIZ UD明朝 Medium','BIZ UDMincho','Yu Mincho','YuMincho','Hiragino Mincho ProN','Noto Serif JP',serif; box-sizing: content-box; }   /* 1em＝全角1字。紙と同じ字数で折り返す */
   label.f { display: block; font-size: .84rem; font-weight: 700; color: var(--sub); margin-bottom: 2px; }
@@ -145,12 +146,12 @@
 <main id="m"></main>
 <div id="busy"></div>
 
-<script src="calc.js?v=Ver.請求20261108-02"></script>
+<script src="calc.js?v=Ver.請求20261108-03"></script>
 <script type="module">
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
 import { getFirestore, collection, doc, getDoc, getDocs, setDoc, deleteDoc, writeBatch, runTransaction, onSnapshot, deleteField, query, where } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
-const APP_VER = 'Ver.請求20261108-02';   // 版の名前は「Ver.請求YYYYMMDD-NN」（ユーザー指示 2026-11-06）
+const APP_VER = 'Ver.請求20261108-03';   // 版の名前は「Ver.請求YYYYMMDD-NN」（ユーザー指示 2026-11-06）
 const API = 'https://script.google.com/macros/s/AKfycbzpJgqJOqQz5180PQF2S3kVN7TWg0c1dnyUUUNuCZtzy5_pmKEhAkw5w3gqSj31EEA1/exec';   // Apps Script「請求管理」（ポータル・給与とは別）
 /* ログインは給与アプリと同じ（ユーザー指示 2026-11-05）：ポータルの Firebase、メールとパスワード。入れるのはマスターと「請求管理」の権限（users.canInvoice）がある人 */
 const app = initializeApp({ apiKey: 'AIzaSyDVR4p4DO4s9h70uPlXUVlhNcMP9-YkQ5Q', authDomain: 'genba-portal-9077b.firebaseapp.com', projectId: 'genba-portal-9077b' });
@@ -884,7 +885,7 @@ function drawInvEdit() {
     (inv.lines || []).map(lineRow).join('') + '</tbody></table></div><datalist id="units">' + ['式', '一式', 'm', '㎡', '台', '箇所', '本', '個', '枚', '人工', '時間', '日', 'kg', 'セット'].map(u => '<option value="' + u + '">').join('') + '</datalist>' +
     (ro ? '' : '<div class="row" style="margin-top:8px;"><button class="b sm" id="addL">＋ 行を足す</button><button class="b sm" id="addT">＋ 文字だけの行</button></div>') +
     '<div class="row" style="margin-top:12px;align-items:flex-start;"><div style="flex:1;min-width:260px;"><label class="f">備考（請求書の下に出ます）</label><textarea id="nt"' + (ro ? ' disabled' : '') + '>' + esc(inv.note || '') + '</textarea></div><div class="tot" id="tot">' + totHtml(c) + '</div></div></div>' +
-    (inv.isNew ? '' : '<div class="card"><div class="row"><h2 style="margin:0;">入金</h2>' + stTag(st) + '<span class="note">入金済み ' + yen(paid) + ' 円 ／ 残り ' + yen(Math.max(0, c.total - paid)) + ' 円</span><span class="sp"></span>' + (gone ? '' : '<button class="b dark" id="addP">入金を入れる</button>') + '</div>' +
+    (inv.isNew ? '' : '<div class="card"><div class="row"><h2 style="margin:0;">入金</h2>' + stTag(st) + '<span class="note">入金済み ' + yen(paid) + ' 円' + (gone ? '（取消なので、残りはありません）' : ' ／ 残り ' + yen(Math.max(0, c.total - paid)) + ' 円') + '</span><span class="sp"></span>' + (gone ? '' : '<button class="b dark" id="addP">入金を入れる</button>') + '</div>' +
       (pays.length ? '<table class="t" style="margin-top:8px;"><thead><tr><th>入金日</th><th class="n">入金額</th><th class="n">振込手数料</th><th>方法</th><th>メモ</th><th>入れた人</th><th></th></tr></thead><tbody>' + pays.map((p, k) => '<tr><td>' + (p.date ? dShort(p.date) : '不明') + '</td><td class="n">' + yen(p.amount) + '</td><td class="n">' + yen(p.fee) + '</td><td>' + esc(p.how) + '</td><td>' + esc(p.memo) + '</td><td class="note">' + esc(p.by) + ' ' + esc(String(p.at || '').slice(0, 16)) + '</td><td>' + (gone ? '' : '<button class="b sm danger" data-pr="' + k + '">消す</button>') + '</td></tr>').join('') + '</tbody></table>' : '<div class="note" style="margin-top:6px;">まだ入金はありません。</div>') + '</div>') +
     '<div class="card"><div class="row"><span class="note">' + (inv.createdAt ? '作成 ' + esc(inv.createdAt) + ' ' + esc(inv.createdBy || '') : '') + (inv.updatedAt ? '　最後に保存 ' + esc(inv.updatedAt) + ' ' + esc(inv.updatedBy || '') : '') + (inv.sentAt ? '　送った日 ' + esc(inv.sentAt === '不明' ? '不明' : dShort(inv.sentAt)) : '') + '</span><span class="sp"></span>' +
     (inv.isNew ? '' : (gone ? '' : '<button class="b" id="sent">送った日を入れる</button>') + '<button class="b" id="dup">複製</button><button class="b" id="hist">直した記録</button>' + (gone ? '' : '<button class="b" id="mkR">領収書を作る</button><button class="b" id="mkO"' + (OFF_ON ? '' : ' disabled title="相殺伝票は今は使いません" style="opacity:.4;cursor:not-allowed;"') + '>相殺伝票を作る</button>') + (inv.state === '取消' ? '<button class="b" id="unc">取消をやめる</button>' : '<button class="b danger" id="cnl">取消にする</button>')) + '</div></div>';
