@@ -206,12 +206,12 @@
 <main id="m"></main>
 <div id="busy"></div>
 
-<script src="calc.js?v=Ver.請求20261108-12"></script>
+<script src="calc.js?v=Ver.請求20261108-13"></script>
 <script type="module">
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
 import { getFirestore, collection, doc, getDoc, getDocs, setDoc, deleteDoc, writeBatch, runTransaction, onSnapshot, deleteField, query, where } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
-const APP_VER = 'Ver.請求20261108-12';   // 版の名前は「Ver.請求YYYYMMDD-NN」（ユーザー指示 2026-11-06）
+const APP_VER = 'Ver.請求20261108-13';   // 版の名前は「Ver.請求YYYYMMDD-NN」（ユーザー指示 2026-11-06）
 const API = 'https://script.google.com/macros/s/AKfycbzpJgqJOqQz5180PQF2S3kVN7TWg0c1dnyUUUNuCZtzy5_pmKEhAkw5w3gqSj31EEA1/exec';   // Apps Script「請求管理」（ポータル・給与とは別）
 /* ログインは給与アプリと同じ（ユーザー指示 2026-11-05）：ポータルの Firebase、メールとパスワード。入れるのはマスターと「請求管理」の権限（users.canInvoice）がある人 */
 const app = initializeApp({ apiKey: 'AIzaSyDVR4p4DO4s9h70uPlXUVlhNcMP9-YkQ5Q', authDomain: 'genba-portal-9077b.firebaseapp.com', projectId: 'genba-portal-9077b' });
@@ -328,8 +328,9 @@ async function putQ(col, o, action, data, label) {
 }
 async function qClear(x) {
   if (!x.c || !x.id) return;
-  if (LOCAL) { const o = (MEM[x.c] || {})[x.id]; if (o && o.sq && o.sq.k === x.k) delete o.sq; return; }
-  try { const ref = doc(db, x.c, x.id); await runTransaction(db, async t => { const sn = await t.get(ref); if (sn.exists() && sn.data().sq && sn.data().sq.k === x.k) t.update(ref, { sq: deleteField() }); }); } catch (e) {}
+  /* 削除した得意先は、スプレッドシートに書けたら Firestore から消す（溜まり続けない。ユーザー決定 2026-11-08） */
+  if (LOCAL) { const o = (MEM[x.c] || {})[x.id]; if (o && o.sq && o.sq.k === x.k) { if (x.c === C.cust && o.deleted) delete MEM[x.c][x.id]; else delete o.sq; } return; }
+  try { const ref = doc(db, x.c, x.id); await runTransaction(db, async t => { const sn = await t.get(ref); if (sn.exists() && sn.data().sq && sn.data().sq.k === x.k) { if (x.c === C.cust && sn.data().deleted) t.delete(ref); else t.update(ref, { sq: deleteField() }); } }); } catch (e) {}
 }
 async function qStale(x) {   // もう誰かが書いた（印が消えている）物は送らない（古いパソコンが後から古い中身で上書きしないように）
   if (!x.c || !x.id) return false;
@@ -553,7 +554,8 @@ async function boot() {
     ST.secret = sec || {};
     ST.stamps = sp || (LOCAL ? { kaku: '../印鑑/stamp_kaku.png', higa: '../印鑑/stamp_higa.png', maru: '../印鑑/stamp_maru.png' } : {});
     ST.cfg = cfgMerge(c); ST.hasCfg = !!c;
-    ST.custs = cs.sort((a, b) => String(a.code).localeCompare(String(b.code)));
+    cs.filter(x => x.deleted && !x.sq).forEach(x => store.del(C.cust, x.id).catch(() => {}));   // 削除済みの得意先の残り（2026-11-08）
+    ST.custs = cs.filter(x => !(x.deleted && !x.sq)).sort((a, b) => String(a.code).localeCompare(String(b.code)));
     const now = Date.now(), old = is.filter(x => x.expireAt && x.expireAt < now);
     ST.invs = is.filter(x => !(x.expireAt && x.expireAt < now)).map(tidyInv);
     ST.rcps = rs.filter(x => !(x.expireAt && x.expireAt < now));
@@ -1719,7 +1721,7 @@ function drawCust() {
     $('cDel').onclick = () => custDelete([...sel.ids].map(id => ST.custs.find(c => c.id === id)).filter(Boolean));
   }
   floatNew($('nc'));
-  $('nc').onclick = () => { const mx = Math.max(0, ...ST.custs.map(c => Number(c.code) || 0)); editCust({ id: newId('c'), code: String(mx + 1).padStart(4, '0'), name: '', honor: '様', terms: plain(ST.cfg.defTerms), sendBy: '紙', active: true, isNew: true }); };
+  $('nc').onclick = () => { const mx = Math.max(Number(ST.cfg.custMax) || 0, ...ST.custs.map(c => Number(c.code) || 0)); editCust({ id: newId('c'), code: String(mx + 1).padStart(4, '0'), name: '', honor: '様', terms: plain(ST.cfg.defTerms), sendBy: '紙', active: true, isNew: true }); };
   M.querySelectorAll('tr.link').forEach(tr => tr.onclick = () => editCust(plain(ST.custs.find(c => c.id === tr.dataset.id))));
   wireStk(M, id => plain(ST.custs.find(c => c.id === id)), async c => { if (await saveCustSticky(c)) drawCust(); });
 }
@@ -1754,7 +1756,9 @@ async function custDelete(list) {
   if (!(await okBox(msg, '削除する'))) return;
   busy('削除しています…');
   try {
-    for (const c0 of list) { const c = plain(c0); await freshen(C.cust, c, null, '得意先'); c.deleted = nowStr() + ' ' + (ST.me.name || ''); c.active = false; c.updatedAt = nowStr(); c.updatedBy = ST.me.name; await putQ(C.cust, c, 'saveCust', { c: plain(c) }, '得意先 ' + c.code); ST.custs = ST.custs.filter(x => x.id !== c.id).concat([c]); }
+    for (const c0 of list) { const c = plain(c0); await freshen(C.cust, c, null, '得意先'); c.deleted = nowStr() + ' ' + (ST.me.name || ''); c.active = false; c.updatedAt = nowStr(); c.updatedBy = ST.me.name; await putQ(C.cust, c, 'saveCust', { c: plain(c) }, '得意先 ' + c.code); ST.custs = ST.custs.filter(x => x.id !== c.id); }
+    const mx = Math.max(Number(ST.cfg.custMax) || 0, ...list.map(c => Number(c.code) || 0)); ST.cfg.custMax = mx;
+    if (LOCAL) { const m = (MEM[C.cfg] || {}).main; if (m) m.custMax = mx; } else await setDoc(doc(db, C.cfg, 'main'), { custMax: mx }, { merge: true });
     ST.custs.sort((x, y) => String(x.code).localeCompare(String(y.code)));
     ST.cSel = { ids: new Set() };
   } catch (e) { alert('削除できませんでした：' + e.message); } finally { busy(''); }
@@ -1796,7 +1800,7 @@ function editCust(c) {
     catch (e) { alert('保存できませんでした：' + e.message); } finally { busy(''); }
   };
   if ($('mk')) $('mk').onclick = () => { ST.tab = 'inv'; draw(); openInv(newInv(c)); ST.dirty = true; };
-  if ($('cp2')) $('cp2').onclick = () => { const mx = Math.max(0, ...ST.custs.map(x => Number(x.code) || 0)); const n = plain(ST.custs.find(x => x.id === c.id) || c); delete n.legacy; delete n.sticky; Object.assign(n, { id: newId('c'), code: String(mx + 1).padStart(4, '0'), person: '', isNew: true }); editCust(n); alert('写しました。担当者を入れて「保存」してください（コード ' + n.code + '）。'); };
+  if ($('cp2')) $('cp2').onclick = () => { const mx = Math.max(Number(ST.cfg.custMax) || 0, ...ST.custs.map(x => Number(x.code) || 0)); const n = plain(ST.custs.find(x => x.id === c.id) || c); delete n.legacy; delete n.sticky; Object.assign(n, { id: newId('c'), code: String(mx + 1).padStart(4, '0'), person: '', isNew: true }); editCust(n); alert('写しました。担当者を入れて「保存」してください（コード ' + n.code + '）。'); };
   if ($('stkC')) $('stkC').onclick = async () => { if (await saveCustSticky(c)) editCust(c); };
 }
 
