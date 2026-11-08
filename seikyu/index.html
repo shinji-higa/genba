@@ -142,7 +142,9 @@
     .headcard .ltl, .headcard input { font-size: .85rem; }
     .headcard input { padding: 3px 5px; }
     /* まとめて入金：入金予定日の列を外して、打つ欄を手前に */
-    #pbT thead th:nth-child(2), #pbT tbody td:nth-child(2) { display: none; }
+    #pbT thead th:nth-child(2), #pbT tbody td:nth-child(2), #pbT thead th:nth-child(6), #pbT tbody td:nth-child(6) { display: none; }   /* 入金予定日と入金日（入金日は上の「入金日をまとめて」で入る） */
+    #pbT [data-f="amount"] { width: 90px !important; }
+    .headcard.pbh > .note { display: none; }
     #pbT td, #pbT th { padding-left: 4px; padding-right: 4px; }
     /* 窓の中のついてくる保存のボタン：小さく1列に */
     #ask .savebar { flex-wrap: nowrap; gap: 6px; bottom: 6px; }
@@ -204,12 +206,12 @@
 <main id="m"></main>
 <div id="busy"></div>
 
-<script src="calc.js?v=Ver.請求20261108-09"></script>
+<script src="calc.js?v=Ver.請求20261108-10"></script>
 <script type="module">
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
 import { getFirestore, collection, doc, getDoc, getDocs, setDoc, deleteDoc, writeBatch, runTransaction, onSnapshot, deleteField, query, where } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
-const APP_VER = 'Ver.請求20261108-09';   // 版の名前は「Ver.請求YYYYMMDD-NN」（ユーザー指示 2026-11-06）
+const APP_VER = 'Ver.請求20261108-10';   // 版の名前は「Ver.請求YYYYMMDD-NN」（ユーザー指示 2026-11-06）
 const API = 'https://script.google.com/macros/s/AKfycbzpJgqJOqQz5180PQF2S3kVN7TWg0c1dnyUUUNuCZtzy5_pmKEhAkw5w3gqSj31EEA1/exec';   // Apps Script「請求管理」（ポータル・給与とは別）
 /* ログインは給与アプリと同じ（ユーザー指示 2026-11-05）：ポータルの Firebase、メールとパスワード。入れるのはマスターと「請求管理」の権限（users.canInvoice）がある人 */
 const app = initializeApp({ apiKey: 'AIzaSyDVR4p4DO4s9h70uPlXUVlhNcMP9-YkQ5Q', authDomain: 'genba-portal-9077b.firebaseapp.com', projectId: 'genba-portal-9077b' });
@@ -1508,7 +1510,7 @@ function payBatch(rows) {
   if (!rows.length) return alert('入金がまだの請求書が出ていません。');
   ST.payBatch = true;
   const HOW = ['振込', '現金', '相殺', '小切手', '電子記録債権', 'その他'];
-  M.innerHTML = '<div class="card"><div class="row"><button class="b" id="pbBack">← 入金の画面へ</button><b style="font-size:1.1rem;">まとめて入金を入れる</b><span class="sp"></span><label class="ltl">入金日をまとめて <input type="date" id="pbD" value="' + today() + '"></label><button class="b sm" id="pbDA">チェックした行に入れる</button></div>' +
+  M.innerHTML = '<div class="card pbh"><div class="row"><button class="b" id="pbBack">← 入金の画面へ</button><b style="font-size:1.1rem;">まとめて入金を入れる</b><span class="sp"></span><label class="ltl">入金日をまとめて <input type="date" id="pbD" value="' + today() + '"></label><button class="b sm" id="pbDA">チェックした行に入れる</button></div>' +
     '<div class="note" style="margin-top:6px;">入金額を入れた行に自動でチェックが付きます。チェックした行だけ保存します。入金額＋振込手数料で請求額に届けば「入金済み」になります。</div></div>' +
     '<div class="card"><div class="wrapx"><table class="t" id="pbT"><thead><tr><th><input type="checkbox" id="pbAll" title="全部"></th><th>入金予定日</th><th>番号</th><th>得意先</th><th class="n">残り</th><th>入金日</th><th class="n">入金額</th><th class="n">振込手数料</th><th>方法</th><th>メモ</th></tr></thead><tbody>' +
     rows.map((x, k) => '<tr data-k="' + k + '"><td><input type="checkbox" data-c></td><td>' + dShort(x.i.due) + '</td><td><b>' + esc(x.i.no) + '</b></td><td>' + esc(x.name) + '</td><td class="n">' + yen(x.amt) + '</td>' +
