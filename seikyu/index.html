@@ -105,6 +105,36 @@
     table.invl thead th:nth-child(2), table.invl thead th:nth-child(4), table.invl thead th:nth-child(n+6):not(:nth-child(7)),
     table.invl tr.link td:nth-child(2), table.invl tr.link td:nth-child(4), table.invl tr.link td:nth-child(n+6):not(:nth-child(7)) { display: none; }
     table.invl tfoot td:not(:first-child) { display: none; }
+    /* 2026-11-08：入金・領収書・得意先の一覧も大事な列だけ */
+    table.payl thead th:nth-child(2), table.payl tbody tr:not(.mh) td:nth-child(2),
+    table.payl thead th:nth-child(4), table.payl tbody tr:not(.mh) td:nth-child(4),
+    table.payl thead th:nth-child(6), table.payl tbody tr:not(.mh) td:nth-child(6),
+    table.payl thead th:nth-child(7), table.payl tbody tr:not(.mh) td:nth-child(7),
+    table.payl thead th:nth-child(9), table.payl tbody tr:not(.mh) td:nth-child(9),
+    table.payr thead th:nth-child(5), table.payr tbody tr:not(.mh) td:nth-child(5),
+    table.payr thead th:nth-child(6), table.payr tbody tr:not(.mh) td:nth-child(6),
+    table.payr thead th:nth-child(7), table.payr tbody tr:not(.mh) td:nth-child(7),
+    table.rcpl thead th:nth-child(2), table.rcpl tbody tr:not(.mh) td:nth-child(2),
+    table.rcpl thead th:nth-child(5), table.rcpl tbody tr:not(.mh) td:nth-child(5),
+    table.rcpl thead th:nth-child(6), table.rcpl tbody tr:not(.mh) td:nth-child(6),
+    table.rcpl thead th:nth-child(7), table.rcpl tbody tr:not(.mh) td:nth-child(7),
+    table.rcpl thead th:nth-child(8), table.rcpl tbody tr:not(.mh) td:nth-child(8),
+    table.custl thead th:nth-child(4), table.custl tbody tr:not(.mh) td:nth-child(4),
+    table.custl thead th:nth-child(5), table.custl tbody tr:not(.mh) td:nth-child(5),
+    table.custl thead th:nth-child(6), table.custl tbody tr:not(.mh) td:nth-child(6),
+    table.custl thead th:nth-child(7), table.custl tbody tr:not(.mh) td:nth-child(7),
+    table.custs thead th:nth-child(5), table.custs tbody tr:not(.mh) td:nth-child(5),
+    table.custs thead th:nth-child(6), table.custs tbody tr:not(.mh) td:nth-child(6),
+    table.custs thead th:nth-child(7), table.custs tbody tr:not(.mh) td:nth-child(7),
+    table.custs thead th:nth-child(8), table.custs tbody tr:not(.mh) td:nth-child(8) { display: none; }
+    table.payl tfoot td:not(:first-child) { display: none; }
+    /* 見出しのボタンの帯：スマホでは上の緑の帯が止まらないので、いちばん上に止める */
+    .headcard { top: 0; }
+    /* はみ出し：合計の欄・承認の欄を画面の幅に。それでも広い物はその欄の中で横にずらす（画面全体はずれない） */
+    .tot { min-width: 0; width: 100%; }
+    .apv .bx { width: auto; flex: 1 1 0; min-width: 0; }
+    #m > .card { overflow-x: auto; }
+    #m .note { overflow-wrap: anywhere; }
     .pon { display: inline !important; }
   }
   button.b.subw { min-width: 14em; text-align: center; }   /* 提出データのボタンは同じ大きさ（2026-11-07） */
@@ -157,12 +187,12 @@
 <main id="m"></main>
 <div id="busy"></div>
 
-<script src="calc.js?v=Ver.請求20261108-05"></script>
+<script src="calc.js?v=Ver.請求20261108-06"></script>
 <script type="module">
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
 import { getFirestore, collection, doc, getDoc, getDocs, setDoc, deleteDoc, writeBatch, runTransaction, onSnapshot, deleteField, query, where } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
-const APP_VER = 'Ver.請求20261108-05';   // 版の名前は「Ver.請求YYYYMMDD-NN」（ユーザー指示 2026-11-06）
+const APP_VER = 'Ver.請求20261108-06';   // 版の名前は「Ver.請求YYYYMMDD-NN」（ユーザー指示 2026-11-06）
 const API = 'https://script.google.com/macros/s/AKfycbzpJgqJOqQz5180PQF2S3kVN7TWg0c1dnyUUUNuCZtzy5_pmKEhAkw5w3gqSj31EEA1/exec';   // Apps Script「請求管理」（ポータル・給与とは別）
 /* ログインは給与アプリと同じ（ユーザー指示 2026-11-05）：ポータルの Firebase、メールとパスワード。入れるのはマスターと「請求管理」の権限（users.canInvoice）がある人 */
 const app = initializeApp({ apiKey: 'AIzaSyDVR4p4DO4s9h70uPlXUVlhNcMP9-YkQ5Q', authDomain: 'genba-portal-9077b.firebaseapp.com', projectId: 'genba-portal-9077b' });
@@ -1441,14 +1471,14 @@ function drawPay() {
     '<div class="stat"><span class="note">入金がまだの物（全部）</span><b>' + open.length + ' 枚　' + yen(sum(() => true)) + ' 円</b></div></div>' +
     '<div class="card"><div class="row"><h2 style="font-size:1.1rem;margin:0;">入金がまだの請求書</h2><span class="sp"></span><button class="b dark mid" id="pbat">まとめて入金を入れる</button></div><div class="row lt">' + eraBar('pay') + perBar('pay', '入金予定日') + '</div>' + ltBar('pay', base, ['due', 'dateD', 'dateA', 'name', 'amt'], '入金予定日') + '<div id="pl" style="margin-top:10px;"></div>' +
     '<div class="note" style="margin-top:8px;">入金予定日は得意先の「支払いの決まり」から出します。違うときは請求書の画面で直せます。赤い物は予定日を過ぎています。入金予定日の月ごとに区切って出します。番号を押すと請求書が開きます。</div></div>' +
-    '<div class="card"><h2>最近の入金（2か月）</h2>' + (recent.length ? '<div class="wrapx"><table class="t"><thead><tr><th>入金日</th><th>番号</th><th>得意先</th><th class="n">入金額</th><th class="n">振込手数料</th><th>方法</th><th>メモ</th></tr></thead><tbody>' + recent.map(x => '<tr><td>' + dShort(x.p.date) + '</td><td>' + esc(x.i.no) + '</td><td>' + esc((x.i.to || {}).name) + '</td><td class="n">' + yen(x.p.amount) + '</td><td class="n">' + yen(x.p.fee) + '</td><td>' + esc(x.p.how) + '</td><td>' + esc(x.p.memo) + '</td></tr>').join('') + '</tbody></table></div>' : '<div class="note">ありません。</div>') + '</div>';
+    '<div class="card"><h2>最近の入金（2か月）</h2>' + (recent.length ? '<div class="wrapx"><table class="t payr"><thead><tr><th>入金日</th><th>番号</th><th>得意先</th><th class="n">入金額</th><th class="n">振込手数料</th><th>方法</th><th>メモ</th></tr></thead><tbody>' + recent.map(x => '<tr><td>' + dShort(x.p.date) + '</td><td>' + esc(x.i.no) + '</td><td>' + esc((x.i.to || {}).name) + '</td><td class="n">' + yen(x.p.amount) + '</td><td class="n">' + yen(x.p.fee) + '</td><td>' + esc(x.p.how) + '</td><td>' + esc(x.p.memo) + '</td></tr>').join('') + '</tbody></table></div>' : '<div class="note">ありません。</div>') + '</div>';
   let shown = [];
   function fill() {
     const rows = shown = ltApply('pay', base.filter(x => perOk('pay', x.mon))), tot = a => a.reduce((s, x) => s + x.amt, 0);
     const row = x => '<tr' + (late(x) ? ' style="background:#fff6f5;"' : '') + '><td>' + stTag(x.st) + '</td><td>' + (x.i.due ? dShort(x.i.due) : '<span class="tag ng">予定日なし</span>') + (late(x) ? ' <span class="note" style="color:var(--warn);font-weight:700;">' + Math.round((SK.parse(t0) - SK.parse(x.i.due)) / 86400000) + '日過ぎ</span>' : '') + '</td><td><a href="#" data-o="' + esc(x.i.id) + '"><b>' + esc(x.i.no) + '</b></a></td><td>' + dShort(x.i.date) + '</td><td>' + esc(x.name) + '</td><td class="n">' + yen(x.c.total) + '</td><td class="n">' + yen(SK.paid(x.i)) + '</td><td class="n"><b>' + yen(x.amt) + '</b></td>' + stkCell(x.i, 'pay') + '<td style="white-space:nowrap;"><button class="b sm dark" data-p="' + esc(x.i.id) + '">入金を入れる</button></td></tr>';
-    $('pl').innerHTML = rows.length ? '<div class="wrapx"><table class="t"><thead><tr><th>状態</th><th>入金予定日</th><th>番号</th><th>発行日</th><th>得意先</th><th class="n">請求額</th><th class="n">入金済み</th><th class="n">残り</th><th>付箋メモ</th><th></th></tr></thead><tbody>' +
+    $('pl').innerHTML = rows.length ? '<div class="wrapx"><table class="t payl"><thead><tr><th>状態</th><th>入金予定日</th><th>番号</th><th>発行日</th><th>得意先</th><th class="n">請求額</th><th class="n">入金済み</th><th class="n">残り</th><th>付箋メモ</th><th></th></tr></thead><tbody>' +
       ltGroups('pay', rows).map(g => monRow(g, 10, '残り ' + yen(tot(g.rows)) + ' 円') + g.rows.map(row).join('')).join('') +
-      '</tbody><tfoot><tr><td colspan="7">' + rows.length + ' 枚</td><td class="n">' + yen(tot(rows)) + '</td><td colspan="2"></td></tr></tfoot></table></div>' : '<div class="note">当てはまる請求書はありません。</div>';
+      '</tbody><tfoot><tr><td colspan="7">' + rows.length + ' 枚<span class="pon">　残り ' + yen(tot(rows)) + ' 円</span></td><td class="n">' + yen(tot(rows)) + '</td><td colspan="2"></td></tr></tfoot></table></div>' : '<div class="note">当てはまる請求書はありません。</div>';
     $('pl').querySelectorAll('[data-p]').forEach(b => b.onclick = () => addPayment(ST.invs.find(i => i.id === b.dataset.p), drawPay));
     wireStk($('pl'), id => ST.invs.find(i => i.id === id), async i => { if (await saveInvSticky(i)) drawPay(); });
     $('pl').querySelectorAll('[data-o]').forEach(a => a.onclick = e => { e.preventDefault(); ST.tab = 'inv'; draw(); openInv(plain(ST.invs.find(i => i.id === a.dataset.o))); });
@@ -1521,7 +1551,7 @@ function drawSlips(key) {
     const duty = r => rcpDuty(r) == null ? '<span class="tag ng">要確認</span>' : rcpDuty(r) ? yen(rcpDuty(r)) + '円' : '不要';
     const row = x => { const r = x.r; return '<tr class="link" data-id="' + esc(r.id) + '"><td><b>' + esc(r.no) + '</b>' + (r.state === '取消' ? ' <span class="tag">取消</span>' : '') + '</td><td>' + dShort(r.date) + '</td><td>' + esc(r.toName) + '</td><td class="n">' + yen(r.amount) + '</td><td>' + esc(r.purpose) + '</td><td>' + esc(r.invNo || '') + '</td>' + (key === 'rcp' ? '<td>' + duty(r) + '</td>' : '') + stkCell(r, key) + '</tr>'; };
     const cols = key === 'rcp' ? 8 : 7;
-    $('rl').innerHTML = rows.length ? '<div class="wrapx"><table class="t"><thead><tr><th>番号</th><th>' + K.date + '</th><th>' + K.who + '</th><th class="n">金額</th><th>' + K.what + '</th><th>請求書</th>' + (key === 'rcp' ? '<th>収入印紙</th>' : '') + '<th>付箋メモ</th></tr></thead><tbody>' +
+    $('rl').innerHTML = rows.length ? '<div class="wrapx"><table class="t rcpl"><thead><tr><th>番号</th><th>' + K.date + '</th><th>' + K.who + '</th><th class="n">金額</th><th>' + K.what + '</th><th>請求書</th>' + (key === 'rcp' ? '<th>収入印紙</th>' : '') + '<th>付箋メモ</th></tr></thead><tbody>' +
       ltGroups(key, rows).map(g => monRow(g, cols, '合計 ' + yen(tot(g.rows)) + ' 円') + g.rows.map(row).join('')).join('') + '</tbody></table></div>' : '<div class="note">当てはまる' + K.name + 'はありません。</div>';
     wireStk($('rl'), R, async r => { const v = await stkEdit(r); if (v === undefined) return; r.sticky = v; try { await saveRcp(r); drawSlips(key); } catch (e) { alert('付箋を保存できませんでした：' + e.message); } });
     $('rl').querySelectorAll('tr.link').forEach(tr => tr.onclick = () => { ST.rcpOpen = plain(R(tr.dataset.id)); drawSlips(key); window.scrollTo(0, 0); });
@@ -1655,7 +1685,7 @@ function drawCust() {
   M.innerHTML = '<div class="card"><div class="row"><b>得意先</b><input id="cq" placeholder="さがす" value="' + esc(q) + '" style="width:220px;"><label><input type="checkbox" id="co"' + (only ? ' checked' : '') + '> 要確認だけ</label><span class="note">要確認 ' + ST.custs.filter(c => c.termsCheck).length + ' 社</span><span class="sp"></span><button class="b' + (sel ? ' dark' : '') + '" id="cSelB">' + (sel ? '選ぶのをやめる' : '選んで Excel・削除') + '</button><button class="b dark" id="nc">＋ 新しい得意先</button></div>' +
     (sel ? '<div class="row" style="margin-top:8px;padding:8px 10px;background:#eef4f0;border-radius:6px;"><b>選んだ得意先：<span id="cSelN">' + sel.ids.size + '</span> 社</b><button class="b sm" id="cAll">見えている物を全部選ぶ</button><button class="b sm" id="cNone">選ぶのを外す</button><span class="sp"></span><button class="b dark" id="cXls">Excel に出す</button><button class="b danger" id="cDel">削除</button></div>' : '') +
     '<div class="note" style="margin-top:6px;">「要確認」は販売らくだに支払いの決まりが入っていなかった（または締め日だけだった）ので、仮に「月末締め・翌月末払い」などを入れた得意先です。確かめて保存すると消えます。</div></div>' +
-    '<div class="card"><div class="wrapx"><table class="t"><thead><tr>' + (sel ? '<th style="width:34px;"></th>' : '') + '<th>コード</th><th>会社名</th><th>部署・担当</th><th>支払いの決まり</th><th>送り方</th><th>付箋メモ</th><th></th></tr></thead><tbody>' +
+    '<div class="card"><div class="wrapx"><table class="t ' + (sel ? 'custs' : 'custl') + '"><thead><tr>' + (sel ? '<th style="width:34px;"></th>' : '') + '<th>コード</th><th>会社名</th><th>部署・担当</th><th>支払いの決まり</th><th>送り方</th><th>付箋メモ</th><th></th></tr></thead><tbody>' +
     list.map(c => '<tr class="link" data-id="' + esc(c.id) + '"' + (c.active === false ? ' style="opacity:.55;"' : '') + '>' + (sel ? '<td data-ck="1"><input type="checkbox" data-cs="' + esc(c.id) + '"' + (sel.ids.has(c.id) ? ' checked' : '') + ' style="width:20px;height:20px;"></td>' : '') + '<td>' + esc(c.code) + '</td><td>' + esc(c.name) + '</td><td>' + esc([c.dept, c.person].filter(Boolean).join('　')) + '</td><td>' + esc(SK.termsLabel(c.terms)) + (c.termsCheck ? ' <span class="tag mid">要確認</span>' : '') + '</td><td>' + esc(c.sendBy || '') + '</td>' + stkCell(c, 'cust') + '<td>' + (c.active === false ? '<span class="tag">使わない</span>' : '') + '</td></tr>').join('') + '</tbody></table></div></div>';
   $('cq').oninput = () => { ST.cq = $('cq').value; drawCust(); $('cq').focus(); $('cq').setSelectionRange(99, 99); };
   $('co').onchange = () => { ST.conly = $('co').checked; drawCust(); };
