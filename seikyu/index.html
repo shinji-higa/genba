@@ -18,7 +18,7 @@
   nav button { background: transparent; color: #d3e6da; border: 0; padding: 7px 12px; border-radius: 6px; font: inherit; font-weight: 700; cursor: pointer; }
   nav button.on { background: #fff; color: var(--head); }
   .who { font-size: .82rem; color: #d3e6da; }
-  .who a { color: #fff; }
+  .who a { color: #fff; white-space: nowrap; }
   main { max-width: none; margin: 0 auto; padding: 16px clamp(10px, 2.5vw, 56px); }   /* 画面（窓）の幅に合わせて広げ、左右に少し余白（ユーザー指示 2026-11-06：PCのモニターに合わせる。スマホでも見られる） */
   .card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; margin-bottom: 14px; }
   .card h2 { margin: 0 0 10px; font-size: 1rem; }
@@ -96,6 +96,15 @@
   .newfloat { gap: 8px; }
   .newfloat button { pointer-events: auto; box-shadow: 0 4px 14px rgba(0,0,0,.3); margin: 15px 0 0 0; }
   .newfloat button:last-child { margin-right: 17px; }
+  @media (max-width: 760px) {   /* スマホの幅（2026-11-08）：ボタンは右下の隅に小さく、元の所の空きは詰める。一覧は番号・会社名・金額・状態だけ */
+    .newfloat { position: fixed; top: auto; bottom: 12px; right: 12px; height: auto; }
+    .newfloat button, .newfloat button.b.mid { margin: 0 !important; font-size: .95rem; padding: 8px 12px; }
+    .fph { display: none !important; }
+    body { padding-bottom: 64px; }
+    table.invl thead th:nth-child(2), table.invl thead th:nth-child(4), table.invl thead th:nth-child(n+6):not(:nth-child(7)),
+    table.invl tr.link td:nth-child(2), table.invl tr.link td:nth-child(4), table.invl tr.link td:nth-child(n+6):not(:nth-child(7)) { display: none; }
+    table.invl tfoot td:last-child { display: none; }
+  }
   button.b.subw { min-width: 14em; text-align: center; }   /* 提出データのボタンは同じ大きさ（2026-11-07） */
   #ask .card { width: 100%; max-width: 520px; margin: 0; max-height: 92vh; overflow: auto; }
   #upd { position: fixed; left: 50%; transform: translateX(-50%); top: 8px; z-index: 60; border: 0; border-radius: 18px; padding: 9px 16px; background: var(--accent); color: #fff; font: 700 13px inherit; box-shadow: 0 2px 8px rgba(0,0,0,.3); white-space: nowrap; cursor: pointer; }
@@ -146,12 +155,12 @@
 <main id="m"></main>
 <div id="busy"></div>
 
-<script src="calc.js?v=Ver.請求20261108-03"></script>
+<script src="calc.js?v=Ver.請求20261108-04"></script>
 <script type="module">
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
 import { getFirestore, collection, doc, getDoc, getDocs, setDoc, deleteDoc, writeBatch, runTransaction, onSnapshot, deleteField, query, where } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
-const APP_VER = 'Ver.請求20261108-03';   // 版の名前は「Ver.請求YYYYMMDD-NN」（ユーザー指示 2026-11-06）
+const APP_VER = 'Ver.請求20261108-04';   // 版の名前は「Ver.請求YYYYMMDD-NN」（ユーザー指示 2026-11-06）
 const API = 'https://script.google.com/macros/s/AKfycbzpJgqJOqQz5180PQF2S3kVN7TWg0c1dnyUUUNuCZtzy5_pmKEhAkw5w3gqSj31EEA1/exec';   // Apps Script「請求管理」（ポータル・給与とは別）
 /* ログインは給与アプリと同じ（ユーザー指示 2026-11-05）：ポータルの Firebase、メールとパスワード。入れるのはマスターと「請求管理」の権限（users.canInvoice）がある人 */
 const app = initializeApp({ apiKey: 'AIzaSyDVR4p4DO4s9h70uPlXUVlhNcMP9-YkQ5Q', authDomain: 'genba-portal-9077b.firebaseapp.com', projectId: 'genba-portal-9077b' });
@@ -350,7 +359,7 @@ function floatNew(...btns) {
   const h = document.createElement('div'); h.className = 'newfloat'; let card = null;
   btns.forEach(btn => {
     btn.classList.add('mid');
-    const ph = btn.cloneNode(true); ph.removeAttribute('id'); ph.style.visibility = 'hidden'; ph.tabIndex = -1; btn.replaceWith(ph);   // 元の所は同じ幅を空けておく（ほかのボタンが動かない）
+    const ph = btn.cloneNode(true); ph.removeAttribute('id'); ph.classList.add('fph'); ph.style.visibility = 'hidden'; ph.tabIndex = -1; btn.replaceWith(ph);   // 元の所は同じ幅を空けておく（ほかのボタンが動かない）
     card = card || ph.closest('#m > .card'); h.appendChild(btn);
   });
   if (card) card.before(h); else M.prepend(h);   // ボタンのある欄の上から右上についてくる
@@ -760,7 +769,7 @@ async function drawInvList() {
     const row = x => { const k = myApvBox(x.i); return '<tr class="link" data-id="' + esc(x.i.id) + '"><td><b>' + esc(x.i.no || '（番号なし）') + '</b></td><td>' + dShort(x.i.date) + '</td><td>' + esc(x.name) + '</td><td>' + esc(x.i.title || ((x.i.lines || []).find(l => l.name) || {}).name || '') + '</td><td class="n">' + yen(x.c.total) + '</td><td>' + dShort(x.i.due) + '</td><td>' + stTag(x.st) + '</td>' +
       '<td style="white-space:nowrap;">' + apvTag(x.i) + (k >= 0 ? ' <button class="b sm dark" data-apvl="' + esc(x.i.id) + '" data-k="' + k + '">承認する</button>' : '') + '</td><td>' + (preSw(x.i) ? '<span class="tag pre">切替前</span>' : esc(x.i.sentBy || '')) + (x.i.sentAt && x.i.sentAt !== '不明' ? ' <span class="note">' + dShort(x.i.sentAt) + '</span>' : '') + (!x.i.sentAt && x.i.sentBy !== '不明' && !preSw(x.i) && x.st !== '取消' ? ' <span class="tag mid">まだ送っていない</span>' : '') + (x.i.resend && x.st !== '取消' ? ' <span class="tag ng">直したあと送り直していない</span>' : '') + '</td>' + stkCell(x.i, 'inv') + '</tr>'; };
     const mine = rows.filter(x => myApvBox(x.i) >= 0);
-    $('lst').innerHTML = (mine.length ? '<div class="row" style="margin-bottom:8px;"><span class="note">いま出ている中で、自分（' + esc(ST.me.name) + '）の承認待ちが <b>' + mine.length + ' 枚</b>あります。</span><button class="b dark" id="apvAll">この ' + mine.length + ' 枚をまとめて承認する</button></div>' : '') + (rows.length ? '<div class="wrapx"><table class="t"><thead><tr><th>番号</th><th>発行日</th><th>得意先</th><th>件名・品名</th><th class="n">合計</th><th>入金予定日</th><th>入金</th><th>承認</th><th>送り方</th><th>付箋メモ</th></tr></thead><tbody>' +
+    $('lst').innerHTML = (mine.length ? '<div class="row" style="margin-bottom:8px;"><span class="note">いま出ている中で、自分（' + esc(ST.me.name) + '）の承認待ちが <b>' + mine.length + ' 枚</b>あります。</span><button class="b dark" id="apvAll">この ' + mine.length + ' 枚をまとめて承認する</button></div>' : '') + (rows.length ? '<div class="wrapx"><table class="t invl"><thead><tr><th>番号</th><th>発行日</th><th>得意先</th><th>件名・品名</th><th class="n">合計</th><th>入金予定日</th><th>入金</th><th>承認</th><th>送り方</th><th>付箋メモ</th></tr></thead><tbody>' +
       ltGroups('inv', rows).map(g => monRow(g, 10, '合計 ' + yen(sumOf(g.rows)) + ' 円') + g.rows.map(row).join('')).join('') +
       '</tbody><tfoot><tr><td colspan="4">' + rows.length + ' 枚（取消を除いた合計）</td><td class="n">' + yen(sumOf(rows)) + '</td><td colspan="5"></td></tr></tfoot></table></div>' : '<div class="note">当てはまる請求書はありません。</div>');
     if ($('apvAll')) $('apvAll').onclick = () => apvMany(mine.map(x => x.i));
@@ -1602,7 +1611,7 @@ function drawRcpEdit() {
     '</div><div class="row" style="margin-top:12px;gap:24px;align-items:flex-start;">' +
     (off ? '' : '<div><label class="f">請求書</label>' + (r.invNo ? '<a href="#" id="rInv"><b>' + esc(r.invNo) + '</b></a>' : '<span class="note">なし</span>') + '</div>' +
       '<div><label class="f">収入印紙</label><span id="rDuty">' + (duty == null ? '<span class="tag ng">要確認</span>' : duty ? yen(duty) + ' 円' : '不要') + '</span><div class="note">税抜 ' + yen(rcpDutyBase(r)) + ' 円で決めます（消費税額等を分けて書くため）</div></div>' +
-      '<div><label class="f">税率ごとの内訳</label><span id="rGrp">' + (r.groups || []).map(g => esc(SK.groupLabel(g)) + '対象 ' + yen(g.incl) + ' 円（うち消費税額等 ' + yen(g.tax) + ' 円）').join('<br>') + '</span><div class="note">金額を変えると、保存のときに出し直します。</div></div>') +
+      '<div><label class="f">税率ごとの内訳</label><span id="rGrp">' + (r.groups || []).map(g => esc(SK.groupLabel(g)) + '対象 ' + yen(g.incl) + ' 円（うち消費税額等 ' + yen(g.tax) + ' 円）').join('<br>') + '</span>' + (gone ? '' : '<div class="note">金額を変えると、保存のときに出し直します。</div>') + '</div>') +
     (off && r.invNo ? '<div><label class="f">請求書</label><a href="#" id="rInv"><b>' + esc(r.invNo) + '</b></a></div>' : '') +
     '<div><label class="f">作った人</label>' + esc(r.createdBy || '') + ' <span class="note">' + esc(r.createdAt || '') + '</span></div></div></div>';
   const val = () => { const o = Object.assign({}, r); M.querySelectorAll('[data-r]').forEach(e => { o[e.dataset.r] = e.value; }); o.amount = num(o.amount) || 0; o.toName = String(o.toName || '').trim(); if (off) o.invNo = String(o.invNo || '').trim(); return o; };
