@@ -131,7 +131,22 @@
     table.payl td:last-child { white-space: normal; } table.payl td:last-child .b { white-space: normal !important; padding: 4px 6px; font-size: .85rem; min-width: 0; width: 4.5em; line-height: 1.25; }   /* 入金を入れる：2行にして幅に収める */
     table.payl td, table.payl th { padding-left: 5px; padding-right: 5px; }
     /* 見出しのボタンの帯：スマホでは上の緑の帯が止まらないので、いちばん上に止める */
-    .headcard { top: 0; }
+    .headcard { top: 0; padding: 8px 10px !important; }
+    /* 帯を低く（2026-11-08：新しい請求書で画面の約半分を隠していた）。見出しは1行目に小さく、ボタンは字を小さくして横に並べる */
+    .headcard .row { gap: 5px; }
+    .headcard .row > b:first-of-type { flex-basis: 100%; order: -1; font-size: .9rem !important; }
+    .headcard .row > .sp { display: none; }
+    .headcard button.b, .headcard button.b.big { font-size: .85rem !important; padding: 5px 8px !important; min-height: 0 !important; }
+    .headcard .tag { font-size: .72rem; padding: 1px 5px; }
+    .headcard .note { font-size: .74rem; margin-top: 3px !important; }
+    .headcard .ltl, .headcard input { font-size: .85rem; }
+    .headcard input { padding: 3px 5px; }
+    /* まとめて入金：入金予定日の列を外して、打つ欄を手前に */
+    #pbT thead th:nth-child(2), #pbT tbody td:nth-child(2) { display: none; }
+    #pbT td, #pbT th { padding-left: 4px; padding-right: 4px; }
+    /* 窓の中のついてくる保存のボタン：小さく1列に */
+    #ask .savebar { flex-wrap: nowrap; gap: 6px; bottom: 6px; }
+    #ask .savebar button, #ask .savebar button.b.big { font-size: .9rem !important; padding: 7px 10px !important; min-height: 0 !important; white-space: nowrap; }
     /* はみ出し：合計の欄・承認の欄を画面の幅に。それでも広い物はその欄の中で横にずらす（画面全体はずれない） */
     .tot { min-width: 0; width: 100%; }
     .apv .bx { width: auto; flex: 1 1 0; min-width: 0; }
@@ -189,12 +204,12 @@
 <main id="m"></main>
 <div id="busy"></div>
 
-<script src="calc.js?v=Ver.請求20261108-08"></script>
+<script src="calc.js?v=Ver.請求20261108-09"></script>
 <script type="module">
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
 import { getFirestore, collection, doc, getDoc, getDocs, setDoc, deleteDoc, writeBatch, runTransaction, onSnapshot, deleteField, query, where } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
-const APP_VER = 'Ver.請求20261108-08';   // 版の名前は「Ver.請求YYYYMMDD-NN」（ユーザー指示 2026-11-06）
+const APP_VER = 'Ver.請求20261108-09';   // 版の名前は「Ver.請求YYYYMMDD-NN」（ユーザー指示 2026-11-06）
 const API = 'https://script.google.com/macros/s/AKfycbzpJgqJOqQz5180PQF2S3kVN7TWg0c1dnyUUUNuCZtzy5_pmKEhAkw5w3gqSj31EEA1/exec';   // Apps Script「請求管理」（ポータル・給与とは別）
 /* ログインは給与アプリと同じ（ユーザー指示 2026-11-05）：ポータルの Firebase、メールとパスワード。入れるのはマスターと「請求管理」の権限（users.canInvoice）がある人 */
 const app = initializeApp({ apiKey: 'AIzaSyDVR4p4DO4s9h70uPlXUVlhNcMP9-YkQ5Q', authDomain: 'genba-portal-9077b.firebaseapp.com', projectId: 'genba-portal-9077b' });
@@ -805,7 +820,7 @@ async function drawInvList() {
     const mine = rows.filter(x => myApvBox(x.i) >= 0);
     $('lst').innerHTML = (mine.length ? '<div class="row" style="margin-bottom:8px;"><span class="note">いま出ている中で、自分（' + esc(ST.me.name) + '）の承認待ちが <b>' + mine.length + ' 枚</b>あります。</span><button class="b dark" id="apvAll">この ' + mine.length + ' 枚をまとめて承認する</button></div>' : '') + (rows.length ? '<div class="wrapx"><table class="t invl"><thead><tr><th>番号</th><th>発行日</th><th>得意先</th><th>件名・品名</th><th class="n">合計</th><th>入金予定日</th><th>入金</th><th>承認</th><th>送り方</th><th>付箋メモ</th></tr></thead><tbody>' +
       ltGroups('inv', rows).map(g => monRow(g, 10, '合計 ' + yen(sumOf(g.rows)) + ' 円') + g.rows.map(row).join('')).join('') +
-      '</tbody><tfoot><tr><td colspan="4">' + rows.length + ' 枚（取消を除いた合計）<span class="pon">　' + yen(sumOf(rows)) + ' 円</span></td><td class="n">' + yen(sumOf(rows)) + '</td><td colspan="5"></td></tr></tfoot></table></div>' : '<div class="note">当てはまる請求書はありません。</div>');
+      '</tbody><tfoot><tr><td colspan="4">' + rows.length + ' 枚' + (rows.filter(x => x.st === '取消').length ? '（うち取消 ' + rows.filter(x => x.st === '取消').length + ' 枚）' : '') + '／取消を除いた合計<span class="pon">　' + yen(sumOf(rows)) + ' 円</span></td><td class="n">' + yen(sumOf(rows)) + '</td><td colspan="5"></td></tr></tfoot></table></div>' : '<div class="note">当てはまる請求書はありません。</div>');
     if ($('apvAll')) $('apvAll').onclick = () => apvMany(mine.map(x => x.i));
     $('lst').querySelectorAll('tr.link').forEach(tr => tr.onclick = () => openInv(plain(list.find(i => i.id === tr.dataset.id))));
     wireStk($('lst'), id => list.find(i => i.id === id), async i => { if (await saveInvSticky(i)) { const k = list.findIndex(x => x.id === i.id); list[k] = Object.assign(list[k], { sticky: i.sticky }); fill(); } });
@@ -910,7 +925,7 @@ function drawInvEdit() {
       '<td><select data-f="tax"' + (ro ? ' disabled' : '') + '>' + SK.KINDS.map(t => '<option value="' + t[0] + '"' + (t[0] === (l.tax || 'std') ? ' selected' : '') + '>' + t[1] + '</option>').join('') + '</select></td>' +
       '<td>' + '<textarea data-f="memo" rows="' + Math.min(6, Math.max(1, Math.ceil(wlen(l.memo || '') / 12))) + '"' + (ro ? ' disabled' : '') + '>' + esc(l.memo || '') + '</textarea>' + '</td><td style="white-space:nowrap;">' + (ro ? '' : '<button class="b sm" data-a="up">↑</button><button class="b sm" data-a="dn">↓</button><button class="b sm danger" data-a="rm">×</button>') + '</td></tr>';
   const pays = inv.payments || [], paid = SK.paid(inv);
-  M.innerHTML = '<div class="card"><div class="row"><button class="b" id="back">← 一覧へ</button><b style="font-size:1.1rem;">請求書 ' + esc(inv.no || '（新しい請求書・保存すると番号が付きます）') + '</b>' + stTag(st) + (inv.resend && inv.state !== '取消' ? '<span class="tag ng">送ったあとに直しました。送り直してください</span>' : '') + (inv.state === '取消' ? '' : '') + '<span class="sp"></span>' +
+  M.innerHTML = '<div class="card"><div class="row"><button class="b" id="back">← 一覧へ</button><b style="font-size:1.1rem;">請求書 ' + esc(inv.no || '（新しい請求書・保存すると番号が付きます）') + '</b>' + (inv.isNew ? '' : stTag(st)) +   /* 保存前は状態を出さない（「入金なし」と出て紛らわしかった。2026-11-08） */ (inv.resend && inv.state !== '取消' ? '<span class="tag ng">送ったあとに直しました。送り直してください</span>' : '') + (inv.state === '取消' ? '' : '') + '<span class="sp"></span>' +
     (ro ? '' : '<button class="b dark" id="sv">保存</button>') + (inv.state === '取消' ? '' : '<button class="b" id="pr">' + (wantCover(inv) ? '印刷（送り状つき）' : '印刷') + '</button><button class="b" id="pdf">PDFで保存</button>') + '<button class="b" id="see">紙を見る</button></div>' +
     (gone ? '<div class="note" style="margin-top:8px;">取消にした請求書です。中身・入金・送った日は直せず、領収書も作れません。直すときは下の「取消をやめる」を押してください。</div>' : ro ? '<div class="note" style="margin-top:8px;">販売らくだから写した請求書です。中身は直せません（入金は入れられます）。同じ中身で新しく作るときは「複製」を押してください。</div>' : '') + '</div>' +
     (inv.isNew ? '' : stkPanel(inv, 'stkE')) + apvCard(inv) +
