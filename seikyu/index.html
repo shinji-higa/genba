@@ -206,12 +206,12 @@
 <main id="m"></main>
 <div id="busy"></div>
 
-<script src="calc.js?v=Ver.請求20261108-10"></script>
+<script src="calc.js?v=Ver.請求20261108-11"></script>
 <script type="module">
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
 import { getFirestore, collection, doc, getDoc, getDocs, setDoc, deleteDoc, writeBatch, runTransaction, onSnapshot, deleteField, query, where } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
-const APP_VER = 'Ver.請求20261108-10';   // 版の名前は「Ver.請求YYYYMMDD-NN」（ユーザー指示 2026-11-06）
+const APP_VER = 'Ver.請求20261108-11';   // 版の名前は「Ver.請求YYYYMMDD-NN」（ユーザー指示 2026-11-06）
 const API = 'https://script.google.com/macros/s/AKfycbzpJgqJOqQz5180PQF2S3kVN7TWg0c1dnyUUUNuCZtzy5_pmKEhAkw5w3gqSj31EEA1/exec';   // Apps Script「請求管理」（ポータル・給与とは別）
 /* ログインは給与アプリと同じ（ユーザー指示 2026-11-05）：ポータルの Firebase、メールとパスワード。入れるのはマスターと「請求管理」の権限（users.canInvoice）がある人 */
 const app = initializeApp({ apiKey: 'AIzaSyDVR4p4DO4s9h70uPlXUVlhNcMP9-YkQ5Q', authDomain: 'genba-portal-9077b.firebaseapp.com', projectId: 'genba-portal-9077b' });
@@ -791,8 +791,9 @@ async function drawInvList() {
   $('yr').onchange = () => { P.per = $('yr').value; if (/^\d{4}$/.test(P.per)) ST.year = P.per; drawInvList(); };
   if ($('rgo')) $('rgo').onclick = () => { P.from = $('rf1').value; P.to = $('rf2').value; if (!P.from || !P.to || P.from > P.to) return alert('期間の「いつから」「いつまで」を入れてください。'); drawInvList(); };
   if ($('cm')) $('cm').onchange = () => { if ($('cm').value) { P.cm = $('cm').value; drawInvList(); } };
-  $('fl').onchange = () => { ST.filt = $('fl').value; fill(); };
-  $('q').oninput = () => { ST.q = $('q').value; fill(); };
+  let ready = false;   // 読み込み中に選んだ・打ったときは、読み込みが終わってから出す（2026-11-08：読み込み中に変えると画面の裏でエラーが出ていた）
+  $('fl').onchange = () => { ST.filt = $('fl').value; if (ready) fill(); };
+  $('q').oninput = () => { ST.q = $('q').value; if (ready) fill(); };
   $('nw').onclick = () => openInv(newInv()); floatNew($('nw'));
   let list = [];
   try { list = P.per === 'close' ? await invsOfRange(closeRange(P.cm || closeYm(today())).from, closeRange(P.cm || closeYm(today())).to) : P.per === 'all' ? await invsOfRange('2000-01-01', '2099-12-31') : P.per === 'range' ? (P.from && P.to ? await invsOfRange(P.from, P.to) : []) : await invsOfYear(P.per); }
@@ -828,7 +829,7 @@ async function drawInvList() {
     wireStk($('lst'), id => list.find(i => i.id === id), async i => { if (await saveInvSticky(i)) { const k = list.findIndex(x => x.id === i.id); list[k] = Object.assign(list[k], { sticky: i.sticky }); fill(); } });
     $('lst').querySelectorAll('[data-apvl]').forEach(b => b.onclick = async ev => { ev.stopPropagation(); const i = list.find(x => x.id === b.dataset.apvl); if (await doApprove(i, +b.dataset.k, true)) drawInvList(); });
   }
-  fill();
+  ready = true; fill();
 }
 
 /* ===== 請求書の作成・編集 ===== */
