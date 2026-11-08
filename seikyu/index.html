@@ -145,12 +145,12 @@
 <main id="m"></main>
 <div id="busy"></div>
 
-<script src="calc.js?v=Ver.請求20261107-23"></script>
+<script src="calc.js?v=Ver.請求20261108-01"></script>
 <script type="module">
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
 import { getFirestore, collection, doc, getDoc, getDocs, setDoc, deleteDoc, writeBatch, runTransaction, onSnapshot, deleteField, query, where } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
-const APP_VER = 'Ver.請求20261107-23';   // 版の名前は「Ver.請求YYYYMMDD-NN」（ユーザー指示 2026-11-06）
+const APP_VER = 'Ver.請求20261108-01';   // 版の名前は「Ver.請求YYYYMMDD-NN」（ユーザー指示 2026-11-06）
 const API = 'https://script.google.com/macros/s/AKfycbzpJgqJOqQz5180PQF2S3kVN7TWg0c1dnyUUUNuCZtzy5_pmKEhAkw5w3gqSj31EEA1/exec';   // Apps Script「請求管理」（ポータル・給与とは別）
 /* ログインは給与アプリと同じ（ユーザー指示 2026-11-05）：ポータルの Firebase、メールとパスワード。入れるのはマスターと「請求管理」の権限（users.canInvoice）がある人 */
 const app = initializeApp({ apiKey: 'AIzaSyDVR4p4DO4s9h70uPlXUVlhNcMP9-YkQ5Q', authDomain: 'genba-portal-9077b.firebaseapp.com', projectId: 'genba-portal-9077b' });
@@ -855,7 +855,7 @@ function drawInvEdit() {
   const fa = document.activeElement, fr = fa && M.contains(fa) && fa.closest ? fa.closest('tr[data-k]') : null;
   const fkey = !fa || !M.contains(fa) ? null : fa.id ? '#' + fa.id : fr && fa.dataset.f ? '#ln tr[data-k="' + fr.dataset.k + '"] [data-f="' + fa.dataset.f + '"]' : fa.dataset && fa.dataset.to ? '[data-to="' + fa.dataset.to + '"]' : null;
   setTimeout(() => { if (!fkey) return; const e = M.querySelector(fkey); if (e && document.activeElement !== e) e.focus({ preventScroll: true }); }, 0);
-  const inv = ST.edit, ro = !!inv.fixed, c = calcOf(inv), st = stateOf(inv), cust = custOf(inv.custId);
+  const inv = ST.edit, gone = inv.state === '取消', ro = !!inv.fixed || gone, c = calcOf(inv)   /* 取消にした請求書は直せない（ユーザー決定 2026-11-08）。直すときは「取消をやめる」を押してから */, st = stateOf(inv), cust = custOf(inv.custId);
   const to = inv.to || {};
   const custOpts = '<option value="">（得意先を選ぶ）</option>' + ST.custs.filter(x => x.active !== false || x.id === inv.custId).map(x => '<option value="' + esc(x.id) + '"' + (x.id === inv.custId ? ' selected' : '') + '>' + esc(x.code + '　' + x.name + (x.dept ? '　' + x.dept : '') + (x.person ? '　' + x.person : '')) + '</option>').join('');
   const lineRow = (l, k) => l.type === 'text'
@@ -868,15 +868,15 @@ function drawInvEdit() {
   const pays = inv.payments || [], paid = SK.paid(inv);
   M.innerHTML = '<div class="card"><div class="row"><button class="b" id="back">← 一覧へ</button><b style="font-size:1.1rem;">請求書 ' + esc(inv.no || '（新しい請求書・保存すると番号が付きます）') + '</b>' + stTag(st) + (inv.resend && inv.state !== '取消' ? '<span class="tag ng">送ったあとに直しました。送り直してください</span>' : '') + (inv.state === '取消' ? '' : '') + '<span class="sp"></span>' +
     (ro ? '' : '<button class="b dark" id="sv">保存</button>') + (inv.state === '取消' ? '' : '<button class="b" id="pr">' + (wantCover(inv) ? '印刷（送り状つき）' : '印刷') + '</button><button class="b" id="pdf">PDFで保存</button>') + '<button class="b" id="see">紙を見る</button></div>' +
-    (ro ? '<div class="note" style="margin-top:8px;">販売らくだから写した請求書です。中身は直せません（入金は入れられます）。同じ中身で新しく作るときは「複製」を押してください。</div>' : '') + '</div>' +
+    (gone ? '<div class="note" style="margin-top:8px;">取消にした請求書です。中身は直せません。直すときは下の「取消をやめる」を押してください。</div>' : ro ? '<div class="note" style="margin-top:8px;">販売らくだから写した請求書です。中身は直せません（入金は入れられます）。同じ中身で新しく作るときは「複製」を押してください。</div>' : '') + '</div>' +
     (inv.isNew ? '' : stkPanel(inv, 'stkE')) + apvCard(inv) +
     '<div class="card"><div class="grid3" style="align-items:start;">' +
     '<div><label class="f">得意先</label><select id="cu" style="width:100%;"' + (ro ? ' disabled' : '') + '>' + custOpts + '</select></div>' +
     '<div><label class="f">発行日</label><input id="dt" type="date" value="' + esc(inv.date) + '"' + (ro ? ' disabled' : '') + ' style="width:100%;"></div>' +
-    '<div><label class="f">入金予定日</label><input id="due" type="date" value="' + esc(inv.due || '') + '"><div class="row" style="gap:6px;margin-top:3px;"><button class="b sm" id="dueA" type="button"' + (ro ? ' disabled' : '') + '>支払いの決まりから出す</button><span class="note">' + esc(cust ? SK.termsLabel(cust.terms) + (cust.termsCheck ? '（要確認）' : '') : '') + '</span></div></div>' +
+    '<div><label class="f">入金予定日</label><input id="due" type="date" value="' + esc(inv.due || '') + '"' + (gone ? ' disabled' : '') + '><div class="row" style="gap:6px;margin-top:3px;"><button class="b sm" id="dueA" type="button"' + (ro ? ' disabled' : '') + '>支払いの決まりから出す</button><span class="note">' + esc(cust ? SK.termsLabel(cust.terms) + (cust.termsCheck ? '（要確認）' : '') : '') + '</span></div></div>' +
     '<div><label class="f">件名</label><input id="tt" value="' + esc(inv.title || '') + '"' + (ro ? ' disabled' : '') + '></div>' +
     '<div><label class="f">金額の入れ方</label><select id="tm" disabled>' + (taxIncl(inv) ? '<option value="' + esc(inv.taxMode || 'out') + '" selected>税込（過去の特例）</option>' : '<option value="out" selected>税抜（外税）</option>') + '</select><div class="note">' + (taxIncl(inv) ? '前に税込で作った請求書です（特例）。そのときの金額のまま出します。' : 'これからの請求書は税抜（外税）だけで作ります。') + '</div></div>' +
-    '<div><label class="f">送り方</label><select id="sb">' + ['紙', 'メール', '紙とメール', '不明'].concat(preSw(inv) ? ['切替前'] : []).map(o => '<option' + (o === (preSw(inv) ? '切替前' : (inv.sentBy || '紙')) ? ' selected' : '') + '>' + o + '</option>').join('') + '</select><div class="note">「紙」のときは印刷で送り状も一緒に出ます</div></div>' +
+    '<div><label class="f">送り方</label><select id="sb"' + (gone ? ' disabled' : '') + '>' + ['紙', 'メール', '紙とメール', '不明'].concat(preSw(inv) ? ['切替前'] : []).map(o => '<option' + (o === (preSw(inv) ? '切替前' : (inv.sentBy || '紙')) ? ' selected' : '') + '>' + o + '</option>').join('') + '</select><div class="note">「紙」のときは印刷で送り状も一緒に出ます</div></div>' +
     '</div><details style="margin-top:10px;"' + (inv.isNew ? '' : '') + '><summary style="cursor:pointer;font-weight:700;">宛名（' + esc([to.name, to.dept, to.person].filter(Boolean).join('　') || '未入力') + '　' + esc(to.honor || '') + '）を直す</summary><div class="grid3" style="margin-top:8px;">' +
     [['name', '会社名'], ['dept', '部署'], ['person', '担当者'], ['zip', '郵便番号'], ['addr1', '住所1'], ['addr2', '住所2（ビル名など）']].map(f => '<div><label class="f">' + f[1] + '</label><input data-to="' + f[0] + '" value="' + esc(to[f[0]] || '') + '"' + (ro ? ' disabled' : '') + '></div>').join('') +
     '<div><label class="f">敬称</label><select data-to="honor"' + (ro ? ' disabled' : '') + '>' + ['様', '御中', '殿'].map(o => '<option' + (o === (to.honor || '様') ? ' selected' : '') + '>' + o + '</option>').join('') + '</select></div></div><div class="note">ここを直しても、この請求書だけが変わります（得意先の台帳は変わりません）。</div></details></div>' +
