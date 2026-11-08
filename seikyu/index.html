@@ -206,12 +206,12 @@
 <main id="m"></main>
 <div id="busy"></div>
 
-<script src="calc.js?v=Ver.請求20261108-11"></script>
+<script src="calc.js?v=Ver.請求20261108-12"></script>
 <script type="module">
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
 import { getFirestore, collection, doc, getDoc, getDocs, setDoc, deleteDoc, writeBatch, runTransaction, onSnapshot, deleteField, query, where } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
-const APP_VER = 'Ver.請求20261108-11';   // 版の名前は「Ver.請求YYYYMMDD-NN」（ユーザー指示 2026-11-06）
+const APP_VER = 'Ver.請求20261108-12';   // 版の名前は「Ver.請求YYYYMMDD-NN」（ユーザー指示 2026-11-06）
 const API = 'https://script.google.com/macros/s/AKfycbzpJgqJOqQz5180PQF2S3kVN7TWg0c1dnyUUUNuCZtzy5_pmKEhAkw5w3gqSj31EEA1/exec';   // Apps Script「請求管理」（ポータル・給与とは別）
 /* ログインは給与アプリと同じ（ユーザー指示 2026-11-05）：ポータルの Firebase、メールとパスワード。入れるのはマスターと「請求管理」の権限（users.canInvoice）がある人 */
 const app = initializeApp({ apiKey: 'AIzaSyDVR4p4DO4s9h70uPlXUVlhNcMP9-YkQ5Q', authDomain: 'genba-portal-9077b.firebaseapp.com', projectId: 'genba-portal-9077b' });
@@ -728,10 +728,10 @@ function fySel(attr, cur) {   // 期を選ぶ欄
   return '<select ' + attr + '>' + out.map(y => '<option value="' + y + '"' + (y === cur ? ' selected' : '') + '>' + esc(closeName(y)) + '</option>').join('') + '</select>';
 }
 /* 切替以前（販売らくだから写した物）・切替後（このアプリで作った物）。初めは切替後（ユーザー指示 2026-11-06：昔の入金はさかのぼって見ない） */
-const isOld = x => !!(x && (x.fixed || x.legacy));
+const isOld = x => !!(x && (x.fixed || x.legacy) && String(x.date || '') < KIRIKAE);   // 切替以前＝特例（2026/3/1より前に出した写し）だけ。今期分の写しは承認・入金をこのアプリで入れるので切替後に出す（ユーザー決定。2026-11-08 直し：今期分の写しが入金の画面に出ていなかった）
 function eraBar(key) {
   const e = lt(key).era || '';
-  return '<label class="ltl">データ <select data-lt="era"><option value="">切替後（このアプリで作った物）</option><option value="old"' + (e === 'old' ? ' selected' : '') + '>切替以前（販売らくだから写した物）</option><option value="all"' + (e === 'all' ? ' selected' : '') + '>両方</option></select></label>';
+  return '<label class="ltl">データ <select data-lt="era"><option value="">切替後（今期分：2026年3月1日から）</option><option value="old"' + (e === 'old' ? ' selected' : '') + '>切替以前（特例：2026年2月までに出した物）</option><option value="all"' + (e === 'all' ? ' selected' : '') + '>両方</option></select></label>';
 }
 const eraOk = (key, x) => { const e = lt(key).era || ''; return e === 'all' ? true : e === 'old' ? isOld(x) : !isOld(x); };
 const perOk = (key, d) => { const s = lt(key); if (s.per === 'close') { const r = closeRange(s.cm || closeYm(today())); d = String(d || ''); return d >= r.from && d <= r.to; } if (s.per !== 'range') return true; d = String(d || ''); return (!s.from || d >= s.from) && (!s.to || d <= s.to); };
