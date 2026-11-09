@@ -312,7 +312,10 @@
       #print-root .dp:last-child { page-break-after: auto; break-after: auto; }
     }
       /* 入力画面：選んでいる入力欄の寸法を点滅（ユーザー指示 2026-11-09） */
-    #edFig .hlk { fill: #d40000 !important; stroke: #ffd400 !important; stroke-width: 3.5px !important; paint-order: stroke; font-weight: 700; animation: hlkBlink 1s step-end infinite; }
+    #edFloat { position: fixed; left: 6px; right: 6px; top: 6px; z-index: 9000; background: #fff; border: 1.5px solid #6e6e6e; border-radius: 8px; box-shadow: 0 4px 14px rgba(0,0,0,.25); padding: 4px; display: none; pointer-events: none; }
+    #edFloat.on { display: block; }
+    #edFloat svg { width: 100%; height: auto; max-height: 30vh; display: block; }
+    #edFig .hlk, #edFloat .hlk { fill: #d40000 !important; stroke: #ffd400 !important; stroke-width: 3.5px !important; paint-order: stroke; font-weight: 700; animation: hlkBlink 1s step-end infinite; }
     @keyframes hlkBlink { 50% { opacity: .2; } }
 </style>
 </head>
@@ -4760,7 +4763,7 @@
       renderOpenings();
       form.oninput = onEdInput; form.onchange = onEdInput;
       // 入力欄を選んだら、その寸法を図で「記号＝数字」にして点滅。欄から出たら戻す（ユーザー指示 2026-11-09）
-      if (!form._hl) { form._hl = 1; form.addEventListener('focusin', function (e) { var k = e.target && e.target.getAttribute && e.target.getAttribute('data-d') || ''; if (k !== FOCUSK) { FOCUSK = k; edFigOnly(); } }); form.addEventListener('focusout', function () { setTimeout(function () { var a = document.activeElement, k = a && a.closest && a.closest('#edForm') && a.getAttribute('data-d') || ''; if (k !== FOCUSK) { FOCUSK = k; edFigOnly(); } }, 0); }); }
+      if (!form._hl) { form._hl = 1; form.addEventListener('focusin', function (e) { var k = e.target && e.target.getAttribute && e.target.getAttribute('data-d') || ''; if (k !== FOCUSK) { FOCUSK = k; edFigOnly(); } else edFloatSync(); }); form.addEventListener('focusout', function () { setTimeout(function () { var a = document.activeElement, k = a && a.closest && a.closest('#edForm') && a.getAttribute('data-d') || ''; if (k !== FOCUSK) { FOCUSK = k; edFigOnly(); } else edFloatSync(); }, 0); }); }
       // Enter で次の入力欄へ（FAirCAM と同じ打ち方）
       form.onkeydown = function (e) {
         if (e.key !== 'Enter' || e.target.tagName !== 'INPUT' || e.target.type === 'checkbox' || e.isComposing) return;
@@ -5192,10 +5195,23 @@
       REBUILDING = true; try { openEditor(); } finally { REBUILDING = false; }
       var b = key && document.querySelector('#edForm ' + key); if (b) { b.focus(); try { if (pos != null) b.setSelectionRange(pos, pos); } catch (e) { } }
     }
+    /* スマホ（幅900未満）で入力欄を選んでいる間：見えている画面（visualViewport）の一番上に図の写し。iPhone はキーボードで画面ごとずれて、貼り付けた図も隠れるため */
+    function edFloatSync() {
+      var fl = document.getElementById('edFloat'), fig = document.getElementById('edFig'); if (!fig) return;
+      if (!fl) { fl = document.createElement('div'); fl.id = 'edFloat'; fl.setAttribute('aria-hidden', 'true'); document.body.appendChild(fl); }   // いちばん外に置く（入力画面の枠の動きに引きずられないように）
+      var a = document.activeElement, on = window.innerWidth < 900 && a && a.closest && !!a.closest('#edForm') && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName) && document.getElementById('editorBg').classList.contains('open');
+      if (!on) { fl.classList.remove('on'); fl.innerHTML = ''; return; }
+      fl.innerHTML = fig.innerHTML; fl.classList.add('on');
+      var vv = window.visualViewport; fl.style.top = ((vv ? vv.offsetTop : 0) + 6) + 'px';
+      var fb = fl.getBoundingClientRect().bottom, ar = a.getBoundingClientRect(), sc = a.closest('.sheet-b');
+      if (sc && ar.top < fb + 8) sc.scrollTop -= (fb + 8 - ar.top);   // 選んだ欄が写しの下に隠れたら見える所まで
+    }
+    if (window.visualViewport) { window.visualViewport.addEventListener('resize', function () { edFloatSync(); }); window.visualViewport.addEventListener('scroll', function () { var fl = document.getElementById('edFloat'); if (fl && fl.classList.contains('on')) fl.style.top = (window.visualViewport.offsetTop + 6) + 'px'; }); }
     function edFigOnly() {   // 入力画面の図だけ描き直す（入力欄を選んだときの点滅用）
       var f = document.getElementById('edFig'); if (!f || !ED) return;
       KEYMODE = true; SIDEMODE = true; try { f.innerHTML = draw(ED); } finally { KEYMODE = false; SIDEMODE = false; }
       cropSvgs(f, 'svg');
+      edFloatSync();
     }
     function refreshEd() {
       (ED.joints || []).forEach(function (j, i) { if (j === '正FG' && !sfgOk(ED, i)) ED.joints[i] = ''; });   // 正FG を付けない口に形を変えたら外す
@@ -5213,6 +5229,7 @@
       if (boxCenter(ED)) (ED.openings || []).forEach(function (o, i) { ['x', 'y'].forEach(function (key) { var el = document.querySelector('[data-o="' + i + ':' + key + '"]'); if (el && el !== document.activeElement && el.value !== o[key]) el.value = o[key]; }); });   // 芯の位置を入力欄にも
       KEYMODE = true; SIDEMODE = true; document.getElementById('edFig').innerHTML = draw(ED); KEYMODE = false; SIDEMODE = false;
       cropSvgs(document.getElementById('edFig'), 'svg');   // 図のまわりの余白を切り詰めて大きく（伝票の枠と同じ）
+      edFloatSync();
       var spA = document.getElementById('edSpanA'); if (spA) spA.textContent = SPAN_NAME[cellSpanKey(Object.assign({}, ED, { span: '' }))];
       // 板厚：仕様どおり（自動）か 1.6t
       var th = document.getElementById('edThick');
