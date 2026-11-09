@@ -5199,14 +5199,27 @@
     function edFloatSync() {
       var fl = document.getElementById('edFloat'), fig = document.getElementById('edFig'); if (!fig) return;
       if (!fl) { fl = document.createElement('div'); fl.id = 'edFloat'; fl.setAttribute('aria-hidden', 'true'); document.body.appendChild(fl); }   // いちばん外に置く（入力画面の枠の動きに引きずられないように）
-      var a = document.activeElement, on = window.innerWidth < 900 && a && a.closest && !!a.closest('#edForm') && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName) && document.getElementById('editorBg').classList.contains('open');
+      var a = document.activeElement, wide = window.innerWidth >= 900, on = (!wide || edKbOpen()) && a && a.closest && !!a.closest('#edForm') && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName) && document.getElementById('editorBg').classList.contains('open');
       if (!on) { fl.classList.remove('on'); fl.innerHTML = ''; return; }
       fl.innerHTML = fig.innerHTML; fl.classList.add('on');
-      var vv = window.visualViewport; fl.style.top = ((vv ? vv.offsetTop : 0) + 6) + 'px';
+      fl.style.left = wide ? '50%' : '6px';   // 広い画面（iPad）は図のある右半分だけ。左の入力欄は隠さない
+      fl.style.top = (edFloatTop() + 6) + 'px';
       var fb = fl.getBoundingClientRect().bottom, ar = a.getBoundingClientRect(), sc = a.closest('.sheet-b');
-      if (sc && ar.top < fb + 8) sc.scrollTop -= (fb + 8 - ar.top);   // 選んだ欄が写しの下に隠れたら見える所まで
+      if (!wide && sc && ar.top < fb + 8) sc.scrollTop -= (fb + 8 - ar.top);   // 選んだ欄が写しの下に隠れたら見える所まで
     }
-    if (window.visualViewport) { window.visualViewport.addEventListener('resize', function () { edFloatSync(); }); window.visualViewport.addEventListener('scroll', function () { var fl = document.getElementById('edFloat'); if (fl && fl.classList.contains('on')) fl.style.top = (window.visualViewport.offsetTop + 6) + 'px'; }); }
+    /* 見えている画面の上の位置（この画面の中の座標）。ポータルでは枠（iframe）の中で開くので、ポータル全体のずれ（親の visualViewport）も見る。iPhone はキーボードで親ごとずれる */
+    function edFloatTop() {
+      var t = window.visualViewport ? window.visualViewport.offsetTop : 0;
+      try { var pv = window.parent !== window && window.parent.visualViewport, fe = window.frameElement; if (pv && fe) t = Math.max(t, pv.offsetTop - fe.getBoundingClientRect().top); } catch (e) { }
+      return Math.max(0, t);
+    }
+    /* キーボードが出ているか：見えている画面の高さが、画面の高さよりはっきり小さい（ポータルの枠の中なら親で見る） */
+    function edKbOpen() {
+      var w = window; try { if (window.parent !== window && window.parent.visualViewport) w = window.parent; } catch (e) { }
+      var vv = w.visualViewport; return !!vv && (vv.height < w.innerHeight * 0.85 || vv.offsetTop > 20);
+    }
+    function edFloatMove() { var fl = document.getElementById('edFloat'); if (fl && fl.classList.contains('on')) fl.style.top = (edFloatTop() + 6) + 'px'; }
+    [window.visualViewport].concat((function () { try { return window.parent !== window ? [window.parent.visualViewport] : []; } catch (e) { return []; } })()).forEach(function (vv) { if (!vv) return; vv.addEventListener('resize', function () { edFloatSync(); }); vv.addEventListener('scroll', edFloatMove); });
     function edFigOnly() {   // 入力画面の図だけ描き直す（入力欄を選んだときの点滅用）
       var f = document.getElementById('edFig'); if (!f || !ED) return;
       KEYMODE = true; SIDEMODE = true; try { f.innerHTML = draw(ED); } finally { KEYMODE = false; SIDEMODE = false; }

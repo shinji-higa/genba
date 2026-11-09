@@ -144,7 +144,7 @@ auth.languageCode = 'ja';   // パスワード再設定のメールと画面を�
 // 端末の控え（電波なしでも見られる）は1つのタブだけが持つ。2つ目からのタブは、開いている間だけの控えでサーバーと直接やりとりする。
 // 前は全部のタブで控えを分け合っていて、サーバーとやりとりするタブが裏にあると、ほかのタブに最新が届くまで約28秒待っていた（2026-11-05 確認）
 const db = initializeFirestore(app, { localCache: persistentLocalCache({ tabManager: persistentSingleTabManager() }) });
-const APP_VER = 'Ver.20261109-06';
+const APP_VER = 'Ver.20261109-07';
 
 /* ---------- 電波なしでも使う（今の現場管理と同じ考え方） ----------
    ・保存は押した瞬間に完了の形。電波が戻ったら自動で送る（データは Firestore が端末に貯める）
@@ -1645,7 +1645,7 @@ function showSiteForm(s) {
    送るときに、ほかの人が先に直していたら上書きせず、別の伝票として残す
    1枚の中身は sites/{id}/orderBody、一覧に出す情報は sites/{id}/orders、記録は sites/{id}/orderLog */
 const O_KIND = {
-  kaku: { host: 'denpyoHost', src: 'denpyo.html?v=15', title: '角ダクト注文', word: '伝票', log: '角ダクト', fn: 'Denpyo' },
+  kaku: { host: 'denpyoHost', src: 'denpyo.html?v=16', title: '角ダクト注文', word: '伝票', log: '角ダクト', fn: 'Denpyo' },
   maru: { host: 'maruHost', src: 'maru.html?v=6', title: '丸ダクト注文', word: '注文書', log: '丸ダクト', fn: 'Maru' },
   cons: { host: 'consHost', src: 'cons.html?v=22', title: '消耗品注文', word: '注文書', log: '消耗品', fn: 'Cons' },
   kana: { host: 'kanaHost', src: 'kana.html?v=7', title: '金物注文（添付）', word: '注文書', log: '金物（添付）', fn: 'Kana' },
