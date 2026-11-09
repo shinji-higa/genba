@@ -338,6 +338,7 @@
     .kp-grid .kp-next { background: #111; color: #fff; border-color: #111; }
     body.kpon #editorBg .sheet-b { padding-bottom: 320px; }
     @media (max-width: 899px) { body.kpon .ed-fig.tapon svg { max-height: max(150px, calc(100vh - 470px)); } }
+    #edInMode { font-size: 0.8rem; padding: 7px 10px; white-space: nowrap; }
     .tapnote { font-size: 0.78rem; color: #1a56c4; margin-top: 4px; }
     #edFloat { position: fixed; left: 6px; right: 6px; top: 6px; z-index: 9000; background: #fff; border: 1.5px solid #6e6e6e; border-radius: 8px; box-shadow: 0 4px 14px rgba(0,0,0,.25); padding: 4px; display: none; pointer-events: none; }
     #edFloat.on { display: block; }
@@ -1366,7 +1367,8 @@
     /* 入力画面で選んでいる入力欄（FOCUSK＝data-d のキー）の寸法の字：数字だけになっていても「記号＝数字」に戻し、目印 HLM を付けて点滅させる。
        数字を入れると記号が消える（図の枠に収めるため）ので、どの寸法を直しているか分かるように（ユーザー指示 2026-11-09） */
     var TAPK = [];   // タップの目印の番号 → キー
-    function isTouchDev() { try { return window.matchMedia('(pointer: coarse)').matches; } catch (e) { return false; } }   // 指で触る端末（iPhone・iPad）。マウスの PC は false
+    function inModeSaved() { try { return localStorage.getItem('dpInputMode') || ''; } catch (e) { return ''; } }   // この端末で選んだ入力のやり方：'touch'＝指、'mouse'＝マウス・キーボード、''＝自動
+    function isTouchDev() { var m = inModeSaved(); if (m === 'touch') return true; if (m === 'mouse') return false; try { return window.matchMedia('(pointer: coarse)').matches; } catch (e) { return false; } }   // 指で触る端末（iPhone・iPad）。マウスの PC は false
     function tapMode(it) { return !!it && it.type === 'f_hop' && isTouchDev(); }   // 試し：ホッパーだけ。入力のやり方は指かマウスかで決める（PC は入力欄の一覧、iPhone・iPad は図をタップ。向きを変えても変わらない。ユーザー指示 2026-11-09）
     function tapW(k, str) { if (!(KEYMODE && SIDEMODE) || !DRAW_IT || DRAW_IT !== ED || !tapMode(DRAW_IT)) return str; var i = TAPK.indexOf(k); if (i < 0) { TAPK.push(k); i = TAPK.length - 1; } return '\uE000' + String.fromCharCode(0xE100 + i) + str + '\uE001'; }
     var FOCUSK = '', HLM = '\u2064', HLA = '\u2061', HLB = '\u2060', DRAW_IT = null;   // HLA〜HLB＝字の一部だけ点滅。DRAW_IT＝今描いている部材
@@ -5275,6 +5277,9 @@
         bar.querySelector('#tapClose').onclick = function () { tapClose(); };
         chips.addEventListener('click', function (e) { var c = e.target.closest('[data-tk]'); if (c) tapOpen(c.getAttribute('data-tk')); });
       }
+      var mb = document.getElementById('edInMode');
+      if (!mb) { var back = document.getElementById('edBack'); if (back) { mb = document.createElement('button'); mb.type = 'button'; mb.className = 'btn btn-sub'; mb.id = 'edInMode'; back.parentNode.insertBefore(mb, back); mb.onclick = function () { var nx = isTouchDev() ? 'mouse' : 'touch'; try { localStorage.setItem('dpInputMode', nx); } catch (e) { } if (nx === 'mouse') tapClose(); refreshEd(); }; } }
+      if (mb) { mb.style.display = ED && ED.type === 'f_hop' ? '' : 'none'; mb.textContent = isTouchDev() ? '入力：図タップ' : '入力：マウスキーボ'; /* 今のやり方。押すと切りかわる（ユーザー指示 2026-11-09） */ mb.title = 'この端末の入力のやり方を切りかえます（端末ごとに覚えます）'; }
       var on = tapMode(ED);
       box.classList.toggle('tapon', on);
       // 寸法の入力欄の一覧（寸法（mm）の枠）は隠す
