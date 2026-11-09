@@ -4416,7 +4416,7 @@
       var hasSide1Op = it.type === 'straight' && (it.openings || []).some(function (o) { return o.face === '側面1'; });
       // 側面1の図は帯で描ける部材だけ（自分で描く部材・板・形の複雑な部材は描かない）
       var NO_SIDE = { other: 1, canvas: 1,f_kmaru: 1, f_drain: 1, f_shoon: 1, f_cross: 1, f_san: 1, f_kobai: 1, f_cham: 1, f_gal: 1, f_henk: 1, f_kigu: 1, f_hood: 1, f_hago: 1, f_gaku: 1, f_y: 1, f_jin: 1, f_kel: 1, f_s: 1, f_hari: 1, f_tee: 1, f_futa: 1, f_hop: 1, f_elb: 1, f_box: 1, f_hei: 1, f_kiri: 1, hopper: 1, elbow: 1, fure: 1, maru: 1, hood: 1, sanmata: 1, shoon: 1, drain: 1, henkei: 1, kigu: 1, heishi: 1, kiri: 1, kobai: 1 };
-      if (SIDEMODE && !NO_SIDE[it.type] && !(it.type === 'straight' && !/管末勾配|変形短管/.test(kindOf(it))) && !(it.type === 'chamber' && kindOf(it) === 'ガラリチャンバー') && !hasSide1Op) {
+      if (SIDEMODE && !NO_SIDE[it.type] && it.type !== 'straight' && !(it.type === 'chamber' && kindOf(it) === 'ガラリチャンバー') && !hasSide1Op) {
         s += line(8, H + 6, 292, H + 6, 0.6, '4 3');
         var sv = sideViewOf(it, H + 40, K, J);
         s += sv.s; H = sv.bottom + 14;
