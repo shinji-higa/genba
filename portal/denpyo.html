@@ -311,7 +311,10 @@
       #print-root .dp { page-break-after: always; break-after: page; }
       #print-root .dp:last-child { page-break-after: auto; break-after: auto; }
     }
-  </style>
+      /* 入力画面：選んでいる入力欄の寸法を点滅（ユーザー指示 2026-11-09） */
+    #edFig .hlk { fill: #d40000 !important; stroke: #ffd400 !important; stroke-width: 3.5px !important; paint-order: stroke; font-weight: 700; animation: hlkBlink 1s step-end infinite; }
+    @keyframes hlkBlink { 50% { opacity: .2; } }
+</style>
 </head>
 <body>
   <div id="app">
@@ -1309,7 +1312,7 @@
         '<text x="' + f1(x + 3.5) + '" y="' + f1(cy) + '" font-size="8" fill="' + c + '" text-anchor="middle" transform="rotate(90 ' + f1(x + 3.5) + ' ' + f1(cy) + ')">' + esc(label) + '</text>';
     }
     // 接続の記号（Ⓣ・FG・切など）。すべて丸で囲む（2文字以上は横長の丸）
-    function textW(s, size) { var w = 0; for (var i = 0; i < s.length; i++) w += s.charCodeAt(i) < 256 ? size * 0.6 : size; return w; }
+    function textW(s, size) { var w = 0; for (var i = 0; i < s.length; i++) { var c = s.charCodeAt(i); if (c === 0x2064 || c === 0x2061 || c === 0x2060) continue; w += c < 256 ? size * 0.6 : size; } return w; }   // HLM は幅0
     function jMarkCode(c) { return c === '切閉' || c === '閉' ? '閉' : c; }   // 閉止板の口は T と同じ丸い印で「閉」（伝票の下の文字ではなく図で。ユーザー指示 2026-10-26）
     function jRx(c) { c = jMarkCode(c); return c ? Math.max(7.5, textW(c, 9.5) / 2 + 4) : 0; }
     // 長丸（角の丸い枠）で囲む：1文字は丸、2文字以上は横長
@@ -1330,7 +1333,26 @@
     var SVG_STYLE = '<style>text{paint-order:stroke;stroke:#fff;stroke-width:2.6px;stroke-linejoin:round}</style>';
     // 入力前の寸法の文字（目印 NOVAL 付き）を赤に。入力画面（KEYMODE かつ SIDEMODE）だけ。ほかは目印を消すだけ
     var NOVAL = '\u2063';
+    /* 入力画面で選んでいる入力欄（FOCUSK＝data-d のキー）の寸法の字：数字だけになっていても「記号＝数字」に戻し、目印 HLM を付けて点滅させる。
+       数字を入れると記号が消える（図の枠に収めるため）ので、どの寸法を直しているか分かるように（ユーザー指示 2026-11-09） */
+    var FOCUSK = '', HLM = '\u2064', HLA = '\u2061', HLB = '\u2060', DRAW_IT = null;   // HLA〜HLB＝字の一部だけ点滅。DRAW_IT＝今描いている部材
+    function phF() { if (!(KEYMODE && SIDEMODE) || !FOCUSK) return false; for (var i = 0; i < arguments.length; i++) if (arguments[i] === FOCUSK) return true; return false; }   // 直部の欄を選んでいる間は、空欄でも直部を仮の長さで描く
+    function keyNm(k) {   // 入力欄の記号（例：L → L1）。入力欄の名前の（ ）の前
+      try { var it = DRAW_IT || ED, F = it && FX[it.type] && FX[it.type][kindOf(it)], f = F && F.f && F.f.filter(function (x) { return x[0] === k; })[0]; if (f) return String(f[1]).split('（')[0]; } catch (e) { }
+      return k;
+    }
+    function hlK(k, out) {
+      if (!(KEYMODE && SIDEMODE) || !FOCUSK || FOCUSK !== k) return out;
+      var v = String(out == null ? '' : out).split(NOVAL).join(''), nm = keyNm(k);
+      if (v === '') return HLM + (k === 'L' || k === 'h' ? '' : nm);   // L・h は後ろに L・h が付く
+      return HLM + (v === nm || v === k ? nm : v.indexOf(nm) === 0 ? v : nm + '=' + v);
+    }
+    function hlM(k, str) { return KEYMODE && SIDEMODE && FOCUSK && FOCUSK === k ? HLM + str : str; }   // 字はそのままで点滅だけ
+    function hlP(k, str) { return KEYMODE && SIDEMODE && FOCUSK && FOCUSK === k ? HLA + str + HLB : str; }   // 字の一部（W1×H1 の W1 だけ など）
+    function hlX(a, b, out) { return KEYMODE && SIDEMODE && FOCUSK && (FOCUSK === a || FOCUSK === b) ? HLM + String(out).split(NOVAL).join('') : out; }
     function redNoVal(s) {
+      if (s.indexOf(HLA) >= 0) s = s.replace(/\u2061([^\u2060<]*)\u2060/g, '<tspan class="hlk">$1</tspan>').split(HLA).join('').split(HLB).join('');
+      if (s.indexOf(HLM) >= 0) s = s.replace(/<text([^>]*)>((?:(?!<\/text>)[\s\S])*?)<\/text>/g, function (m, a, b) { return b.indexOf(HLM) < 0 ? m : '<text' + a.replace(/ fill="[^"]*"/, '') + ' class="hlk" fill="#d40000">' + b.split(HLM).join('') + '</text>'; }).split(HLM).join('');
       if (s.indexOf(NOVAL) < 0) return s;
       if (KEYMODE && SIDEMODE) s = s.replace(/<text([^>]*)>((?:(?!<\/text>)[\s\S])*?)<\/text>/g, function (m, a, b) { return b.indexOf(NOVAL) < 0 ? m : '<text' + a.replace(/ fill="[^"]*"/, '') + ' fill="#d40000">' + b + '</text>'; });
       return s.split(NOVAL).join('');
@@ -2614,7 +2636,7 @@
              F1・F2＝狭いほうの口の左右のずれ、S1・S2＝下・上の直部、ホッパーRは C1〜C4（左右の下・上の直部）と曲線 */
           var topWide = kd === 'ハゴイタ' || kd === 'ホッパーR';
           var W1 = n('W1') || 600, W2 = n('W2') || (topWide ? W1 + 300 : W1 - 200), L1 = n('L1') || 500, L2 = kd === '角度ホッパー' ? (n('L2') || L1 + 50) : L1;
-          var hasSh = kd !== '2枚取り' && kd !== 'ホッパーR', phS = hasSh && KEYMODE && PH_STRAIGHT ? L1 * 0.08 : 0;   // 直部（S1・S2）：入力画面では空欄でも仮の長さで描く
+          var hasSh = kd !== '2枚取り' && kd !== 'ホッパーR', phS = hasSh && KEYMODE && (PH_STRAIGHT || phF('S1', 'S2')) ? L1 * 0.08 : 0;   // 直部（S1・S2）：入力画面では空欄でも仮の長さで描く
           var F1 = blank('F1') ? null : snum(d.F1), S1 = n('S1') || phS, S2 = kd === 'ハゴイタ' && blank('S2') ? L1 * 0.6 : (n('S2') || phS), bx0, tx0;   // ハゴイタは上が箱形（S2）で下がすぼまる
           if (kd === '2枚取り') { bx0 = 0; tx0 = 0; }
           else if (!topWide) { bx0 = 0; tx0 = F1 != null ? F1 : (W1 - W2) / 2; }
@@ -2666,7 +2688,7 @@
           // 地地の注記：矢印（接合1 → 接合2、下から上）
           var yt = udLabel(it), acx = X((minX + maxX) / 2);
           if (yt) s += arrowPl([[acx, Y(maxH * 0.12)], [acx, Y(maxH * 0.62)]]) + txt(acx + 6, Y(maxH * 0.12) - 2, yt, 'start', 10);
-          if (kd === '角度ホッパー' && snum(d.C2)) s += txt(X((minX + maxX) / 2), Y(maxH * 0.25) + (yt ? 14 : 0), (snum(d.C2) < 0 ? '地下' : '地上') + Math.abs(snum(d.C2)), 'middle', 10);
+          if (kd === '角度ホッパー' && snum(d.C2)) s += txt(X((minX + maxX) / 2), Y(maxH * 0.25) + (yt ? 14 : 0), hlM('C2', (snum(d.C2) < 0 ? '地下' : '地上') + Math.abs(snum(d.C2))), 'middle', 10);
           H = Y(0) + (topWide ? 52 : 40);
           var hagoSide = (it.openings || []).some(function (o) { return isSide(o.face); });   // 側面の開口があるときは、伝票にも 側面1・側面2 を出す
           if (kd === 'ハゴイタ' && ((KEYMODE && SIDEMODE) || hagoSide)) { var gyH = KEYMODE && SIDEMODE ? ' fill="#1a6fd1"' : ' fill="#333"'; var ySd = Y(L1 - S2) - 5; s += txt(X(tx0) + 4, ySd, '側面1', 'start', 8.5, gyH) + txt(X(tx0 + W2) - 4, ySd, '側面2', 'end', 8.5, gyH); }   // 箱形の下の端（曲がりの少し上）
@@ -2677,7 +2699,7 @@
           /* エルボ（90°）。接合1＝下の口（W1）、接合2＝左の口（W2）。曲がりの部分の左下が原点（左の口の面・下の口の面の延長の交わる点）。
              曲がり：内側＝R1 の弧（両R・内R外角）、斜めの直線（内直・内直外角）、角（内角外角・内角外R）。外側＝R2 の弧（両R・内直・内角外R）か角。
              F1・F2＝下の口・左の口の直部（ホッパーの S1・S2 と同じ）。曲がりの外へまっすぐ伸ばし、継ぎ目はグレーの破線 */
-          var W1 = n('W1') || 600, W2 = n('W2') || W1, F1 = n('F1') || (KEYMODE && PH_STRAIGHT ? W1 * 0.25 : 0), F2 = n('F2') || (KEYMODE && PH_STRAIGHT ? W1 * 0.25 : 0);   // 入力画面では空欄でも直部を仮の長さで描く（どこの寸法か分かるように）
+          var W1 = n('W1') || 600, W2 = n('W2') || W1, F1 = n('F1') || (KEYMODE && (PH_STRAIGHT || phF('F1', 'F2')) ? W1 * 0.25 : 0), F2 = n('F2') || (KEYMODE && (PH_STRAIGHT || phF('F1', 'F2')) ? W1 * 0.25 : 0);   // 入力画面では空欄でも直部を仮の長さで描く（どこの寸法か分かるように）
           var arcIn = kd === '両R' || kd === '内R外角', cornerIn = kd === '内角外角' || kd === '内角外R', arcOut = kd === '両R' || kd === '内直' || kd === '内角外R';
           // 曲がりの内側の大きさ：R の形は R1、内直・内角は 横（左の口の面から内角まで）・縦（下の口の面から内角まで）。前の角エルボと同じ
           var b = arcIn ? (blank('R1') ? W1 / 2 : Math.max(0, n('R1'))) : 0, bx = arcIn ? b : (blank('X') ? W1 / 2 : Math.max(0, n('X'))), by = arcIn ? b : (blank('Y') ? W1 / 2 : Math.max(0, n('Y')));
@@ -2698,7 +2720,7 @@
           // 内直・内角：R ではなく 横・縦 の寸法線（前の角エルボと同じ）。内直は内角の位置を細い破線で
           if (!arcIn) {
             if (!cornerIn) { var vc = P([bx, by]), va = P([0, by]), vb = P([bx, 0]); s += line(va[0], va[1], vc[0], vc[1], 0.6, '3 2') + line(vb[0], vb[1], vc[0], vc[1], 0.6, '3 2'); }
-            var kXY = function (k, nm) { return blank(k) && KEYMODE ? NOVAL + nm : K(k); };   // 入力画面の空欄は 横・縦 と出す
+            var kXY = function (k, nm) { return blank(k) && KEYMODE ? hlK(k, NOVAL + nm) : K(k); };   // 入力画面の空欄は 横・縦 と出す
             s += dH(X(0), X(bx), Y(0) + 12, kXY('X', '横'), true) + dV(X(0) - 12, Y(0), Y(by), kXY('Y', '縦'));
           }
           // 割り：接合1（下の口）から角度の割合の位置に接合の線、外側に割りごとの角度
@@ -2739,7 +2761,7 @@
           var kW = kg ? (num(kg.b) || W1 - 100) : W1 - 100, kF = kg && kg.y !== '' ? num(kg.y) : 50, kH = kg ? (num(kg.len) || 150) : 150, kL = kg ? (num(kg.a) || L1 - 100) : L1 - 100, kX = kg && kg.x !== '' ? num(kg.x) : 50;
           if (kd === 'BL6面分離') { kW = n('W2') || W1 - 200; kF = n('F1') || 100; kH = n('H2') || 200; kL = n('L2') || L1 - 200; kX = L1 - (n('F2') || 100) - kL; }
           var kTip = kd === 'BL6面分離' || !kg || kg.tip === '折返し';   // 器具短管の先が折返し
-          var hasK = blS && !/^BL5面/.test(kd), kv = function (o, key, v) { return o && o[key] !== '' && o[key] != null ? String(o[key]) : String(Math.round(v)); };
+          var hasK = blS && !/^BL5面/.test(kd), kv = function (o, key, v) { var r = o && o[key] !== '' && o[key] != null ? String(o[key]) : String(Math.round(v)); return kd === 'BL6面分離' ? hlM({ b: 'W2', y: 'F1', len: 'H2', a: 'L2', x: 'F2' }[key], r) : r; };
           var bx = it.type === 'f_box', sm = bx && !blS;   // 6面・5面は伝票の1枠に入るよう形を小さめに（文字が相対的に大きくなる）。BL は横2枠なのでそのまま
           k = Math.min((sm ? 170 : 280) / (W1 + L1), (sm ? 75 : 120) / (H1 + (hasK ? kH : 0)));   // 2つの図は同じ縮尺
           var bad = {}; overlapPairs(it).forEach(function (p) { bad[p[0]] = bad[p[1]] = true; });
@@ -2787,7 +2809,7 @@
               for (var q = 1; q < NB; q++) cps.push(blank('C' + q) ? W1 * q / NB : n('C' + q));
               cps.push(W1);
               for (var q2 = 1; q2 < NB; q2++) { var xq = sx0 + (W1 - cps[q2]) * k, yEnd = sy0 + sh + (hasK && xq >= kx1 - 0.5 && xq <= kx1 + w2p + 0.5 ? h2 : 0); var bjc = (it.o || {}).bj || 'T', tight = NB > 2 && W1 / NB * k < jRx(bjc) * 2 + 4; s += line(xq, sy0, xq, yEnd, 0.7, '4 2') + jMark(xq, sy0 - 46 - dS.t - (tight && q2 % 2 === 0 ? 17 : 0), bjc); }   // 器具短管の中は先まで。分割の接合の印は分けた長さの寸法の上（ユーザー指示 2026-10-27）
-              for (var q3 = 0; q3 < NB; q3++) { var xa = sx0 + (W1 - cps[q3 + 1]) * k, xb = sx0 + (W1 - cps[q3]) * k; s += dH(xa, xb, sy0 - 28 - dS.t, String(round1(cps[q3 + 1] - cps[q3]))); }   // 分けた長さは全体の寸法の上に並べる（箱の中は面の名前と重なるので）
+              for (var q3 = 0; q3 < NB; q3++) { var xa = sx0 + (W1 - cps[q3 + 1]) * k, xb = sx0 + (W1 - cps[q3]) * k; s += dH(xa, xb, sy0 - 28 - dS.t, q3 + 1 < NB ? hlM('C' + (q3 + 1), String(round1(cps[q3 + 1] - cps[q3]))) : String(round1(cps[q3 + 1] - cps[q3]))); }   // 分けた長さは全体の寸法の上に並べる（箱の中は面の名前と重なるので）
             }
             s += holeMarks(sx0, sx0 + sw, sy0, holeN(it, W1));   // 吊り穴
             if (blS) s += tieMarks(it, sx0, sw, sy0, sh);   // タイロッド（BL の正面図）
@@ -2933,7 +2955,7 @@
       var W = function (pl) { walls.push(pl); }, TH = function (pl) { thin.push(pl); };
       // 口：p1・p2＝口の両端、pin＝中の点（フランジの向き）、label＝口の大きさ（空＝書かない）、ji＝接合の番号
       var OP = function (p1, p2, pin, ji, label, nm, jl) { ends.push({ a: p1, b: p2, c: pin, j: J[ji], label: label, nm: nm, jl: jl }); };   // nm＝接合の印を付けない、jl＝印を口の大きさの文字の右に
-      var Kv = function (k, def) { return blank(k) && !KEYMODE ? '000' : blank(k) ? NOVAL + (def || k) : String(d[k]); };
+      var Kv = function (k, def) { return hlK(k, blank(k) && !KEYMODE ? '000' : blank(k) ? NOVAL + (def || k) : String(d[k])); };
       var th1 = function (k, def) { return Math.max(1, Math.min(175, blank(k) ? def : n(k))); };
       var Lmax = 0;
       var gv = function (k, def) { return blank(k) ? def : snum(d[k]); };
@@ -2958,7 +2980,7 @@
           m = !hk && o.muki === '右' ? -1 : 1;
           var W1 = n('W1') || 500, W2 = n('W2') || W1, wide = /広角/.test(kd), th = th1('A', wide ? 135 : 45), t = th * Math.PI / 180;
           var r = kd === '広角内角' ? 0 : wide ? W1 * 0.15 : blank('R1') ? W1 / 2 : Math.max(0, n('R1'));
-          var Lb = wide ? (n(kd === '広角' ? 'L1' : 'C1') || 150) : n('F1') || (hk && KEYMODE && PH_STRAIGHT ? W1 * 0.25 : 0), Lt = wide ? (n(kd === '広角' ? 'L2' : 'C2') || 150) : n('F2') || (hk && KEYMODE && PH_STRAIGHT ? W1 * 0.25 : 0), dir = [-Math.sin(t), Math.cos(t)];
+          var Lb = wide ? (n(kd === '広角' ? 'L1' : 'C1') || 150) : n('F1') || (hk && KEYMODE && (PH_STRAIGHT || phF('F1', 'F2')) ? W1 * 0.25 : 0), Lt = wide ? (n(kd === '広角' ? 'L2' : 'C2') || 150) : n('F2') || (hk && KEYMODE && (PH_STRAIGHT || phF('F1', 'F2')) ? W1 * 0.25 : 0), dir = [-Math.sin(t), Math.cos(t)];
           var inner = [[r, -Lb]].concat(r > 0 ? arcMM(0, 0, r, r, 0, th) : [[0, 0]]), ie = inner[inner.length - 1], outer = [[r + W1, -Lb]];
           for (var i = 0; i <= 24; i++) { var aa = t * i / 24, rr = r + W1 + (W2 - W1) * i / 24; outer.push([rr * Math.cos(aa), rr * Math.sin(aa)]); }
           var oe = outer[outer.length - 1], ie2 = [ie[0] + dir[0] * Lt, ie[1] + dir[1] * Lt], oe2 = [oe[0] + dir[0] * Lt, oe[1] + dir[1] * Lt];
@@ -3018,7 +3040,7 @@
             H = 200; break;
           }
           var hasS = ['R', '中直', '内角', '2分割'].indexOf(kd) >= 0, L1 = n('L1') || (kd === 'タイコ' ? W1 + 100 : 800), Fv = blank('F1') ? (kd === 'タイコ' ? W1 : W1 * 0.5) : snum(d.F1);   // タイコの空欄は Rebro のタイコと同じ見え方（長さ＝W1＋100、ずれ＝W1。ユーザー指示 2026-11-09）
-          var sa = kd === 'タイコ' ? 0 : n('S1') || (hasS && KEYMODE && PH_STRAIGHT ? L1 * 0.1 : 0), sb = kd === 'タイコ' ? 0 : n('S2') || (hasS && KEYMODE && PH_STRAIGHT ? L1 * 0.1 : 0), lw, rw;   // タイコは直部なし   // S1・S2＝下・上の口の直部（エルボの F1・F2 と同じ。入力画面では空欄でも仮の長さで描く）
+          var sa = kd === 'タイコ' ? 0 : n('S1') || (hasS && KEYMODE && (PH_STRAIGHT || phF('S1', 'S2')) ? L1 * 0.1 : 0), sb = kd === 'タイコ' ? 0 : n('S2') || (hasS && KEYMODE && (PH_STRAIGHT || phF('S1', 'S2')) ? L1 * 0.1 : 0), lw, rw;   // タイコは直部なし   // S1・S2＝下・上の口の直部（エルボの F1・F2 と同じ。入力画面では空欄でも仮の長さで描く）
           if (kd === '両角') {
             var c1 = n('C1') || 100, c2 = n('C2') || c1, c3 = n('C3') || 100, c4 = n('C4') || c3;
             lw = [[0, 0], [0, c2], [Fv, L1 - c3], [Fv, L1]]; rw = [[W1, 0], [W1, c1], [Fv + W2, L1 - c4], [Fv + W2, L1]];
@@ -3098,7 +3120,7 @@
           }
           Lt = L1 + L2 + L3;
           var ym0 = -F1, ym1 = -F1 + H3, yR0 = -F1 + F2, yR1 = yR0 + H2, kaku2 = kd === '両角';
-          var hasSr = !kaku2 && kd !== '内角', phR = hasSr && KEYMODE && PH_STRAIGHT ? L1 * 0.15 : 0;   // R・分割の直部（S1・S2）。入力画面では空欄でも仮の長さで
+          var hasSr = !kaku2 && kd !== '内角', phR = hasSr && KEYMODE && (PH_STRAIGHT || phF('S1', 'S2')) ? L1 * 0.15 : 0;   // R・分割の直部（S1・S2）。入力画面では空欄でも仮の長さで
           var sa = kaku2 ? n('C1') : kd === '内角' ? 0 : (n('S1') || phR), sb = kaku2 ? n('C6') : kd === '内角' ? 0 : (n('S2') || phR);
           var ba = kaku2 ? n('C2') : kd === '内角' ? n('C1') : sa, bb = kaku2 ? n('C5') : kd === '内角' ? n('C2') : sb;
           var wall = function (y0, ya, yb, a, b, curved) {
@@ -3129,7 +3151,7 @@
             var cs = kaku2 ? []   // 両角の C1〜C6 は不要
               : kd === '内角' ? [['C1', [ba, 0], 6, -5, 'start'], ['C2', [Lt - bb, yR0], -6, -5, 'end']] : [['S1', [sa, H1], 4, 13, 'start'], ['S2', [Lt - sb, yR1], -4, 13, 'end']];   // 直部の文字：寸法・平面図と重ならない所に
             cs.forEach(function (c) { if (n(c[0]) || KEYMODE) lab(c[1], c[2], c[3], K(c[0]), c[4]); });
-            if (kd === '分割' && !blank('A')) s += txt(12, 24, '左角度\n' + d.A, 'start', 10); if (kd === '分割' && !blank('A2')) s += txt(288, 24, '右角度\n' + d.A2, 'end', 10);
+            if (kd === '分割' && !blank('A')) s += txt(12, 24, hlM('A', '左角度\n' + d.A), 'start', 10); if (kd === '分割' && !blank('A2')) s += txt(288, 24, hlM('A2', '右角度\n' + d.A2), 'end', 10);
           });
           H = 200; break;
         }
@@ -3140,7 +3162,7 @@
           var sL = teeSide(it, 'r1s'), sR = teeSide(it, 'r2s');
           var hL = sL === 'R' ? Math.min(blank('R1') ? 100 : n('R1'), L1) : sL === '直' ? Math.min(blank('X1') ? 150 : n('X1'), L1) : 0, vL = sL === 'R' ? hL : sL === '直' ? (blank('Y1') ? 150 : n('Y1')) : 0;
           var hR = sR === 'R' ? Math.min(blank('R2') ? 100 : n('R2'), L2) : sR === '直' ? Math.min(blank('X2') ? 150 : n('X2'), L2) : 0, vR = sR === 'R' ? hR : sR === '直' ? (blank('Y2') ? 150 : n('Y2')) : 0;
-          var vm = Math.max(vL, vR), S3 = n('S1') || (KEYMODE && PH_STRAIGHT ? W1 * 0.25 : 0), yb = W1 + vm + S3;   // 枝の直部 S1：空欄なら伝票では描かない（入力画面は仮の長さ）
+          var vm = Math.max(vL, vR), S3 = n('S1') || (KEYMODE && (PH_STRAIGHT || phF('S1')) ? W1 * 0.25 : 0), yb = W1 + vm + S3;   // 枝の直部 S1：空欄なら伝票では描かない（入力画面は仮の長さ）
           var bend = function (side, h, v, x0, dir) {   // dir：－1＝左の付け根（主管の上から右上へ）、＋1＝右の付け根
             if (side === 'R') return dir < 0 ? arcMM(x0 - h, W1 + h, h, h, 270, 360) : arcMM(x0 + h, W1 + h, h, h, 180, 270);
             if (side === '直') return dir < 0 ? [[x0 - h, W1], [x0, W1 + v]] : [[x0, W1 + v], [x0 + h, W1]];
@@ -3155,7 +3177,7 @@
             s += dV2(Lt, W1, yb, 14, blank('L3') && KEYMODE ? NOVAL + 'L3' : K('L3'));   // L3（自動で入る）：主管の上から枝の口まで（付け根＋直部）
             // 枝の直部 S3：付け根との境はグレーの破線、寸法は枝の右
             if (S3) s += grayJ(P([L1, W1 + vm]), P([L1 + W3, W1 + vm])) + dV2(L1, W1 + vm, yb, -14, K('S1'));   // 寸法は枝の左（右は枝の口の印）
-            var kXY = function (k, nm) { return blank(k) && KEYMODE ? NOVAL + nm : K(k); };
+            var kXY = function (k, nm) { return blank(k) && KEYMODE ? hlK(k, NOVAL + nm) : K(k); };
             // 左の付け根
             if (sL === 'R' && hL > 0) s += bendCenter(P([L1 - hL, W1 + hL]), P([L1 - hL, W1]), P([L1, W1 + hL]), -90, 0, '90°', 'R=' + K('R1'), null, null, null, [-6, 4, 'end']);   // R の文字は中心の左
             if (sL === '直') { var a1 = P([L1 - hL, W1]), c1 = P([L1, W1]), b1 = P([L1, W1 + vL]); s += line(a1[0], a1[1], c1[0], c1[1], 0.6, '3 2') + line(b1[0], b1[1], c1[0], c1[1], 0.6, '3 2') + dH2(L1 - hL, L1, W1, 12, kXY('X1', '横'), true) + dV2(L1, W1, W1 + vL, 10, kXY('Y1', '縦')); }
@@ -3173,7 +3195,7 @@
           var N = BR_N[it.type], ws = brWs(it), xs = [0];
           ws.forEach(function (w) { xs.push(xs[xs.length - 1] + w); });
           var W1t = xs[N], gyB = ' fill="#1a6fd1"';
-          var kb = function (i, k) { var v = d['B' + (i + 1) + '_' + k]; return v === '' || v == null ? (KEYMODE ? NOVAL + BR_MARK[i] + k : '000') : String(v); };
+          var kb = function (i, k) { var v = d['B' + (i + 1) + '_' + k], o = v === '' || v == null ? (KEYMODE ? NOVAL + BR_MARK[i] + k : '000') : String(v); return FOCUSK === 'B' + (i + 1) + '_' + k && KEYMODE && SIDEMODE ? HLM + BR_MARK[i] + k + (v === '' || v == null ? '' : '=' + v) : o; };
           var xb = function (i, a, b) {
             var va = d['B' + (i + 1) + '_' + a], vb = d['B' + (i + 1) + '_' + b], ea = va === '' || va == null, eb = vb === '' || vb == null;
             if (KEYMODE) return ea && eb ? NOVAL + BR_MARK[i] + a + '×' + b : BR_MARK[i] + a + '×' + b + '\n' + dv(va) + '×' + dv(vb);
@@ -3182,7 +3204,7 @@
           for (var bi0 = 0; bi0 < N; bi0++) (function (i) {
             var bi = brItem(it, i), bd = bi.d, bn = function (k) { return num(bd[k]); }, bb = function (k) { return bd[k] === '' || bd[k] == null; };
             var xa = xs[i], xe = xs[i + 1], w = xe - xa, sd = brSide(it, i), ji = i + 1, so = sd < 0 ? -1 : 1;   // so＝寸法を出す側
-            var ph = function (k, v) { return bn(k) || (KEYMODE && PH_STRAIGHT ? v : 0); };   // 直部：入力画面では空欄でも仮の長さで描く
+            var ph = function (k, v) { return bn(k) || (KEYMODE && (PH_STRAIGHT || phF(k)) ? v : 0); };   // 直部：入力画面では空欄でも仮の長さで描く
             var nS = splitN(bi), fr = splitFracs(bi), lb = splitLabels(bi), ud = brUD(bi) ? udLabel(bi) : '', numP = null;   // numP＝入力画面の枝の番号の位置（P を受け取って画面の点。null＝口の上）
             var seamS = function (P, a, b) { s += grayJ(P(a), P(b)); };
             // 左右の枝のエルボ：直部 F1 の寸法の文字は線の外側、R の文字はそのさらに外の少し下（左の枝は左へ。ユーザー指示 2026-10-28、動かして説明の図どおり）
@@ -3259,7 +3281,7 @@
               OP(G([-F2f, by]), G([-F2f, yt]), G([-F2f + 20, (by + yt) / 2]), ji, xb(i, 'W2', 'H2'));
               numP = function (P) { var pa = ptAtMM(ePI, 0.3), pb = ptAtMM(ePO, 0.3); return P(G([(pa[0] + pb[0]) / 2, (pa[1] + pb[1]) / 2])); };   // 枝の番号は曲がりの中の、口に近いところ
               post.push(function (P, dV2, dH2) {
-                var PG = function (p) { return P(G(p)); }, kXY = function (k, nm) { return bb(k) && KEYMODE ? NOVAL + BR_MARK[i] + nm : kb(i, k); };
+                var PG = function (p) { return P(G(p)); }, kXY = function (k, nm) { return bb(k) && KEYMODE ? (FOCUSK === 'B' + (i + 1) + '_' + k && SIDEMODE ? HLM + BR_MARK[i] + nm : NOVAL + BR_MARK[i] + nm) : kb(i, k); };
                 if (F1f) { seamS(P, G([bx, 0]), G([xr, 0])); s += dV2(xa + (so < 0 ? 0 : w), 0, F1f, so * 14, kb(i, 'F1'), so < 0, f1Sh); }
                 if (F2f) { seamS(P, G([0, by]), G([0, yt])); var g0 = G([-F2f, yt]), g1 = G([0, yt]); s += dH2(g0[0], g1[0], g0[1], -10, kb(i, 'F2')); }
                 if (!arcIn) {
@@ -3373,7 +3395,7 @@
             return { s: sd, i: i, h: h, v: sd === 'R' ? h : sd === '直' ? (blank('Y' + i) ? 150 : n('Y' + i)) : 0 }; };
           var bU = [bsz('r1s', 1, L1), bsz('r2s', 2, L2)], bD = [bsz('r3s', 3, L1), bsz('r4s', 4, Math.max(0, Lt - L1 - W4))];
           var vU = Math.max(bU[0].v, bU[1].v), vD = Math.max(bD[0].v, bD[1].v);
-          var sU = n('S1') || (KEYMODE && PH_STRAIGHT ? W1 * 0.25 : 0), sD = n('S2') || (KEYMODE && PH_STRAIGHT ? W1 * 0.25 : 0), yU = W1 + vU + sU, yD = -(vD + sD);   // 直部：空欄なら伝票では描かない
+          var sU = n('S1') || (KEYMODE && (PH_STRAIGHT || phF('S1', 'S2')) ? W1 * 0.25 : 0), sD = n('S2') || (KEYMODE && (PH_STRAIGHT || phF('S1', 'S2')) ? W1 * 0.25 : 0), yU = W1 + vU + sU, yD = -(vD + sD);   // 直部：空欄なら伝票では描かない
           // 付け根の線：base＝主管の面、sg＝＋1 上の枝・－1 下の枝、dir＝－1 左・＋1 右
           var cbend = function (b, x0, base, sg, dir) {
             var h = b.h;
@@ -3385,7 +3407,7 @@
           W([[0, 0]].concat(cbend(bD[0], L1, 0, -1, -1), [[L1, yD]])); W([[L1 + W4, yD]].concat(cbend(bD[1], L1 + W4, 0, -1, 1), [[Lt, 0]]));
           OP([0, 0], [0, W1], [10, W1 / 2], 0, x('W1', 'H1')); OP([Lt, 0], [Lt, W1], [Lt - 10, W1 / 2], 1, ''); OP([L1, yU], [L1 + W3, yU], [L1 + W3 / 2, yU - 10], 2, ''); OP([L1, yD], [L1 + W4, yD], [L1 + W4 / 2, yD + 10], 3, '');
           post.push(function (P, dV2, dH2, lab) {
-            var kXY = function (k, nm) { return blank(k) && KEYMODE ? NOVAL + nm : K(k); };
+            var kXY = function (k, nm) { return blank(k) && KEYMODE ? hlK(k, NOVAL + nm) : K(k); };
             s += dH2(0, L1, yU, -30, K('L1')) + dH2(L1, L1 + W3, yU, -30, K('W3')) + dH2(L1 + W3, Lt, yU, -30, K('L2')) + dH2(L1, L1 + W4, yD, 30, K('W4'), true);
             s += dV2(Lt, W1, yU, 14, kXY('L3', 'L3')) + dV2(Lt, yD, 0, 14, kXY('L4', 'L4'));   // L3・L4：主管の面から枝の口まで（付け根＋直部）
             if (sU) s += grayJ(P([L1, W1 + vU]), P([L1 + W3, W1 + vU])) + dV2(L1, W1 + vU, yU, -14, K('S1'));
@@ -3417,10 +3439,10 @@
         }
         case 'f_gal': {
           // ガラリチャンバ：左の大きい口（接合1・ガラリ側）から右の小さい口（接合2・ダクト側）へ
-          var W1 = n('W1') || 500, W2 = n('W2') || W1 * 0.6, L1 = n('L1') || 500, S1 = n('S1') || (KEYMODE && PH_STRAIGHT ? L1 * 0.1 : 0);   // 直部。入力画面では空欄でも仮の長さで
+          var W1 = n('W1') || 500, W2 = n('W2') || W1 * 0.6, L1 = n('L1') || 500, S1 = n('S1') || (KEYMODE && (PH_STRAIGHT || phF('S1', 'S2')) ? L1 * 0.1 : 0);   // 直部。入力画面では空欄でも仮の長さで
           if (kd === 'ハゴイタ型') { var S2 = n('S2'); W([[0, W1], [L1, S2 + W2]]); W([[0, 0], [S1, 0], [L1, S2]]); OP([0, 0], [0, W1], [10, W1 / 2], 0, x('W1', 'H1')); OP([L1, S2], [L1, S2 + W2], [L1 - 10, S2 + W2 / 2], 1, x('W2', 'H2'));
             post.push(function (P, dV2, dH2) { s += dH2(0, L1, 0, 30, K('L1'), true) + (S1 ? dH2(0, S1, 0, 14, K('S1'), true) + grayJ(P([S1, 0]), P([S1, W1 + (S2 + W2 - W1) * S1 / L1])) : '') + dV2(L1, 0, S2, 14, K('S2')); }); }
-          else { var F1 = blank('F1') ? (W1 - W2) / 2 : n('F1'), S2b = n('S2') || (KEYMODE && PH_STRAIGHT ? L1 * 0.1 : 0); W([[0, W1], [S1, W1], [L1 - S2b, F1 + W2], [L1, F1 + W2]]); W([[0, 0], [S1, 0], [L1 - S2b, F1], [L1, F1]]);
+          else { var F1 = blank('F1') ? (W1 - W2) / 2 : n('F1'), S2b = n('S2') || (KEYMODE && (PH_STRAIGHT || phF('S1', 'S2')) ? L1 * 0.1 : 0); W([[0, W1], [S1, W1], [L1 - S2b, F1 + W2], [L1, F1 + W2]]); W([[0, 0], [S1, 0], [L1 - S2b, F1], [L1, F1]]);
             OP([0, 0], [0, W1], [10, W1 / 2], 0, x('W1', 'H1')); OP([L1, F1], [L1, F1 + W2], [L1 - 10, F1 + W2 / 2], 1, x('W2', 'H2'));
             post.push(function (P, dV2, dH2, lab) { s += dH2(0, L1, W1, -14, K('L1')) + dH2(0, S1, 0, 14, K('S1'), true) + dH2(L1 - S2b, L1, 0, 14, K('S2'), true) + (!KEYMODE && Math.abs(2 * F1 - (W1 - W2)) < 0.5 ? '' : dV2(L1, 0, F1, 14, K('F1'))) +(S1 ? grayJ(P([S1, 0]), P([S1, W1])) : '') + (S2b ? grayJ(P([L1 - S2b, F1]), P([L1 - S2b, F1 + W2])) : ''); lab([S1, W1 / 2], 6, 0, '上下芯', 'start'); }); }
           break;
@@ -3473,7 +3495,7 @@
           var ix0 = 0, ix1 = Wp, iy0 = P0, iy1 = P0 + Hp;
           if (hy) { if (fre) { var w3 = n('W3') || Wp - 40, h3 = n('H3') || Hp - 40; ix0 = (Wp - w3) / 2; ix1 = ix0 + w3; iy0 = P0 + (Hp - h3) / 2; iy1 = iy0 + h3; } else { ix0 = n('C2') || 20; ix1 = Wp - (n('C3') || 20); iy1 = P0 + Hp - (n('C4') || 20); iy0 = P0 + (n('C5') || 20); } W([[ix0, iy0], [ix1, iy0], [ix1, iy1], [ix0, iy1], [ix0, iy0]]); }
           TH([[ix0, iy0], [ix1, iy1]]); TH([[ix0, iy1], [ix1, iy0]]);
-          var S1 = fre ? (n('S1') || (KEYMODE && PH_STRAIGHT ? L1 * 0.15 : 0)) : 0, S2 = fre ? (n('S2') || (KEYMODE && PH_STRAIGHT ? L1 * 0.15 : 0)) : 0;   // フレの直部。入力画面では空欄でも仮の長さで
+          var S1 = fre ? (n('S1') || (KEYMODE && (PH_STRAIGHT || phF('S1', 'S2')) ? L1 * 0.15 : 0)) : 0, S2 = fre ? (n('S2') || (KEYMODE && (PH_STRAIGHT || phF('S1', 'S2')) ? L1 * 0.15 : 0)) : 0;   // フレの直部。入力画面では空欄でも仮の長さで
           W([[0, 0], [0, S1], [x0, L1 - S2], [x0, L1]]); W([[W1, 0], [W1, S1], [x1, L1 - S2], [x1, L1]]); W([[x0, L1], [x1, L1]]); TH([[0, C1], [W1, C1]]);
           if (hy && !fre) W([[W1 * 0.15, L1], [W1 * 0.15, L1 + (n('C6') || 20)], [W1 * 0.85, L1 + (n('C6') || 20)], [W1 * 0.85, L1]]);
           OP([0, 0], [W1, 0], [W1 / 2, 10], 0, fre ? x('W1', 'H1') : '');
@@ -3580,7 +3602,7 @@
       var note = function (y, str) { s += txt(150, y, str, 'middle', 9.5, ' fill="#333"'); };
       // 角エルボの図を借りるときの寸法の文字（仮の部材の値で）
       var KX = function (dd) {
-        var Kd = function (k) { var v = dd[k]; return (v === '' || v == null) ? (KEYMODE ? k : '000') : String(v); };
+        var Kd = function (k) { var v = dd[k]; return hlK(k, (v === '' || v == null) ? (KEYMODE ? k : '000') : String(v)); };
         return { K: Kd, x: function (a, b) { if (KEYMODE && (dd[a] || dd[b])) return a + '×' + b + '\n' + dv(dd[a]) + '×' + dv(dd[b]); return Kd(a) + '×' + Kd(b); } };
       };
       var sPath = function (x0, y0, x1, y1) { var ym = (y0 + y1) / 2; return '<path d="M' + f1(x0) + ' ' + f1(y0) + ' C' + f1(x0) + ' ' + f1(ym) + ' ' + f1(x1) + ' ' + f1(ym) + ' ' + f1(x1) + ' ' + f1(y1) + '" fill="none" stroke="#000" stroke-width="' + SW + '"/>'; };
@@ -3995,7 +4017,7 @@
       if (g.inS === 'R') s += txt(cX - 4, cY + 13, 'R=' + K('R'), 'middle', 9.5);
       else if (g.cornerIn) {
         // 内角・内直：Rの代わりに、口の面から内角までの横・縦を寸法線で（内直は内角の点を細い破線で示す）
-        var cIn = Q(g.cornerIn), kl = function (k, nm) { var v = d[k]; return (v === '' || v == null) ? (KEYMODE ? nm : '000') : String(v); };
+        var cIn = Q(g.cornerIn), kl = function (k, nm) { var v = d[k]; return hlK(k, (v === '' || v == null) ? (KEYMODE ? nm : '000') : String(v)); };
         if (g.inS === '直') s += line(aBot[0], aBot[1], cIn[0], cIn[1], 0.5, '2 2') + line(bI[0], bI[1], cIn[0], cIn[1], 0.5, '2 2');
         // 内側のすき間は狭いので、寸法線は中心（口の面の線の交点）の外へ：横は中心の下、縦は中心の外側（90°なら左）。どの角度でも2本が重ならない
         var nX = [0, 1], nY = [-uB[1], uB[0]];
@@ -4117,16 +4139,18 @@
       return { s: s, H: Hh };
     }
     function draw(it) {
+      var drawPrev = DRAW_IT; DRAW_IT = it;
       var d = it.d, s = '', H = 200, VW = 300;   // VW＝図の横幅（直管は中身に合わせて広げる）
       var J = (it.joints || []).map(function (j, i) { return ((it.st || [])[i] || {}).cap ? (j === '切' ? '切閉' : '閉') : j; });   // 閉止板の口
       (it.st || []).forEach(function (st, i) { if (st && st.cap && J[i] == null) J[i] = '閉'; });
       // 空の寸法は、入力画面では記号名（W1など）、伝票では000で出す（記号名で「どこの寸法か」がわかる）
       // 入力画面で入れる前の寸法には目印（U+2063）を付け、最後に赤い文字にする
-      var K = function (k) { var v = d[k]; if (v === '' || v == null) return KEYMODE ? NOVAL + (k === 'L' || k === 'h' ? '' : k) : '000'; return String(v); };
+      var Kr = function (k) { var v = d[k]; if (v === '' || v == null) return KEYMODE ? NOVAL + (k === 'L' || k === 'h' ? '' : keyNm(k)) : '000'; return String(v); };   // 入力画面の空欄は入力欄と同じ記号（直管の W → W1）
+      var K = function (k) { return hlK(k, Kr(k)); };
       // 入力画面では、寸法を入れたあとも記号を残す（例：W1×H1 600×400）
       var x = function (a, b) {
-        if (KEYMODE && (d[a] !== '' && d[a] != null || d[b] !== '' && d[b] != null)) return a + '×' + b + '\n' + dv(d[a]) + '×' + dv(d[b]);   // 入力画面は「W×H」改行「600×400」
-        return K(a) + '×' + K(b);
+        if (KEYMODE && (d[a] !== '' && d[a] != null || d[b] !== '' && d[b] != null)) return hlP(a, keyNm(a)) + '×' + hlP(b, keyNm(b)) + '\n' + hlP(a, dv(d[a])) + '×' + hlP(b, dv(d[b]));   // 入力画面は「W1×H1」改行「600×400」。選んだ欄の所だけ点滅
+        return hlP(a, Kr(a)) + '×' + hlP(b, Kr(b));
       };
       switch (it.type) {
         case 'f_hop': case 'f_elb': case 'f_box': case 'f_cham': case 'f_hei': case 'f_kiri': { var fxd = drawFx(it, K, x, J); s += fxd.s; H = fxd.H; break; }
@@ -4432,6 +4456,10 @@
         var ovs = openViews(it, vw, ox1, ox2, oyTop, oyTop + oMH, oMH);
         s += ovs.s; H = ovs.cur + 8;
       }
+      if (KEYMODE && SIDEMODE && FOCUSK && it === ED && s.indexOf(HLM) < 0 && s.indexOf(HLA) < 0) {   // 選んでいる欄の寸法が図に無い（R・角度など）：図の下に点滅で（ユーザー指示 2026-11-09）
+        var fv = it.d[FOCUSK]; s += txt(8, H + 16, HLM + keyNm(FOCUSK) + '＝' + (fv === '' || fv == null ? '（空欄）' : fv) + '　図には出ない寸法（注文書は図の下に字で）', 'start', 10); H += 26;
+      }
+      DRAW_IT = drawPrev;
       return svgWrap(redNoVal(s), H, VW);
     }
 
@@ -4731,6 +4759,8 @@
       })();
       renderOpenings();
       form.oninput = onEdInput; form.onchange = onEdInput;
+      // 入力欄を選んだら、その寸法を図で「記号＝数字」にして点滅。欄から出たら戻す（ユーザー指示 2026-11-09）
+      if (!form._hl) { form._hl = 1; form.addEventListener('focusin', function (e) { var k = e.target && e.target.getAttribute && e.target.getAttribute('data-d') || ''; if (k !== FOCUSK) { FOCUSK = k; edFigOnly(); } }); form.addEventListener('focusout', function () { setTimeout(function () { var a = document.activeElement, k = a && a.closest && a.closest('#edForm') && a.getAttribute('data-d') || ''; if (k !== FOCUSK) { FOCUSK = k; edFigOnly(); } }, 0); }); }
       // Enter で次の入力欄へ（FAirCAM と同じ打ち方）
       form.onkeydown = function (e) {
         if (e.key !== 'Enter' || e.target.tagName !== 'INPUT' || e.target.type === 'checkbox' || e.isComposing) return;
@@ -5161,6 +5191,11 @@
       if (a && a.closest && a.closest('#edForm')) { key = [].slice.call(a.attributes).filter(function (x) { return /^data-/.test(x.name); }).map(function (x) { return '[' + x.name + '="' + x.value + '"]'; }).join(''); try { pos = a.selectionStart; } catch (e) { } }
       REBUILDING = true; try { openEditor(); } finally { REBUILDING = false; }
       var b = key && document.querySelector('#edForm ' + key); if (b) { b.focus(); try { if (pos != null) b.setSelectionRange(pos, pos); } catch (e) { } }
+    }
+    function edFigOnly() {   // 入力画面の図だけ描き直す（入力欄を選んだときの点滅用）
+      var f = document.getElementById('edFig'); if (!f || !ED) return;
+      KEYMODE = true; SIDEMODE = true; try { f.innerHTML = draw(ED); } finally { KEYMODE = false; SIDEMODE = false; }
+      cropSvgs(f, 'svg');
     }
     function refreshEd() {
       (ED.joints || []).forEach(function (j, i) { if (j === '正FG' && !sfgOk(ED, i)) ED.joints[i] = ''; });   // 正FG を付けない口に形を変えたら外す
