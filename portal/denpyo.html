@@ -885,10 +885,11 @@
       var L = it.type === 'straight' ? n('L') : (num(it.opL) || autoOpL(it));
       return { L: L, W: W, H: H };
     }
-    // 開口を面ごとに分ける（天面＋下面の図／側面1の図／側面2の図）
+    // 開口を面ごとに分ける（天面＋下面の図／側面2の図／側面1の図）
+    // 第三角法（2026-11-09 案1）：平面図（天面）の下の辺は側面2なので、すぐ下に側面2の図。側面1（上の辺）は後ろから見た向き（左右が反対）で、その下に
     function openingViewsOf(it) {
-      var views = [{ faces: ['天面', '下面'], idx: [] }, { faces: ['側面1'], idx: [], label: '側面1' }, { faces: ['側面2'], idx: [], label: '側面2' }];
-      (it.openings || []).forEach(function (o, i) { views[o.face === '側面1' ? 1 : o.face === '側面2' ? 2 : 0].idx.push(i); });
+      var views = [{ faces: ['天面', '下面'], idx: [] }, { faces: ['側面2'], idx: [], label: '側面2' }, { faces: ['側面1'], idx: [], label: '側面1', back: true }];
+      (it.openings || []).forEach(function (o, i) { views[o.face === '側面2' ? 1 : o.face === '側面1' ? 2 : 0].idx.push(i); });
       return views;
     }
     function isHago(it) { return !!it && it.type === 'f_hop' && kindOf(it) === 'ハゴイタ'; }
@@ -951,8 +952,11 @@
     }
     function facesOf(it) { return isHago(it) ? FACES_HAGO : chamFaces(it) ? FACES_CHAM : FACES; }
     function isPlate(it) { return !!it && (it.type === 'f_hei' || (it.type === 'f_kiri' && kindOf(it) !== '丸')); }   // 板1枚の部材（閉止板・切板）：開口は板の面に
-    function faceFrom(f, it) { if (isPlate(it)) return '上の辺'; return faceNameIn(it, isHago(it) ? '上の口' : isSide(f) || isEnd(f) ? '天面側' : '側面1側'); }
-    function faceTo(f, it) { if (isPlate(it)) return '下の辺'; return faceNameIn(it, isHago(it) ? '下の口' : isSide(f) || isEnd(f) ? '下面側' : '側面2側'); }
+    /* 第三角法に合わせる（ユーザー指示 2026-11-09 案1）：チャンバー・ボックスの下面の図は下から見上げた向き（上の辺＝データの側面2側）。
+       縦の位置は、下面だけデータの側面2側から測る（天面はデータの側面1側から）。 */
+    function botUp(f, it) { return f === '下面' && chamFaces(it); }
+    function faceFrom(f, it) { if (isPlate(it)) return '上の辺'; return faceNameIn(it, isHago(it) ? '上の口' : isSide(f) || isEnd(f) ? '天面側' : botUp(f, it) ? '側面2側' : '側面1側'); }
+    function faceTo(f, it) { if (isPlate(it)) return '下の辺'; return faceNameIn(it, isHago(it) ? '下の口' : isSide(f) || isEnd(f) ? '下面側' : botUp(f, it) ? '側面1側' : '側面2側'); }
     // 開口の範囲（面の中の座標・mm）。x は左端から、y は縦の基準から
     function openingBox(it, o) {
       var g = openingGaps(it, o);
@@ -1358,11 +1362,12 @@
               fy1 = cur + 16; fy2 = fy1 + sh;
               s += poly([[x1, fy1], [x2, fy1], [x2, fy2], [x1, fy2]]);
               // 直管の側面の図は両端が本当の口なので、接合部（T・FGなど）も描く（ほかの部材の開口図は展開なので描かない）
-              if (it.type === 'straight') s += flange([x1, fy1], [x1, fy2], [1, 0], (it.joints || [])[0]) + flange([x2, fy1], [x2, fy2], [-1, 0], (it.joints || [])[1]);
+              var jL = (it.joints || [])[v.back ? 1 : 0], jR = (it.joints || [])[v.back ? 0 : 1];   // 後ろから見た図（側面1）は両端の口が入れ替わる
+              if (it.type === 'straight') s += flange([x1, fy1], [x1, fy2], [1, 0], jL) + flange([x2, fy1], [x2, fy2], [-1, 0], jR);
               var bw = textW(v.label, 9) + 8, by = (fy1 + fy2) / 2;
               s += '<rect x="' + f1(x1 - 8 - bw) + '" y="' + f1(by - 8) + '" width="' + f1(bw) + '" height="16" fill="#fff" stroke="#000" stroke-width="0.8"/>' + txt(x1 - 8 - bw / 2, by + 3.5, v.label, 'middle', 9);
-              // 側面からの矢視は上側が天面（側面1・側面2とも上の辺が天面側）
-              s += txt(x1 + 3, fy1 + 9, '天面側', 'start', 7, ' fill="#666"');
+              // 側面からの矢視は上側が天面（側面1・側面2とも上の辺が天面側）。側面1は後ろから見た図（左右が平面図と反対）
+              s += txt(x1 + 3, fy1 + 9, '天面側', 'start', 7, ' fill="#666"') + (v.back ? txt(x1 - 8 - bw / 2, by + 19, '後ろから', 'middle', 7, ' fill="#666"') + txt(x1 - 8 - bw / 2, by + 27, '見た図', 'middle', 7, ' fill="#666"') : '');
             }
             var rows = 0, hp = [], vp = [], grp = {}, ord = [];   // つなげた寸法の点（横＝右端から、縦＝上の辺から）と、まとめた名前
             v.idx.forEach(function (i, k) {
@@ -2262,7 +2267,7 @@
         var ln = (rd ? necLen(o) : num(o.len) || 100) * k, f = o.face, span = null, edge = null;   // span＝辺に沿った範囲（mm）、edge＝'t'・'b'・'l'・'r'
         var alongY = rd ? [yv - w / 2, yv + w / 2] : [yv, yv + h];   // 面の縦（天面・下面は側面1側から、側面・正面・奥面は天面側から）
         if (view === 'sec' || view === 'secB') {   // 'secB'＝データの奥面側から（左がデータの側面1）
-          if (f === '天面' || f === '下面') { span = view === 'secB' ? alongY : [Wd - alongY[1], Wd - alongY[0]]; edge = f === '天面' ? 't' : 'b'; }   // データの側面1側から
+          if (f === '天面' || f === '下面') { span = (view === 'secB') !== (f === '下面') ? alongY : [Wd - alongY[1], Wd - alongY[0]]; edge = f === '天面' ? 't' : 'b'; }   // 天面はデータの側面1側から、下面はデータの側面2側から（下から見上げた図。2026-11-09）
           else if (isSide(f)) { span = alongY; edge = (f === '側面1') === (view === 'secB') ? 'l' : 'r'; }
         } else {
           if (f === '天面' || f === '下面') { span = rd ? [Wd - xv - w / 2, Wd - xv + w / 2] : [Wd - xv - w, Wd - xv]; edge = f === '天面' ? 't' : 'b'; }   // 右端から → 左から
@@ -2292,7 +2297,7 @@
       (it.openings || []).forEach(function (o) {
         if (o.kdef || (o.face !== near && o.face !== far) || (farOnly && o.face === near)) return;
         var rd = o.kind === '丸', w = num(o.a), h = rd ? w : num(o.b), xv = num(o.x), yv = num(o.y); if (!w || !h || o.x === '' || o.y === '') return;
-        var cxr = rd ? xv : xv + w / 2, cx = (view === 'secB' ? o.face === '正面' : o.face === '奥面') ? cxr : Wd - cxr, cy = rd ? yv : yv + h / 2, da = o.face === far ? ' stroke-dasharray="4 2"' : '';
+        var cxr = rd ? xv : xv + w / 2, cx = (view === 'secB' ? o.face === '正面' : o.face === '奥面' || o.face === '側面1') ? cxr : Wd - cxr, cy = rd ? yv : yv + h / 2, da = o.face === far ? ' stroke-dasharray="4 2"' : '';
         (isTori(o) ? [0, 2.5] : [0]).forEach(function (gp) {   // 取出口・器具短管は二重線
           if (rd) s += '<circle cx="' + f1(X0 + cx * k) + '" cy="' + f1(Y0 + cy * k) + '" r="' + f1(w / 2 * k + gp) + '" fill="none" stroke="#000" stroke-width="' + (gp ? 0.8 : 1.2) + '"' + da + '/>';
           else s += '<rect x="' + f1(X0 + (cx - w / 2) * k - gp) + '" y="' + f1(Y0 + (cy - h / 2) * k - gp) + '" width="' + f1(w * k + gp * 2) + '" height="' + f1(h * k + gp * 2) + '" fill="none" stroke="#000" stroke-width="' + (gp ? 0.8 : 1.2) + '"' + da + '/>';
@@ -2403,7 +2408,8 @@
         var rd = o.kind === '丸', w = num(o.a), h = rd ? w : num(o.b), x = num(o.x), y = num(o.y); if (!w || !h || o.x === '' || o.y === '') return;
         if (o.face === '奥面') sp.push(rd ? [x - w / 2, x + w / 2] : [x, x + w]);   // BL の正面（右＝データの側面2側）
         else if (o.face === '正面') sp.push(rd ? [W - x - w / 2, W - x + w / 2] : [W - x - w, W - x]);   // BL の奥面
-        else if (o.face === '天面' || o.face === '下面') sp.push(rd ? [W - y - h / 2, W - y + h / 2] : [W - y - h, W - y]);   // データの側面1側から
+        else if (o.face === '天面') sp.push(rd ? [W - y - h / 2, W - y + h / 2] : [W - y - h, W - y]);   // データの側面1側から
+        else if (o.face === '下面') sp.push(rd ? [y - h / 2, y + h / 2] : [y, y + h]);   // 下面はデータの側面2側から（下から見上げた図。2026-11-09）
       });
       return sp;
     }
@@ -2504,7 +2510,8 @@
       if (!views.length) return { s: s, H: H };
       var faces = views.map(function (v) { return v.f; });
       var dimsOf = function (f) { return faceDimsOf(it, f); };
-      var nbOf = function (f) { return f === '天面' || f === '下面' ? ['側面1', '側面2', '奥面', '正面'] : isSide(f) ? ['天面', '下面', '奥面', '正面'] : f === '正面' ? ['天面', '下面', '側面2', '側面1'] : ['天面', '下面', '側面1', '側面2']; };   // 上・下・左・右（データの面）
+      // 第三角法（2026-11-09 案1）：下面は下から見上げた向き（上下が天面の図と反対）、データの側面1（後ろの長い面）は後ろから見た向き（左右が反対）
+      var nbOf = function (f) { return f === '天面' ? ['側面1', '側面2', '奥面', '正面'] : f === '下面' ? ['側面2', '側面1', '奥面', '正面'] : f === '側面1' ? ['天面', '下面', '正面', '奥面'] : isSide(f) ? ['天面', '下面', '奥面', '正面'] : f === '正面' ? ['天面', '下面', '側面2', '側面1'] : ['天面', '下面', '側面1', '側面2']; };   // 上・下・左・右（データの面）
       var c = (KEYMODE && SIDEMODE ? ' fill="#1a6fd1"' : ' fill="#333"') + ' stroke="#fff" stroke-width="2.5" paint-order="stroke"';
       var k = Math.min(150 / Math.max.apply(null, faces.map(function (f) { return dimsOf(f)[0]; })), 70 / Math.max.apply(null, faces.map(function (f) { return dimsOf(f)[1]; })));
       views.forEach(function (vw) {
@@ -2763,7 +2770,8 @@
           // 端の図（チャンバー・6面・5面＝側面1図で右、BL＝正面図で左）。高さの寸法は外側（BL は左）
           var drawEnd = function (x0) {
             sx0 = x0; var sB = endV === 'secB', hx = blS ? sx0 - 14 - dS.l : sx0 + sw + 14 + dS.r;
-            kx1 = sB ? sx0 + kF * k : sx0 + sw - kF * k - w2p;   // 器具短管の左の壁（データの側面1側から kF）
+            var kL1 = sB === (kd === 'BL6面分離');   // 器具短管の kF をこの図の左から測るか（器具短管の位置は下面の決まりでデータの側面2側から。BL6面分離の F1 は前のままデータの側面1側から）
+            kx1 = kL1 ? sx0 + kF * k : sx0 + sw - kF * k - w2p;   // 器具短管の左の壁
             s += boxStubs(it, endV, sx0, sy0, k, W1, H1).s + boxFaceOn(it, endV, sx0, sy0, k, W1, true);   // 反対の面の開口・取出口は点線
             if (blS && !hasK) s += poly([[sx0, sy0 + sh], [sx0, sy0], [sx0 + sw, sy0], [sx0 + sw, sy0 + sh], [sx0, sy0 + sh]], false) + line(sx0, sy0 + sh - 4, sx0 + sw, sy0 + sh - 4, 0.6, '4 2');   // BL5面（基準。ユーザー指示 2026-10-27）：正面図は下の折返しを点線で
             else {
@@ -2784,7 +2792,7 @@
             s += holeMarks(sx0, sx0 + sw, sy0, holeN(it, W1));   // 吊り穴
             if (blS) s += tieMarks(it, sx0, sw, sy0, sh);   // タイロッド（BL の正面図）
             s += dH(sx0, sx0 + sw, sy0 - 14 - dS.t, K(wl.kW)) + dV(hx, sy0, sy0 + sh, K('H1'));
-            if (hasK) s += (sB ? dH(sx0, kx1, sy0 + sh + h2 + 12, kv(kg, 'y', kF), true) : dH(kx1 + w2p, sx0 + sw, sy0 + sh + h2 + 12, kv(kg, 'y', kF), true)) + dH(kx1, kx1 + w2p, sy0 + sh + h2 + 26, kv(kg, 'b', kW), true);
+            if (hasK) s += (kL1 ? dH(sx0, kx1, sy0 + sh + h2 + 12, kv(kg, 'y', kF), true) : dH(kx1 + w2p, sx0 + sw, sy0 + sh + h2 + 12, kv(kg, 'y', kF), true)) + dH(kx1, kx1 + w2p, sy0 + sh + h2 + 26, kv(kg, 'b', kW), true);
             frS = faceOps(it, onFace(endF), bad, W1, H1, function (v) { return sx0 + v * k; }, function (v) { return sy0 + (H1 - v) * k; }, k, null, (hasK ? h2 + 30 : 0) + dS.b, dS.r + (blS ? 0 : 30), setOf(faceGroups(it, endF)[0]));   // 見ている端の面は実線と寸法
             s += frS.s;
             return sx0 + sw + (blS ? dS.r : 14 + dS.r + 10) + (frS.r ? frS.r + 24 : 0);   // 右の端
@@ -4517,13 +4525,29 @@
       if (revLocked()) { lockedToast(); return; }
       // 選べる種類を上に詰め、グレーの種類は下にまとめる（ユーザー指示 2026-10-26）
       var order = TYPE_ORDER.filter(function (k) { return !PICK_HIDE[k] && !PICK_OFF[k]; }).concat(TYPE_ORDER.filter(function (k) { return !PICK_HIDE[k] && PICK_OFF[k]; }));
-      document.getElementById('pickGrid').innerHTML = order.map(function (k) {
-        var it = newItem(k);
-        KEYMODE = true; var fig = draw(it); KEYMODE = false;
-        if (PICK_OFF[k]) return '<div class="pick dis" title="今は使いません">' + fig + '<div class="pick-n">' + esc(TYPES[k].name) + '</div><div class="pick-d">' + esc(TYPES[k].desc) + '</div></div>';   // 残すが押せない
-        return '<div class="pick" onclick="pickType(\'' + k + '\')">' + fig + '<div class="pick-n">' + esc(TYPES[k].name) + '</div><div class="pick-d">' + esc(TYPES[k].desc) + '</div></div>';
+      var grid = document.getElementById('pickGrid');
+      grid.innerHTML = order.map(function (k) {
+        var fig = pickIcon(k);   // 部材名と形だけの絵（金物注文と同じ。ユーザー指示 2026-11-09）
+        if (PICK_OFF[k]) return '<div class="pick dis" title="今は使いません">' + fig + '<div class="pick-n">' + esc(TYPES[k].name) + '</div></div>';   // 残すが押せない
+        return '<div class="pick" onclick="pickType(\'' + k + '\')">' + fig + '<div class="pick-n">' + esc(TYPES[k].name) + '</div></div>';
       }).join('');
       openSheet('pickerBg');
+      grid.querySelectorAll('.pick svg').forEach(function (v) { try { var b = v.getBBox(); if (b.width > 1 && b.height > 1) v.setAttribute('viewBox', [b.x - 6, b.y - 6, b.width + 12, b.height + 12].map(f1).join(' ')); } catch (e) { } });   // 形に合わせて大きく
+    }
+    /* 部材を選ぶ画面の絵：入力画面の図から寸法・文字・印・点線を抜いて、形の線だけにする（閉じた形は薄い色でぬる） */
+    var PICK_ICON = {};
+    function pickIcon(k) {
+      if (PICK_ICON[k]) return PICK_ICON[k];
+      var fig = ''; KEYMODE = true; try { fig = draw(newItem(k)); } catch (e) { fig = ''; } KEYMODE = false;
+      var t = document.createElement('div'); t.innerHTML = fig; var svg = t.querySelector('svg'); if (!svg) return '';
+      svg.querySelectorAll('text,circle,ellipse,image,rect[fill="#fff"]').forEach(function (e) { e.remove(); });
+      svg.querySelectorAll('[stroke-width]').forEach(function (e) { if (!(parseFloat(e.getAttribute('stroke-width')) >= 1.5) || e.getAttribute('stroke-dasharray')) e.remove(); });   // 寸法線・補助線・点線は細いので抜く
+      svg.querySelectorAll('path,line,polyline,polygon,rect').forEach(function (e) {
+        e.setAttribute('stroke', '#1d4f91'); e.setAttribute('stroke-width', '2.2');
+        if (e.tagName === 'path') { var p = (e.getAttribute('d') || '').match(/-?[\d.]+/g) || [], cl = /Z\s*$/.test(e.getAttribute('d') || '') || (p.length >= 6 && Math.abs(p[0] - p[p.length - 2]) < 0.5 && Math.abs(p[1] - p[p.length - 1]) < 0.5); e.setAttribute('fill', cl ? '#e6eef8' : 'none'); }
+        else if (e.tagName === 'rect') e.setAttribute('fill', '#e6eef8');
+      });
+      return (PICK_ICON[k] = t.innerHTML);
     }
     function kmaruJ(it) { if (it.type === 'f_kmaru' && (!it.joints[1] || jointChips(it, 1).indexOf(it.joints[1]) < 0 && it.joints[1] !== '切')) it.joints[1] = '差込'; return it; }   // 角丸の丸側の初期は差込
     function pickType(k) { closeSheet('pickerBg'); ED = kmaruJ(newItem(k)); if (k === 'elbow') ED.rAuto = true; ED_INDEX = -1; openEditor(); }
