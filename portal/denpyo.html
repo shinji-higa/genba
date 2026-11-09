@@ -312,6 +312,19 @@
       #print-root .dp:last-child { page-break-after: auto; break-after: auto; }
     }
       /* 入力画面：選んでいる入力欄の寸法を点滅（ユーザー指示 2026-11-09） */
+    /* 図をタップして入れる（試し：ホッパー） */
+    #edFig .tapk { cursor: pointer; }
+    #edFig text:not([fill="#d40000"]) .tapk:not(.hlk) { fill: #1a56c4; }
+    #edFig .taphit { fill: transparent; cursor: pointer; pointer-events: all; }
+    .tapbar { display: none; align-items: center; gap: 6px; flex-wrap: wrap; margin-top: 6px; padding: 8px; border: 2px solid #d40000; border-radius: 8px; background: #fff8d6; }
+    .tapbar.on { display: flex; }
+    .tapbar .tl { font-weight: 700; font-size: 0.95rem; color: #d40000; min-width: 64px; }
+    .tapbar input { flex: 1 1 120px; min-width: 100px; font-size: 18px; padding: 8px 10px; text-align: right; }
+    .tapbar .btn { padding: 9px 12px; }
+    .tapchips { display: none; flex-wrap: wrap; gap: 6px; margin-top: 6px; align-items: center; font-size: 0.8rem; color: #333; }
+    .tapchips.on { display: flex; }
+    @media (max-width: 899px) { .ed-fig.tapon svg { max-height: 30vh; } }   /* スマホ：キーボードが出ても図と入力の1行が両方見えるように */
+    .tapnote { font-size: 0.78rem; color: #1a56c4; margin-top: 4px; }
     #edFloat { position: fixed; left: 6px; right: 6px; top: 6px; z-index: 9000; background: #fff; border: 1.5px solid #6e6e6e; border-radius: 8px; box-shadow: 0 4px 14px rgba(0,0,0,.25); padding: 4px; display: none; pointer-events: none; }
     #edFloat.on { display: block; }
     #edFloat svg { width: 100%; height: auto; max-height: 30vh; display: block; }
@@ -1315,7 +1328,7 @@
         '<text x="' + f1(x + 3.5) + '" y="' + f1(cy) + '" font-size="8" fill="' + c + '" text-anchor="middle" transform="rotate(90 ' + f1(x + 3.5) + ' ' + f1(cy) + ')">' + esc(label) + '</text>';
     }
     // 接続の記号（Ⓣ・FG・切など）。すべて丸で囲む（2文字以上は横長の丸）
-    function textW(s, size) { var w = 0; for (var i = 0; i < s.length; i++) { var c = s.charCodeAt(i); if (c === 0x2064 || c === 0x2061 || c === 0x2060) continue; w += c < 256 ? size * 0.6 : size; } return w; }   // HLM は幅0
+    function textW(s, size) { var w = 0; for (var i = 0; i < s.length; i++) { var c = s.charCodeAt(i); if (c === 0x2064 || c === 0x2061 || c === 0x2060 || (c >= 0xE000 && c <= 0xE1FF)) continue; w += c < 256 ? size * 0.6 : size; } return w; }   // HLM は幅0
     function jMarkCode(c) { return c === '切閉' || c === '閉' ? '閉' : c; }   // 閉止板の口は T と同じ丸い印で「閉」（伝票の下の文字ではなく図で。ユーザー指示 2026-10-26）
     function jRx(c) { c = jMarkCode(c); return c ? Math.max(7.5, textW(c, 9.5) / 2 + 4) : 0; }
     // 長丸（角の丸い枠）で囲む：1文字は丸、2文字以上は横長
@@ -1338,6 +1351,10 @@
     var NOVAL = '\u2063';
     /* 入力画面で選んでいる入力欄（FOCUSK＝data-d のキー）の寸法の字：数字だけになっていても「記号＝数字」に戻し、目印 HLM を付けて点滅させる。
        数字を入れると記号が消える（図の枠に収めるため）ので、どの寸法を直しているか分かるように（ユーザー指示 2026-11-09） */
+    var TAPK = [];   // タップの目印の番号 → キー
+    function isTouchDev() { try { return window.matchMedia('(pointer: coarse)').matches; } catch (e) { return false; } }   // 指で触る端末（iPhone・iPad）。マウスの PC は false
+    function tapMode(it) { return !!it && it.type === 'f_hop' && isTouchDev(); }   // 試し：ホッパーだけ。入力のやり方は指かマウスかで決める（PC は入力欄の一覧、iPhone・iPad は図をタップ。向きを変えても変わらない。ユーザー指示 2026-11-09）
+    function tapW(k, str) { if (!(KEYMODE && SIDEMODE) || !DRAW_IT || DRAW_IT !== ED || !tapMode(DRAW_IT)) return str; var i = TAPK.indexOf(k); if (i < 0) { TAPK.push(k); i = TAPK.length - 1; } return '\uE000' + String.fromCharCode(0xE100 + i) + str + '\uE001'; }
     var FOCUSK = '', HLM = '\u2064', HLA = '\u2061', HLB = '\u2060', DRAW_IT = null;   // HLA〜HLB＝字の一部だけ点滅。DRAW_IT＝今描いている部材
     function phF() { if (!(KEYMODE && SIDEMODE) || !FOCUSK) return false; for (var i = 0; i < arguments.length; i++) if (arguments[i] === FOCUSK) return true; return false; }   // 直部の欄を選んでいる間は、空欄でも直部を仮の長さで描く
     function keyNm(k) {   // 入力欄の記号（例：L → L1）。入力欄の名前の（ ）の前
@@ -1354,6 +1371,7 @@
     function hlP(k, str) { return KEYMODE && SIDEMODE && FOCUSK && FOCUSK === k ? HLA + str + HLB : str; }   // 字の一部（W1×H1 の W1 だけ など）
     function hlX(a, b, out) { return KEYMODE && SIDEMODE && FOCUSK && (FOCUSK === a || FOCUSK === b) ? HLM + String(out).split(NOVAL).join('') : out; }
     function redNoVal(s) {
+      if (s.indexOf('\uE000') >= 0) s = s.replace(/\uE000([\uE100-\uE1FF])([^\uE001<]*)\uE001/g, function (m, c, t) { return '<tspan data-k="' + esc(TAPK[c.charCodeAt(0) - 0xE100] || '') + '" class="tapk">' + t + '</tspan>'; }).replace(/[\uE000\uE001]|[\uE100-\uE1FF]/g, '');
       if (s.indexOf(HLA) >= 0) s = s.replace(/\u2061([^\u2060<]*)\u2060/g, '<tspan class="hlk">$1</tspan>').split(HLA).join('').split(HLB).join('');
       if (s.indexOf(HLM) >= 0) s = s.replace(/<text([^>]*)>((?:(?!<\/text>)[\s\S])*?)<\/text>/g, function (m, a, b) { return b.indexOf(HLM) < 0 ? m : '<text' + a.replace(/ fill="[^"]*"/, '') + ' class="hlk" fill="#d40000">' + b.split(HLM).join('') + '</text>'; }).split(HLM).join('');
       if (s.indexOf(NOVAL) < 0) return s;
@@ -4149,11 +4167,11 @@
       // 空の寸法は、入力画面では記号名（W1など）、伝票では000で出す（記号名で「どこの寸法か」がわかる）
       // 入力画面で入れる前の寸法には目印（U+2063）を付け、最後に赤い文字にする
       var Kr = function (k) { var v = d[k]; if (v === '' || v == null) return KEYMODE ? NOVAL + (k === 'L' || k === 'h' ? '' : keyNm(k)) : '000'; return String(v); };   // 入力画面の空欄は入力欄と同じ記号（直管の W → W1）
-      var K = function (k) { return hlK(k, Kr(k)); };
+      var K = function (k) { return tapW(k, hlK(k, Kr(k))); };
       // 入力画面では、寸法を入れたあとも記号を残す（例：W1×H1 600×400）
       var x = function (a, b) {
-        if (KEYMODE && (d[a] !== '' && d[a] != null || d[b] !== '' && d[b] != null)) return hlP(a, keyNm(a)) + '×' + hlP(b, keyNm(b)) + '\n' + hlP(a, dv(d[a])) + '×' + hlP(b, dv(d[b]));   // 入力画面は「W1×H1」改行「600×400」。選んだ欄の所だけ点滅
-        return hlP(a, Kr(a)) + '×' + hlP(b, Kr(b));
+        if (KEYMODE && (d[a] !== '' && d[a] != null || d[b] !== '' && d[b] != null)) return tapW(a, hlP(a, keyNm(a))) + '×' + tapW(b, hlP(b, keyNm(b))) + '\n' + tapW(a, hlP(a, dv(d[a]))) + '×' + tapW(b, hlP(b, dv(d[b])));   // 入力画面は「W1×H1」改行「600×400」。選んだ欄の所だけ点滅
+        return tapW(a, hlP(a, Kr(a))) + '×' + tapW(b, hlP(b, Kr(b)));
       };
       switch (it.type) {
         case 'f_hop': case 'f_elb': case 'f_box': case 'f_cham': case 'f_hei': case 'f_kiri': { var fxd = drawFx(it, K, x, J); s += fxd.s; H = fxd.H; break; }
@@ -4763,7 +4781,7 @@
       renderOpenings();
       form.oninput = onEdInput; form.onchange = onEdInput;
       // 入力欄を選んだら、その寸法を図で「記号＝数字」にして点滅。欄から出たら戻す（ユーザー指示 2026-11-09）
-      if (!form._hl) { form._hl = 1; form.addEventListener('focusin', function (e) { var k = e.target && e.target.getAttribute && e.target.getAttribute('data-d') || ''; if (k !== FOCUSK) { FOCUSK = k; edFigOnly(); } else edFloatSync(); }); form.addEventListener('focusout', function () { setTimeout(function () { var a = document.activeElement, k = a && a.closest && a.closest('#edForm') && a.getAttribute('data-d') || ''; if (k !== FOCUSK) { FOCUSK = k; edFigOnly(); } else edFloatSync(); }, 0); }); }
+      if (!form._hl) { form._hl = 1; form.addEventListener('focusin', function (e) { var k = e.target && e.target.getAttribute && e.target.getAttribute('data-d') || ''; if (k !== FOCUSK) { FOCUSK = k; edFigOnly(); } else edFloatSync(); }); form.addEventListener('focusout', function () { setTimeout(function () { if (document.activeElement && document.activeElement.id === 'tapIn') return;   /* 図のタップの入力の1行へ移ったときは外さない */ var a = document.activeElement, k = a && a.closest && a.closest('#edForm') && a.getAttribute('data-d') || ''; if (k !== FOCUSK) { FOCUSK = k; edFigOnly(); } else edFloatSync(); }, 0); }); }
       // Enter で次の入力欄へ（FAirCAM と同じ打ち方）
       form.onkeydown = function (e) {
         if (e.key !== 'Enter' || e.target.tagName !== 'INPUT' || e.target.type === 'checkbox' || e.isComposing) return;
@@ -5030,6 +5048,8 @@
       refreshEd();
     }
     function figZoom() {
+      var ev = window.event, tk = ev && ev.target && ev.target.closest && ev.target.closest('[data-k]');
+      if (tk && tapMode(ED)) { tapOpen(tk.getAttribute('data-k')); return; }
       var z = document.getElementById('figZoom');
       if (!z) { z = document.createElement('div'); z.id = 'figZoom'; z.onclick = function () { z.classList.remove('open'); }; document.body.appendChild(z); }
       var sv = document.querySelector('#edFig svg'); if (!sv) return;
@@ -5198,6 +5218,7 @@
     /* スマホ（幅900未満）で入力欄を選んでいる間：見えている画面（visualViewport）の一番上に図の写し。iPhone はキーボードで画面ごとずれて、貼り付けた図も隠れるため */
     function edFloatSync() {
       var fl = document.getElementById('edFloat'), fig = document.getElementById('edFig'); if (!fig) return;
+      if (tapMode(ED)) { if (fl) { fl.classList.remove('on'); fl.innerHTML = ''; } return; }   // タップで入れる部材は写しを使わない
       if (!fl) { fl = document.createElement('div'); fl.id = 'edFloat'; fl.setAttribute('aria-hidden', 'true'); document.body.appendChild(fl); }   // いちばん外に置く（入力画面の枠の動きに引きずられないように）
       var a = document.activeElement, wide = window.innerWidth >= 900, on = (!wide || edKbOpen()) && a && a.closest && !!a.closest('#edForm') && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName) && document.getElementById('editorBg').classList.contains('open');
       if (!on) { fl.classList.remove('on'); fl.innerHTML = ''; return; }
@@ -5220,10 +5241,61 @@
     }
     function edFloatMove() { var fl = document.getElementById('edFloat'); if (fl && fl.classList.contains('on')) fl.style.top = (edFloatTop() + 6) + 'px'; }
     [window.visualViewport].concat((function () { try { return window.parent !== window ? [window.parent.visualViewport] : []; } catch (e) { return []; } })()).forEach(function (vv) { if (!vv) return; vv.addEventListener('resize', function () { edFloatSync(); }); vv.addEventListener('scroll', edFloatMove); });
+    /* 図をタップして入れる（試し：ホッパー）。寸法の入力欄の一覧は隠し、図の寸法の字・札を押すと図のすぐ下に入力の1行。
+       入れた値は隠した入力欄に写して input を起こす（自動計算・保存は今までどおり）。前へ・次へは FAirCAM の順番 */
+    function tapKeys() { var df = fxDef(ED); return df ? df.f.map(function (f) { return f[0]; }).filter(function (k) { var el = document.querySelector('#edForm [data-d="' + k + '"]'); return el && !el.disabled; }) : []; }
+    function tapLabel(k) { var df = fxDef(ED), f = df && df.f.filter(function (x) { return x[0] === k; })[0]; return f ? f[1] : k; }
+    function tapDecorate() {
+      var fig = document.getElementById('edFig'); if (!fig) return;
+      var box = fig.parentNode, bar = document.getElementById('tapBar'), chips = document.getElementById('tapChips');
+      if (!bar) {
+        bar = document.createElement('div'); bar.id = 'tapBar'; bar.className = 'tapbar';
+        bar.innerHTML = '<span class="tl" id="tapLbl"></span><input id="tapIn" type="text" inputmode="numeric" autocomplete="off"><button type="button" class="btn btn-sub" id="tapPrev">前へ</button><button type="button" class="btn btn-dark" id="tapNext">次へ</button><button type="button" class="btn btn-sub" id="tapClose">閉じる</button>';
+        chips = document.createElement('div'); chips.id = 'tapChips'; chips.className = 'tapchips';
+        fig.insertAdjacentElement('afterend', bar); bar.insertAdjacentElement('afterend', chips);
+        var inp = bar.querySelector('#tapIn');
+        inp.addEventListener('input', function () { var el = document.querySelector('#edForm [data-d="' + FOCUSK + '"]'); if (!el) return; el.value = inp.value; el.dispatchEvent(new Event('input', { bubbles: true })); });
+        inp.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); tapStep(1); } });
+        bar.querySelector('#tapPrev').onclick = function () { tapStep(-1); };
+        bar.querySelector('#tapNext').onclick = function () { tapStep(1); };
+        bar.querySelector('#tapClose').onclick = function () { tapClose(); };
+        chips.addEventListener('click', function (e) { var c = e.target.closest('[data-tk]'); if (c) tapOpen(c.getAttribute('data-tk')); });
+      }
+      var on = tapMode(ED);
+      box.classList.toggle('tapon', on);
+      // 寸法の入力欄の一覧（寸法（mm）の枠）は隠す
+      var dimsBox = document.querySelector('#edForm .dims'); dimsBox = dimsBox && (dimsBox.closest('.edbox') || dimsBox);
+      if (dimsBox) dimsBox.style.display = on ? 'none' : '';
+      if (!on) { bar.classList.remove('on'); chips.classList.remove('on'); chips.innerHTML = ''; return; }
+      // 押しやすいように、寸法の字のまわりに透明な当たりの四角
+      var svg = fig.querySelector('svg');
+      if (svg) {
+        var vb = svg.viewBox && svg.viewBox.baseVal, sc = vb && svg.clientWidth ? vb.width / svg.clientWidth : 1, pad = 10 * sc;
+        [].slice.call(svg.querySelectorAll('.tapk')).forEach(function (t) {
+          try { var b = t.getBBox(); var r = document.createElementNS('http://www.w3.org/2000/svg', 'rect'); r.setAttribute('x', b.x - pad); r.setAttribute('y', b.y - pad); r.setAttribute('width', b.width + pad * 2); r.setAttribute('height', b.height + pad * 2); r.setAttribute('class', 'taphit'); r.setAttribute('data-k', t.getAttribute('data-k')); svg.appendChild(r); } catch (e) { }
+        });
+      }
+      // 図に字が無い寸法は札で
+      var shown = {}; [].slice.call(fig.querySelectorAll('.tapk')).forEach(function (t) { shown[t.getAttribute('data-k')] = 1; });
+      var miss = tapKeys().filter(function (k) { return !shown[k]; });
+      chips.innerHTML = '<span class="tapnote" style="width:100%;">図の青い寸法・下の札を押すと入力できます</span>' + miss.map(function (k) { var v = ED.d[k]; return '<span class="chip' + (k === FOCUSK ? ' on' : '') + '" data-tk="' + esc(k) + '">' + esc(tapLabel(k)) + '：' + esc(v === '' || v == null ? '空欄' : v) + '</span>'; }).join('');
+      chips.classList.add('on');
+      if (!FOCUSK) bar.classList.remove('on');
+    }
+    function tapOpen(k) {
+      FOCUSK = k; edFigOnly();
+      var bar = document.getElementById('tapBar'), inp = document.getElementById('tapIn'); if (!bar || !inp) return;
+      document.getElementById('tapLbl').textContent = tapLabel(k);
+      inp.value = ED.d[k] == null ? '' : ED.d[k];
+      bar.classList.add('on'); inp.focus(); try { inp.select(); } catch (e) { }
+    }
+    function tapStep(dir) { var ks = tapKeys(), i = ks.indexOf(FOCUSK); if (!ks.length) return; i = i < 0 ? 0 : (i + dir + ks.length) % ks.length; tapOpen(ks[i]); }
+    function tapClose() { FOCUSK = ''; var bar = document.getElementById('tapBar'); if (bar) bar.classList.remove('on'); var a = document.activeElement; if (a && a.blur) a.blur(); edFigOnly(); }
     function edFigOnly() {   // 入力画面の図だけ描き直す（入力欄を選んだときの点滅用）
       var f = document.getElementById('edFig'); if (!f || !ED) return;
       KEYMODE = true; SIDEMODE = true; try { f.innerHTML = draw(ED); } finally { KEYMODE = false; SIDEMODE = false; }
       cropSvgs(f, 'svg');
+      tapDecorate();
       edFloatSync();
     }
     function refreshEd() {
@@ -5242,6 +5314,7 @@
       if (boxCenter(ED)) (ED.openings || []).forEach(function (o, i) { ['x', 'y'].forEach(function (key) { var el = document.querySelector('[data-o="' + i + ':' + key + '"]'); if (el && el !== document.activeElement && el.value !== o[key]) el.value = o[key]; }); });   // 芯の位置を入力欄にも
       KEYMODE = true; SIDEMODE = true; document.getElementById('edFig').innerHTML = draw(ED); KEYMODE = false; SIDEMODE = false;
       cropSvgs(document.getElementById('edFig'), 'svg');   // 図のまわりの余白を切り詰めて大きく（伝票の枠と同じ）
+      tapDecorate();
       edFloatSync();
       var spA = document.getElementById('edSpanA'); if (spA) spA.textContent = SPAN_NAME[cellSpanKey(Object.assign({}, ED, { span: '' }))];
       // 板厚：仕様どおり（自動）か 1.6t
