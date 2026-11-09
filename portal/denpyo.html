@@ -324,6 +324,20 @@
     .tapchips { display: none; flex-wrap: wrap; gap: 6px; margin-top: 6px; align-items: center; font-size: 0.8rem; color: #333; }
     .tapchips.on { display: flex; }
     @media (max-width: 899px) { .ed-fig.tapon svg { max-height: 30vh; } }   /* スマホ：キーボードが出ても図と入力の1行が両方見えるように */
+    /* 自前の数字ボタン（iPhone のキーボードは画面ごと動いて図が隠れるため使わない） */
+    #tapKp { position: fixed; left: 0; right: 0; bottom: 0; z-index: 9500; background: #e4e6e9; border-top: 2px solid #6e6e6e; padding: 8px 8px calc(8px + env(safe-area-inset-bottom)); display: none; touch-action: manipulation; }
+    #tapKp.on { display: block; }
+    #tapKp.wide { left: 50%; border-left: 2px solid #6e6e6e; }
+    .kp-head { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+    .kp-lbl { font-weight: 700; color: #d40000; font-size: 15px; white-space: nowrap; }
+    .kp-val { flex: 1; background: #fff; border: 2px solid #d40000; border-radius: 6px; padding: 6px 10px; text-align: right; font-size: 22px; font-weight: 700; min-height: 42px; line-height: 28px; }
+    .kp-val.fresh { color: #8a8a8a; }
+    .kp-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+    .kp-grid button { font-size: 22px; padding: 11px 0; border-radius: 8px; border: 1.5px solid #8d9298; background: #fff; font-weight: 700; color: #111; touch-action: manipulation; -webkit-user-select: none; user-select: none; }
+    .kp-grid .kp-act { font-size: 15px; background: #f3f4f6; }
+    .kp-grid .kp-next { background: #111; color: #fff; border-color: #111; }
+    body.kpon #editorBg .sheet-b { padding-bottom: 320px; }
+    @media (max-width: 899px) { body.kpon .ed-fig.tapon svg { max-height: max(150px, calc(100vh - 470px)); } }
     .tapnote { font-size: 0.78rem; color: #1a56c4; margin-top: 4px; }
     #edFloat { position: fixed; left: 6px; right: 6px; top: 6px; z-index: 9000; background: #fff; border: 1.5px solid #6e6e6e; border-radius: 8px; box-shadow: 0 4px 14px rgba(0,0,0,.25); padding: 4px; display: none; pointer-events: none; }
     #edFloat.on { display: block; }
@@ -4781,7 +4795,7 @@
       renderOpenings();
       form.oninput = onEdInput; form.onchange = onEdInput;
       // 入力欄を選んだら、その寸法を図で「記号＝数字」にして点滅。欄から出たら戻す（ユーザー指示 2026-11-09）
-      if (!form._hl) { form._hl = 1; form.addEventListener('focusin', function (e) { var k = e.target && e.target.getAttribute && e.target.getAttribute('data-d') || ''; if (k !== FOCUSK) { FOCUSK = k; edFigOnly(); } else edFloatSync(); }); form.addEventListener('focusout', function () { setTimeout(function () { if (document.activeElement && document.activeElement.id === 'tapIn') return;   /* 図のタップの入力の1行へ移ったときは外さない */ var a = document.activeElement, k = a && a.closest && a.closest('#edForm') && a.getAttribute('data-d') || ''; if (k !== FOCUSK) { FOCUSK = k; edFigOnly(); } else edFloatSync(); }, 0); }); }
+      if (!form._hl) { form._hl = 1; form.addEventListener('focusin', function (e) { var k = e.target && e.target.getAttribute && e.target.getAttribute('data-d') || ''; if (k !== FOCUSK) { FOCUSK = k; edFigOnly(); } else edFloatSync(); }); form.addEventListener('focusout', function () { setTimeout(function () { if (document.activeElement && document.activeElement.id === 'tapIn') return; var kpo = document.getElementById('tapKp'); if (kpo && kpo.classList.contains('on')) return;   /* 数字ボタンで入れている間は外さない */   /* 図のタップの入力の1行へ移ったときは外さない */ var a = document.activeElement, k = a && a.closest && a.closest('#edForm') && a.getAttribute('data-d') || ''; if (k !== FOCUSK) { FOCUSK = k; edFigOnly(); } else edFloatSync(); }, 0); }); }
       // Enter で次の入力欄へ（FAirCAM と同じ打ち方）
       form.onkeydown = function (e) {
         if (e.key !== 'Enter' || e.target.tagName !== 'INPUT' || e.target.type === 'checkbox' || e.isComposing) return;
@@ -5266,7 +5280,7 @@
       // 寸法の入力欄の一覧（寸法（mm）の枠）は隠す
       var dimsBox = document.querySelector('#edForm .dims'); dimsBox = dimsBox && (dimsBox.closest('.edbox') || dimsBox);
       if (dimsBox) dimsBox.style.display = on ? 'none' : '';
-      if (!on) { bar.classList.remove('on'); chips.classList.remove('on'); chips.innerHTML = ''; return; }
+      if (!on) { bar.classList.remove('on'); chips.classList.remove('on'); chips.innerHTML = ''; var kq = document.getElementById('tapKp'); if (kq) kq.classList.remove('on'); document.body.classList.remove('kpon'); return; }
       // 押しやすいように、寸法の字のまわりに透明な当たりの四角
       var svg = fig.querySelector('svg');
       if (svg) {
@@ -5282,15 +5296,40 @@
       chips.classList.add('on');
       if (!FOCUSK) bar.classList.remove('on');
     }
+    var KP_FRESH = true;   // 開いた直後（数字を押すと前の値は置きかわる）
+    function kpEl() {
+      var kp = document.getElementById('tapKp'); if (kp) return kp;
+      kp = document.createElement('div'); kp.id = 'tapKp';
+      var B = function (v, t, c) { return '<button type="button" data-kp="' + v + '"' + (c ? ' class="' + c + '"' : '') + '>' + t + '</button>'; };
+      kp.innerHTML = '<div class="kp-head"><span class="kp-lbl" id="kpLbl"></span><span class="kp-val" id="kpVal"></span></div><div class="kp-grid">' +
+        B('7', '7') + B('8', '8') + B('9', '9') + B('del', '消す', 'kp-act') + B('4', '4') + B('5', '5') + B('6', '6') + B('prev', '前へ', 'kp-act') +
+        B('1', '1') + B('2', '2') + B('3', '3') + B('next', '次へ', 'kp-next') + B('neg', '－', 'kp-act') + B('0', '0') + B('00', '00') + B('close', '閉じる', 'kp-act') + '</div>';
+      kp.addEventListener('click', function (e) { var b = e.target.closest('[data-kp]'); if (b) kpPress(b.getAttribute('data-kp')); });
+      document.body.appendChild(kp); return kp;
+    }
+    function kpShow() {
+      var kp = kpEl(), v = ED.d[FOCUSK];
+      document.getElementById('kpLbl').textContent = tapLabel(FOCUSK);
+      var vEl = document.getElementById('kpVal'); vEl.textContent = v === '' || v == null ? '' : v; vEl.classList.toggle('fresh', KP_FRESH && v !== '' && v != null);
+      kp.classList.toggle('wide', window.innerWidth >= 900); kp.classList.add('on'); document.body.classList.add('kpon');
+    }
+    function kpPress(v) {
+      if (v === 'prev') return tapStep(-1); if (v === 'next') return tapStep(1); if (v === 'close') return tapClose();
+      var el = document.querySelector('#edForm [data-d="' + FOCUSK + '"]'); if (!el) return;
+      var cur = String(ED.d[FOCUSK] == null ? '' : ED.d[FOCUSK]);
+      if (v === 'neg') cur = KP_FRESH ? '-' : cur.charAt(0) === '-' ? cur.slice(1) : '-' + cur;   // 開いた直後は新しくマイナスの数を入れ始める
+      else if (v === 'del') cur = KP_FRESH ? '' : cur.slice(0, -1);
+      else cur = (KP_FRESH ? '' : cur) + v;
+      KP_FRESH = false; el.value = cur; el.dispatchEvent(new Event('input', { bubbles: true })); kpShow();
+    }
     function tapOpen(k) {
-      FOCUSK = k; edFigOnly();
-      var bar = document.getElementById('tapBar'), inp = document.getElementById('tapIn'); if (!bar || !inp) return;
-      document.getElementById('tapLbl').textContent = tapLabel(k);
-      inp.value = ED.d[k] == null ? '' : ED.d[k];
-      bar.classList.add('on'); inp.focus(); try { inp.select(); } catch (e) { }
+      FOCUSK = k; KP_FRESH = true;
+      var a = document.activeElement; if (a && a.blur && a !== document.body) a.blur();   // いつものキーボードは出さない
+      edFigOnly(); kpShow();
+      if (window.innerWidth < 900) { var sb = document.querySelector('#editorBg .sheet-b'); if (sb) sb.scrollTop = 0; }   // 図が一番上に見えるように
     }
     function tapStep(dir) { var ks = tapKeys(), i = ks.indexOf(FOCUSK); if (!ks.length) return; i = i < 0 ? 0 : (i + dir + ks.length) % ks.length; tapOpen(ks[i]); }
-    function tapClose() { FOCUSK = ''; var bar = document.getElementById('tapBar'); if (bar) bar.classList.remove('on'); var a = document.activeElement; if (a && a.blur) a.blur(); edFigOnly(); }
+    function tapClose() { FOCUSK = ''; var bar = document.getElementById('tapBar'); if (bar) bar.classList.remove('on'); var kp = document.getElementById('tapKp'); if (kp) kp.classList.remove('on'); document.body.classList.remove('kpon'); if (ED) edFigOnly(); }
     function edFigOnly() {   // 入力画面の図だけ描き直す（入力欄を選んだときの点滅用）
       var f = document.getElementById('edFig'); if (!f || !ED) return;
       KEYMODE = true; SIDEMODE = true; try { f.innerHTML = draw(ED); } finally { KEYMODE = false; SIDEMODE = false; }
@@ -5512,7 +5551,7 @@
     function dupItem(i) { var c = clone(S.items[i]); c.id = uid(); S.items.splice(i + 1, 0, c); renderItems(); changed(); toast('複製しました'); }
 
     function openSheet(id) { document.getElementById(id).classList.add('open'); document.body.style.overflow = 'hidden'; }
-    function closeSheet(id) { document.getElementById(id).classList.remove('open'); if (!document.querySelector('.sheet-bg.open')) document.body.style.overflow = ''; }
+    function closeSheet(id) { if (id === 'editorBg' && document.getElementById('tapKp')) { FOCUSK = ''; document.getElementById('tapKp').classList.remove('on'); document.body.classList.remove('kpon'); } document.getElementById(id).classList.remove('open'); if (!document.querySelector('.sheet-bg.open')) document.body.style.overflow = ''; }
     function toast(m) { var t = document.getElementById('toast'); t.textContent = m; t.classList.add('show'); clearTimeout(t._h); t._h = setTimeout(function () { t.classList.remove('show'); }, 1600); }
 
     /* ===== 伝票（A4）の組み立て =====
