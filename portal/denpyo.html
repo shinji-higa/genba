@@ -3017,7 +3017,7 @@
             });
             H = 200; break;
           }
-          var hasS = ['R', '中直', '内角', '2分割'].indexOf(kd) >= 0, L1 = n('L1') || 800, Fv = blank('F1') ? W1 * 0.5 : snum(d.F1);
+          var hasS = ['R', '中直', '内角', '2分割'].indexOf(kd) >= 0, L1 = n('L1') || (kd === 'タイコ' ? W1 + 100 : 800), Fv = blank('F1') ? (kd === 'タイコ' ? W1 : W1 * 0.5) : snum(d.F1);   // タイコの空欄は Rebro のタイコと同じ見え方（長さ＝W1＋100、ずれ＝W1。ユーザー指示 2026-11-09）
           var sa = kd === 'タイコ' ? 0 : n('S1') || (hasS && KEYMODE && PH_STRAIGHT ? L1 * 0.1 : 0), sb = kd === 'タイコ' ? 0 : n('S2') || (hasS && KEYMODE && PH_STRAIGHT ? L1 * 0.1 : 0), lw, rw;   // タイコは直部なし   // S1・S2＝下・上の口の直部（エルボの F1・F2 と同じ。入力画面では空欄でも仮の長さで描く）
           if (kd === '両角') {
             var c1 = n('C1') || 100, c2 = n('C2') || c1, c3 = n('C3') || 100, c4 = n('C4') || c3;
@@ -3065,6 +3065,7 @@
             var udS = udLabel(it);   // 地地の注記：芯に沿った矢印（接合1 → 接合2）
             if (udS) { var cS = sCurveMM([W1 / 2, sa], [Fv + W2 / 2, L1 - sb], true).slice(2, 15).map(function (q) { return P(q); }); s += arrowPl(cS) + txt(cS[0][0] + 6, cS[0][1] + 4, udS, 'start', 10); }
             if (Fv) s += dH2(W1, W1 + Fv, 0, 14, K('F1'), true);
+            if (kd === 'タイコ' && KEYMODE && !blank('F1') && n('W1')) { var tFm = Math.max(n('W1'), n('W2') || n('W1')); if (Math.abs(snum(d.F1)) < tFm) { var twq = P([Math.min(0, Fv), 0]); H = Math.max(H, twq[1] + 92); s += txt(twq[0], twq[1] + 84, 'タイコの最低ずれ＝' + tFm + '（W1・W2の大きいほう）', 'start', 10, ' fill="' + RED + '"'); } }   // タイコの最低の振れ幅（ユーザー指示 2026-11-09）
             if (kd === 'タイコ' && KEYMODE && n('L1') && n('W1') && n('L1') < n('W1') + 100) { var twp = P([Math.min(0, Fv), 0]); H = Math.max(H, twp[1] + 76); s += txt(twp[0], twp[1] + 68, 'タイコの最低L＝' + (n('W1') + 100) + '（W1＋100）', 'start', 10, ' fill="' + RED + '"'); }   // タイコの最低の長さ（W1＋100 程度。ユーザー指示 2026-11-09）
             seams.forEach(function (sm) { lab(rw[sm[0]], 8, 0, x(sm[1], sm[2]), 'start'); });
             if (kd === '3分割') { lab(lw[3], 18, 0, K('C1'), 'start'); lab(lw[15], 18, 0, K('C4'), 'start'); }
