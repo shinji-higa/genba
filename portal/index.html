@@ -144,7 +144,7 @@ auth.languageCode = 'ja';   // パスワード再設定のメールと画面を�
 // 端末の控え（電波なしでも見られる）は1つのタブだけが持つ。2つ目からのタブは、開いている間だけの控えでサーバーと直接やりとりする。
 // 前は全部のタブで控えを分け合っていて、サーバーとやりとりするタブが裏にあると、ほかのタブに最新が届くまで約28秒待っていた（2026-11-05 確認）
 const db = initializeFirestore(app, { localCache: persistentLocalCache({ tabManager: persistentSingleTabManager() }) });
-const APP_VER = 'Ver.20261109-10';
+const APP_VER = 'Ver.20261110-01';
 
 /* ---------- 電波なしでも使う（今の現場管理と同じ考え方） ----------
    ・保存は押した瞬間に完了の形。電波が戻ったら自動で送る（データは Firestore が端末に貯める）
@@ -503,6 +503,7 @@ function showList() {
   $('noAdd').style.display = me.canAddSite ? 'none' : '';
   $('btnGoDaily').style.display = me.canDaily || me.isMaster || me.canPayroll ? '' : 'none';
   $('btnGoDaily').onclick = dOpen;
+  { const g = $('btnGoDaily'), off = DAILY_OFF_ALL && offOn(); g.disabled = off; g.title = off ? '今は使えません' : ''; g.style.opacity = off ? '0.35' : ''; g.style.cursor = off ? 'not-allowed' : ''; }
   leaveWatch();
   $('btnGoHealth').onclick = hOpen;
   let hChecked = false;
@@ -534,6 +535,10 @@ function renderSites() {
 }
 
 /* ---------- 現場詳細 ---------- */
+const OFF_FREE = ['sh@excureduct.co.jp', 'mh@excureduct.com'];   // 比嘉 伸治・比嘉 美紀は今までどおり使える
+const offOn = () => !(me && OFF_FREE.includes(String(me.uid || '').toLowerCase()));
+const OFF_TABS_ALL = ['注文'], DAILY_OFF_ALL = true;   // 一旦、注文と日報は押せなくする（グレー）。戻すときは OFF_TABS_ALL を []、DAILY_OFF_ALL を false に（ユーザー指示 2026-11-10）
+const OFF_TABS = { includes: n => offOn() && OFF_TABS_ALL.includes(n) };
 const tabsOf = s => ['現場詳細', '報告', '写真', '資料', '注文'].concat(isManagerOf(s) ? ['担当'] : []);   // 担当はマスターと現場管理者だけ
 const isManagerOf = s => me.isMaster || (s.roles || {})[me.uid] === '現場管理者';
 const canDelete = s => me.isMaster || (me.canAddSite && isManagerOf(s));
@@ -580,7 +585,7 @@ function renderDetail(s) {
   const addr = s.address ? '<a class="address-map-link" href="https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(s.address) + '" target="_blank" rel="noopener noreferrer">📍 ' + esc(s.address) + '</a>' : '未設定';
   const nearby = s.address ? '<div class="nearby-row" style="display:grid;">' + ['コンビニ', 'トイレ', '駐車場', 'ホームセンター'].map(k => '<button type="button" class="nearby-btn" data-k="' + k + '"><span>' + k + '</span></button>').join('') + '</div>' : '';
   $('panelDetail').innerHTML =
-    '<nav class="nav-tabs" style="margin: -16px -16px 14px -16px;">' + tabsOf(s).map(n => '<button type="button" class="nav-tab-item' + (n === detailTab ? ' active' : '') + '" data-t="' + n + '">' + n + '</button>').join('') + '</nav>' +
+    '<nav class="nav-tabs" style="margin: -16px -16px 14px -16px;">' + tabsOf(s).map(n => '<button type="button" class="nav-tab-item' + (n === detailTab ? ' active' : '') + '" data-t="' + n + '"' + (OFF_TABS.includes(n) ? ' disabled title="今は使えません" style="opacity:0.35; cursor:not-allowed;"' : '') + '>' + n + '</button>').join('') + '</nav>' +
     (detailTab === '注文' ? '<div id="oRoot"></div>' : detailTab === '担当' ? '<div id="sRoot"></div>' : detailTab === '報告' ? '<div id="rRoot"></div>' : detailTab === '写真' || detailTab === '資料' ? '<div id="xRoot"></div>' :
      detailTab !== '現場詳細' ? '<div class="info-card" style="text-align:center; color:var(--muted);">「' + detailTab + '」はこれから作ります。</div>' :
     '<div style="margin-bottom: 14px; display: flex; gap: 8px; align-items: center;">' +
@@ -610,7 +615,7 @@ function renderDetail(s) {
         '<button type="button" id="rCancel" class="btn btn-sub" style="display:none; padding:4px 10px; font-size:0.75rem;">取消</button></div></div>' +
       ruleFields(s, true) +
     '</div>');
-  $('panelDetail').querySelectorAll('.nav-tab-item').forEach(b => { b.onclick = () => { detailTab = b.dataset.t; renderDetail(s); }; });
+  $('panelDetail').querySelectorAll('.nav-tab-item').forEach(b => { b.onclick = () => { if (OFF_TABS.includes(b.dataset.t)) return; detailTab = b.dataset.t; renderDetail(s); }; });
   if (detailTab === '注文') { oOpen(s); return; }
   if (detailTab === '担当') { sOpen(s); return; }
   if (detailTab === '報告') { rOpen(s); return; }
@@ -2048,6 +2053,7 @@ async function leaveDecide(r, v) {
   if (r.self && cur && isLeave(cur.kubun)) fire(setDoc(doc(collection(db, 'notices')), { site: '', siteName: '有給', type: 'leave', text: dDay(r.date) + ' の' + (isHalf(cur.kubun) ? cur.kubun : '有給') + 'が' + (v === '承認' ? '承認されました。' : '却下されました。'), by: me.uid, byName: me.name || me.uid, at: Date.now(), members: [r.uid], mentions: [], target: '' }), 'お知らせ');
 }
 function dOpen() {
+  if (DAILY_OFF_ALL && offOn()) return;   // 一旦使えない（OFF_TABS の所を参照）
   stopWatch();
   show('panelDaily', '日報', showList);
   $('speed').textContent = '';
