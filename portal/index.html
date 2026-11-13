@@ -144,7 +144,7 @@ auth.languageCode = 'ja';   // パスワード再設定のメールと画面を�
 // 端末の控え（電波なしでも見られる）は1つのタブだけが持つ。2つ目からのタブは、開いている間だけの控えでサーバーと直接やりとりする。
 // 前は全部のタブで控えを分け合っていて、サーバーとやりとりするタブが裏にあると、ほかのタブに最新が届くまで約28秒待っていた（2026-11-05 確認）
 const db = initializeFirestore(app, { localCache: persistentLocalCache({ tabManager: persistentSingleTabManager() }) });
-const APP_VER = 'Ver.20261110-01';
+const APP_VER = 'Ver.20261113-01';
 
 /* ---------- 電波なしでも使う（今の現場管理と同じ考え方） ----------
    ・保存は押した瞬間に完了の形。電波が戻ったら自動で送る（データは Firestore が端末に貯める）
@@ -537,7 +537,9 @@ function renderSites() {
 /* ---------- 現場詳細 ---------- */
 const OFF_FREE = ['sh@excureduct.co.jp', 'mh@excureduct.com'];   // 比嘉 伸治・比嘉 美紀は今までどおり使える
 const offOn = () => !(me && OFF_FREE.includes(String(me.uid || '').toLowerCase()));
-const OFF_TABS_ALL = ['注文'], DAILY_OFF_ALL = true;   // 一旦、注文と日報は押せなくする（グレー）。戻すときは OFF_TABS_ALL を []、DAILY_OFF_ALL を false に（ユーザー指示 2026-11-10）
+const OFF_TABS_ALL = [], DAILY_OFF_ALL = true;   // 一旦、日報は押せなくする（グレー）。戻すときは DAILY_OFF_ALL を false に（ユーザー指示 2026-11-10）。注文タブは 2026-11-13 に解禁
+const KAKU_FREE = ['sh@excureduct.co.jp'];   // 角ダクト注文は一旦グレー。比嘉 伸治だけ使える（ユーザー指示 2026-11-13）。戻すときは kakuOff を () => false に
+const kakuOff = () => !(me && KAKU_FREE.includes(String(me.uid || '').toLowerCase()));
 const OFF_TABS = { includes: n => offOn() && OFF_TABS_ALL.includes(n) };
 const tabsOf = s => ['現場詳細', '報告', '写真', '資料', '注文'].concat(isManagerOf(s) ? ['担当'] : []);   // 担当はマスターと現場管理者だけ
 const isManagerOf = s => me.isMaster || (s.roles || {})[me.uid] === '現場管理者';
@@ -1659,7 +1661,7 @@ const O_KIND = {
 };
 function oOpen(s) {
   const btn = (k, ic, t, sub) => '<button type="button" class="order-btn' + (k ? ' on' : '') + '"' + (k ? ' data-o="' + k + '"' : ' disabled') + '><span class="order-ic">' + ic + '</span><span class="order-t">' + t + '</span><span class="order-s">' + sub + '</span></button>';
-  $('oRoot').innerHTML = '<div class="order-grid">' + btn('maru', '◯', '丸ダクト注文', '注文書の入力') + btn('kaku', '▢', '角ダクト注文', '製作伝票の入力') + btn('cons', '🧰', '消耗品注文', '注文書の入力') + btn('kana', '📎', '金物注文（添付）', 'PDF・写真を添付') + btn('hood', '🍳', 'フード注文', '厨房フードの寸法を入力') + btn('kanagu', '🔩', '金物注文', 'テンプレートから入力') + btn('', '🌀', 'ダンパー', '準備中') + btn('', '📦', '内張チャンバー・ボックス', '準備中') + '</div>';
+  $('oRoot').innerHTML = '<div class="order-grid">' + btn('maru', '◯', '丸ダクト注文', '注文書の入力') + (kakuOff() ? btn('', '▢', '角ダクト注文', '準備中') : btn('kaku', '▢', '角ダクト注文', '製作伝票の入力')) + btn('cons', '🧰', '消耗品注文', '注文書の入力') + btn('kana', '📎', '金物注文（添付）', 'PDF・写真を添付') + btn('hood', '🍳', 'フード注文', '厨房フードの寸法を入力') + btn('kanagu', '🔩', '金物注文', 'テンプレートから入力') + btn('', '🌀', 'ダンパー', '準備中') + btn('', '📦', '内張チャンバー・ボックス', '準備中') + '</div>';
   $('oRoot').querySelectorAll('[data-o]').forEach(b => { b.onclick = () => oShow(s, b.dataset.o); });
   // 電波が切れても一覧・会社の情報・ダクト仕様が出るように、電波のあるうちに読んで端末に控える
   if (!isOffline()) {
