@@ -77,13 +77,13 @@
 </header>
 <main id="m"></main>
 
-<script src="tax.js?v=Ver.20261105-26"></script>
-<script src="calc.js?v=Ver.20261105-26"></script>
+<script src="tax.js?v=Ver.20261113-01"></script>
+<script src="calc.js?v=Ver.20261113-01"></script>
 <script type="module">
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
 import { getFirestore, collection, doc, getDoc, getDocs, setDoc, deleteDoc, writeBatch, query, where } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
-const APP_VER = 'Ver.20261105-26';
+const APP_VER = 'Ver.20261113-01';
 const API = 'https://script.google.com/macros/s/AKfycbyW2hFHqIQuu-TsflPk_0zv7gquhoepspuvRG9-bMStPDSWSc2blcDFBtWs7MisP3f_/exec';
 const app = initializeApp({ apiKey: 'AIzaSyDVR4p4DO4s9h70uPlXUVlhNcMP9-YkQ5Q', authDomain: 'genba-portal-9077b.firebaseapp.com', projectId: 'genba-portal-9077b' });
 const auth = getAuth(app);
@@ -409,7 +409,7 @@ function readAtText(mon) {
 /* 日報シートから読んだ日時は、上の帯のアカウント名の左にいつも出す（どのタブでも。ユーザー指示 2026-11-04）。「今月の給与」で選んでいる月の分 */
 function showReadAt() {
   const el = $('rdat'); if (!el) return;
-  el.innerHTML = MON ? '日報シートから読んだ日時（' + esc(ymLabel(MON.ym)) + '）：<span style="color:#fff;font-weight:700;">' + esc(readAtText(MON) || '全員確定済み') + '</span>' : '日報シートから読んだ日時：<span style="color:#fff;font-weight:700;">まだ開いていません</span>';   // header b の大きい字にならないよう span で
+  el.innerHTML = MON ? '日報シートから読んだ日時（' + esc(ymLabel(MON.ym)) + '）：<span style="color:#fff;font-weight:700;">' + esc(readAtText(MON) || (KY.beforeStart(MON.ym, cfgOf(MON.ym)) ? '給与を作らない月' : '全員確定済み')) + '</span>' : '日報シートから読んだ日時：<span style="color:#fff;font-weight:700;">まだ開いていません</span>';   // header b の大きい字にならないよう span で
 }
 /** その給与の月の一覧に出す人：退職のチェックがなく、締めの期間に1日でも在籍している人（入社前・退職後の月は明細を作らない。2026-11-05） */
 const inMon = (e, ym) => !e.left && KY.inPeriod(e, ym, cfgOf(ym));
@@ -422,11 +422,13 @@ function renderMonth() {
   MON.view = 'list'; showReadAt();
   const ym = MON.ym, c = cfgOf(ym), p = KY.period(ym, c.close), pd = payDayOf(ym), list = ST.emps.filter(e => inMon(e, ym));
   const done = list.length && list.every(e => (MON.saved[e.id] || {}).status === '確定');
+  const pre = KY.beforeStart(ym, c), first = KY.firstYm(c);   // 切替日より前に締まる月（2026-11-13）：給与を作らない
   const warn = list.reduce((n, e) => n + ((MON.res[e.id] || {}).warns || []).length, 0);
   const sum = k => list.reduce((n, e) => n + (Number((MON.res[e.id] || {})[k]) || 0), 0);
   M.innerHTML = '<div class="card"><div class="row"><label class="f">給与の月<br><input type="month" id="ym" value="' + ym + '"></label>' +
     '<div class="note">対象 ' + dLabel(p.from) + '〜' + dLabel(p.to) + '<br>支給日 ' + dLabel(pd) + '</div><span class="sp"></span><button class="b" id="reload">更新</button>' +
-    (done ? '<span class="tag ok">確定済み</span><button class="b dark" id="ma">明細をメールで送る</button><button class="b danger" id="un">確定を解除</button>' : '<button class="b dark" id="ok"' + (warn || MON.sheet !== 'ok' ? ' disabled' : '') + '>この月を確定</button>') + '</div>' + (done ? '<div class="note">確定日時：' + esc(Object.values(MON.saved).map(s => s.at || '').sort().pop() || '') + '</div>' : '') + (done ? '' : MON.sheet === 'wait' ? '<div class="note">日報シートを読んでいます…（読み終わると確定できます）</div>' : MON.sheet === 'ng' ? '<div class="msg">日報シートを読めませんでした。もう一度「更新」を押してください。</div>' : MON.sheet === 'need' ? '<div class="msg">「更新」を押して、日報シートを読み直してください。読み直すと確定できます。<br>' + MON.why.map(esc).join('<br>') + '</div>' : '') +
+    (done ? '<span class="tag ok">確定済み</span><button class="b dark" id="ma">明細をメールで送る</button><button class="b danger" id="un">確定を解除</button>' : '<button class="b dark" id="ok"' + (warn || pre || MON.sheet !== 'ok' ? ' disabled' : '') + '>この月を確定</button>') + '</div>' +
+    (pre ? '<div class="msg" style="color:var(--ink);background:#fff4d6;border-color:#d9a400;">この月は、アプリで計算を始める日（' + esc(String(c.appStart).replace(/-/g, '/')) + '）より前に締まる月なので、給与を作りません（日報からの自動計算もしません）。<br>アプリで作る最初の給与は <b>' + esc(ymLabel(first)) + '分</b> です。始める日は「設定」で変えられます。</div>' : '') + (done ? '<div class="note">確定日時：' + esc(Object.values(MON.saved).map(s => s.at || '').sort().pop() || '') + '</div>' : '') + (done ? '' : MON.sheet === 'wait' ? '<div class="note">日報シートを読んでいます…（読み終わると確定できます）</div>' : MON.sheet === 'ng' ? '<div class="msg">日報シートを読めませんでした。もう一度「更新」を押してください。</div>' : MON.sheet === 'need' ? '<div class="msg">「更新」を押して、日報シートを読み直してください。読み直すと確定できます。<br>' + MON.why.map(esc).join('<br>') + '</div>' : '') +
     (warn ? '<div class="msg">確認が必要な所が ' + warn + ' 件あります。直すと確定できます。</div>' : '') +
     // 標準報酬の見直しの知らせ（2026-11-05）：随時改定の人と、7月分は算定基礎届
     (() => { const sc = list.filter(e => ((MON.res[e.id] || {}).stdCheck || []).length); return sc.length ? '<div class="msg" style="color:var(--ink);background:#fff4d6;border-color:#d9a400;">' + '標準報酬の見直しを確かめてください（固定の賃金が変わって3か月）：' + sc.map(e => esc(e.name)).join('、') + '。くわしくは一人ずつの画面に出ています。</div>' : ''; })() +
@@ -439,7 +441,7 @@ function renderMonth() {
     list.map(e => { const r = MON.res[e.id] || {}, a = MON.att[e.id] || {}, st = (MON.saved[e.id] || {}).status, w = (r.warns || []).length;
       return '<tr class="link" data-id="' + esc(e.id) + '"><td><b>' + esc(e.name) + '</b></td><td>' + sentTag(MON.sent, e.id) + (st === '確定' ? '<span class="tag ok">確定</span>' : MON.sheet === 'wait' && !st ? '<span class="tag">読み込み中</span>' : w ? '<span class="tag ng">要確認 ' + w + '</span>' : '<span class="tag">確認待ち</span>') + (st !== '確定' && MON.sheet === 'ok' && !a.rows ? ' <span class="tag ng">日報なし</span>' : '') + (r.over60 > 0 ? ' <span class="tag ng">60時間超</span>' : '') + '</td><td class="n">' + (a.workDays || 0) + '日</td><td class="n">' + ((a.otH || 0) + (a.shoOtH || 0) + (a.houOtH || 0)) + 'h</td><td class="n">' + yen(r.payTotal) + '</td><td class="n">' + yen(r.dedTotal) + '</td><td class="n"><b>' + yen(r.net) + '</b></td></tr>'; }).join('') +
     '<tr><td colspan="4"><b>合計</b></td><td class="n"><b>' + yen(sum('payTotal')) + '</b></td><td class="n"><b>' + yen(sum('dedTotal')) + '</b></td><td class="n"><b>' + yen(sum('net')) + '</b></td></tr></table>' +
-    (list.length ? '' : '<div class="note" style="margin-top:8px;">従業員のタブから人を追加してください。</div>') + '</div>';
+    (list.length ? '' : '<div class="note" style="margin-top:8px;">' + (pre ? 'この月は給与を作りません。' : '従業員のタブから人を追加してください。') + '</div>') + '</div>';
   $('ym').onchange = e => { ST.ym = e.target.value; drawMonth(); };
   $('reload').onclick = () => { if (!MON.reading) sheetRead(MON); };   // 日報シートを読み直し、集計の写しを更新する
   M.querySelectorAll('tr.link').forEach(t => { t.onclick = () => drawPerson(t.dataset.id); });
@@ -629,7 +631,7 @@ async function drawBonus() {
     const [r, prior] = await Promise.all([pay('bonus', { ym, prev: KY.ymAdd(ym, -1), emps: ST.emps.map(empRef) }), pay('bonusFy', { ym, emps: ST.emps.map(empRef) })]);
     if (ST.tab !== 'bonus' || ST.bym !== ym) return;
     // 賞与の月に在籍している人だけ（入社が月末より後・退職が月初より前の人は出さない。2026-11-05）
-    const mEnd = ym + '-' + ('0' + new Date(Number(ym.slice(0, 4)), Number(ym.slice(5)), 0).getDate()).slice(-2), inB = e => !(e.joined && e.joined > mEnd) && !(e.leftDate && e.leftDate < ym + '-01');
+    const mEnd = ym + '-' + ('0' + new Date(Number(ym.slice(0, 4)), Number(ym.slice(5)), 0).getDate()).slice(-2), preB = !!(ST.cfg.appStart && mEnd < ST.cfg.appStart), inB = e => !preB && !(e.joined && e.joined > mEnd) && !(e.leftDate && e.leftDate < ym + '-01');   // preB：月末が切替日より前の月の賞与は作らない（2026-11-13）
     const list = ST.emps.filter(e => !e.left && (inB(e) || r.list.some(x => x.id === e.id))), amt = {}, prev = {}, taxM = {}, conf = {}, c = cfgOf(ym);
     r.list.forEach(x => { amt[x.id] = x.amount; if (x.status === '確定') { conf[x.id] = x.result; taxM[x.id] = x.result.ded.tax; } else if (x.result && x.result.taxManual) taxM[x.id] = x.result.ded.tax; }); r.prev.forEach(x => { prev[x.id] = x.result; });
     const done = r.list.length && r.list.every(x => x.status === '確定');
@@ -914,7 +916,7 @@ function drawSet() {
     '<div class="card"><h2>保険料率（適用月ごと）</h2><div class="note">変わるときは行を足します。健康保険・介護保険・支援金・厚生年金は「保険の月」、雇用保険は「給与の月」で使います。社会保険は前月分を今月の給与から引くので、3月分の率は4月の給与から効きます。</div><div class="wrapx"><table class="t" id="rt"></table></div><button class="b" id="ra" style="margin-top:8px;">＋ 行を足す</button>' +
     '<div class="set" style="border:0;"><div class="k">健康保険</div><div></div><div class="d">協会けんぽ兵庫の率（全体）です。本人はこの半分です。毎年3月分から変わります。</div><div class="k">介護保険</div><div></div><div class="d">40〜64歳の人だけにかかります（全体の率）。全国共通です。</div><div class="k">支援金</div><div></div><div class="d">子ども・子育て支援金です（全体の率）。明細では健康保険料に含めます。</div><div class="k">厚生年金</div><div></div><div class="d">全体の率です。本人はこの半分です。</div><div class="k">雇用保険</div><div></div><div class="d">本人負担の率です（建設の事業）。毎年4月に変わります。</div></div></div>' +
     '<div class="card"><div class="row"><button class="b dark" id="sv">設定を保存</button><span id="sm" class="note"></span></div></div>' +
-    offDaysHtml() + leaveSwitchHtml();
+    offDaysHtml() + leaveSwitchHtml() + appStartHtml();
   // メモの欄は中の文の長さに合わせて高くする（スクロールさせず全文を見せる。ユーザー指示 2026-11-04）
   M.querySelectorAll('textarea[data-grow]').forEach(t => { const g = () => { t.style.height = 'auto'; t.style.height = (t.scrollHeight + 2) + 'px'; }; t.oninput = g; g(); });
   const rates = JSON.parse(JSON.stringify(c.rates || []));
@@ -927,6 +929,7 @@ function drawSet() {
   $('ra').onclick = () => { rates.push({ ...(rates[rates.length - 1] || {}), from: '' }); drawR(); };
   offDaysWire();
   leaveSwitchWire();
+  appStartWire();
   $('sv').onclick = async () => {
     const d = { rates }; M.querySelectorAll('[data-c]').forEach(i => { d[i.dataset.c] = i.tagName === 'TEXTAREA' ? i.value : i.type === 'checkbox' ? i.checked : i.dataset.rate ? Math.round(Number(i.value) * 100) / 100 : Number(i.value); });   // 掛率は小数点第2位まで
     try { await pay('saveCfg', d); Object.assign(ST.cfg, d); drawSet(); $('sm').textContent = '保存しました'; } catch (x) { $('sm').textContent = x.message; }
@@ -976,6 +979,22 @@ function offDaysWire() {
 
 /* 有給の切り替え（2026-11-05 ユーザー指示）：好きな日を「切り替えの日」にして、その日の時点の残日数を全員分入れる。
    その日より後に取った有給をアプリが引いていく。切り替えの日より後に入社した人は、入社した日から数える */
+/* アプリで計算を始める日（切替日。ユーザー決定 2026-11-13 案B：会社全体で1つ）。その日より前の日報は入れないので、締め日がその日より前の月は給与を作らない */
+function appStartHtml() {
+  const s = ST.cfg.appStart || '', f = KY.firstYm(cfgOf());
+  return '<div class="card"><h2>アプリで計算を始める日（切替日）</h2><div class="note">この日からの日報で、給与を計算します。この日より前の日報は入れないので、締め日がこの日より前の月は、給与を作りません（日報が無い月を「基本給の満額」として自動で計算しません）。賞与も、月末がこの日より前の月は作りません。空欄のときは、どの月も今までどおり計算します。<br>有給の数え始めは、上の「有給の切り替え」で別に入れます。最初の賞与の所得税は、従業員の「切り替え前の前月の給与」を使います。</div>' +
+    '<div class="row" style="margin-top:8px;"><label class="f">始める日<br><input type="date" id="asd" value="' + esc(s) + '"></label><div class="note" id="asf">' + (f ? '最初の給与：' + esc(ymLabel(f)) + '分' : '入っていません') + '</div></div>' +
+    '<div class="row" style="margin-top:8px;"><button class="b dark" id="asv">始める日を保存</button><span id="asm" class="note"></span></div></div>';
+}
+function appStartWire() {
+  const show = () => { const f = KY.firstYm({ ...cfgOf(), appStart: $('asd').value }); $('asf').textContent = f ? '最初の給与：' + ymLabel(f) + '分' : '入っていません'; };
+  $('asd').onchange = show;
+  $('asv').onclick = async () => {
+    const s = $('asd').value;
+    try { $('asv').disabled = true; $('asm').textContent = '保存しています…'; await pay('saveCfg', { appStart: s }); ST.cfg.appStart = s; MON = null; show(); $('asm').textContent = '保存しました'; }
+    catch (x) { $('asm').textContent = x.message; } finally { $('asv').disabled = false; }
+  };
+}
 function leaveSwitchHtml() {
   const sw = ST.cfg.leaveSwitch || '', list = ST.emps.filter(x => !x.left);   // 有給の切り替えは在籍している全員（月で絞らない）
   return '<div class="card"><h2>有給の切り替え</h2><div class="note">アプリで有給を数え始める日と、その日の時点で一人ずつ残っている日数を入れます（その日に取った分は引いた後の日数）。「うち繰り越し」は、前の年から繰り越した分です。次に有給が付く日に消えます。分からなければ空欄にします。0.5日も入れられます。切り替えの日より後に入社した人は入れません（入社した日から数えます）。</div>' +

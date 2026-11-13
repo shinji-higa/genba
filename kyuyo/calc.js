@@ -266,10 +266,24 @@
     }
     return n;
   }
+  /** アプリで計算を始める日（設定の切替日 cfg.appStart、'YYYY-MM-DD'）より前に締まる月か（ユーザー決定 2026-11-13 案B：会社全体で1つ）。
+      その日より前の日報は入れないので、締め日が切替日より前の月は給与を作らない（日報なし＝基本給の満額、という自動計算をしない）。
+      例：切替日 2026-11-21・締め20日 → 11月分（〜11/20）までは作らず、12月分（11/21〜12/20）が最初 */
+  function beforeStart(ym, cfg) {
+    const s = String((cfg || {}).appStart || ''); if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return false;
+    const t = period(ym, (cfg || {}).close).to;
+    return t.getFullYear() + '-' + ('0' + (t.getMonth() + 1)).slice(-2) + '-' + ('0' + t.getDate()).slice(-2) < s;
+  }
+  /** アプリで作る最初の給与の月（切替日が入っていなければ空） */
+  function firstYm(cfg) {
+    const s = String((cfg || {}).appStart || ''); if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return '';
+    const m = s.slice(0, 7); return beforeStart(m, cfg) ? ymAdd(m, 1) : m;
+  }
   /** 締めの期間に1日でも在籍しているか。入社日が期間の終わりより後、退職日が期間の始まりより前の月は、明細を作らない
       （日額×所定日数が基本給に届かず、在籍0日でも基本給の残り・手当・雇用保険が出ていた。2026-11-05 運用テストで発見） */
   function inPeriod(emp, ym, cfg) {
     const p = period(ym, (cfg || {}).close), key = d => d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2) + '-' + ('0' + d.getDate()).slice(-2);
+    if (beforeStart(ym, cfg)) return false;   // アプリで計算を始める日より前に締まる月は、だれの明細も作らない（2026-11-13）
     if (emp.joined && emp.joined > key(p.to)) return false;
     if (emp.leftDate && emp.leftDate < key(p.from)) return false;
     return true;
@@ -350,6 +364,6 @@
   /** 家族手当：（扶養親族等の数＋16歳未満の家族）×1人の額、上限あり */
   const familyPay = (emp, cfg) => emp.noFamily ? 0 : Math.min(Number(cfg.familyMax != null ? cfg.familyMax : 30000), ((Number(emp.deps) || 0) + (Number(emp.kids16) || 0)) * Number(cfg.familyPer != null ? cfg.familyPer : 10000));
 
-  const api = { jpHolidays, workYear, offCount, calcMonth, calcBonus, monthlyTax, bonusRate, careTarget, payDay, period, rateAt, half, ymAdd, roundH, roundAtt, familyPay, lateH, proDays, inPeriod, lossYmOf, fyStart, leaveGrants, leaveCalc, leaveFixOf, workDaysBetween, attendRate, HIST, valAt, empAt, histRetro, retroCalc };
+  const api = { jpHolidays, workYear, offCount, calcMonth, calcBonus, monthlyTax, bonusRate, careTarget, payDay, period, rateAt, half, ymAdd, roundH, roundAtt, familyPay, lateH, proDays, inPeriod, beforeStart, firstYm, lossYmOf, fyStart, leaveGrants, leaveCalc, leaveFixOf, workDaysBetween, attendRate, HIST, valAt, empAt, histRetro, retroCalc };
   if (typeof module !== 'undefined') module.exports = api; else root.KY = api;
 })(typeof window !== 'undefined' ? window : globalThis);
