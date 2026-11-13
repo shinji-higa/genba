@@ -144,7 +144,7 @@ auth.languageCode = 'ja';   // パスワード再設定のメールと画面を�
 // 端末の控え（電波なしでも見られる）は1つのタブだけが持つ。2つ目からのタブは、開いている間だけの控えでサーバーと直接やりとりする。
 // 前は全部のタブで控えを分け合っていて、サーバーとやりとりするタブが裏にあると、ほかのタブに最新が届くまで約28秒待っていた（2026-11-05 確認）
 const db = initializeFirestore(app, { localCache: persistentLocalCache({ tabManager: persistentSingleTabManager() }) });
-const APP_VER = 'Ver.20261113-01';
+const APP_VER = 'Ver.20261113-02';
 
 /* ---------- 電波なしでも使う（今の現場管理と同じ考え方） ----------
    ・保存は押した瞬間に完了の形。電波が戻ったら自動で送る（データは Firestore が端末に貯める）
@@ -503,7 +503,7 @@ function showList() {
   $('noAdd').style.display = me.canAddSite ? 'none' : '';
   $('btnGoDaily').style.display = me.canDaily || me.isMaster || me.canPayroll ? '' : 'none';
   $('btnGoDaily').onclick = dOpen;
-  { const g = $('btnGoDaily'), off = DAILY_OFF_ALL && offOn(); g.disabled = off; g.title = off ? '今は使えません' : ''; g.style.opacity = off ? '0.35' : ''; g.style.cursor = off ? 'not-allowed' : ''; }
+  { const g = $('btnGoDaily'), off = dailyOff(); g.disabled = off; g.title = off ? '今は使えません' : ''; g.style.opacity = off ? '0.35' : ''; g.style.cursor = off ? 'not-allowed' : ''; }
   leaveWatch();
   $('btnGoHealth').onclick = hOpen;
   let hChecked = false;
@@ -538,6 +538,8 @@ function renderSites() {
 const OFF_FREE = ['sh@excureduct.co.jp', 'mh@excureduct.com'];   // 比嘉 伸治・比嘉 美紀は今までどおり使える
 const offOn = () => !(me && OFF_FREE.includes(String(me.uid || '').toLowerCase()));
 const OFF_TABS_ALL = [], DAILY_OFF_ALL = true;   // 一旦、日報は押せなくする（グレー）。戻すときは DAILY_OFF_ALL を false に（ユーザー指示 2026-11-10）。注文タブは 2026-11-13 に解禁
+const DAILY_FREE = OFF_FREE.concat(['cyapio@excureduct.com', 'kiki@excureduct.com', 'miko@excureduct.com', 'sr@excureduct.com']);   // 日報は 伸治・美紀 と テストアカウント4個（チャピオ・キキ・ミーコ・マイケル）が使える（ユーザー指示 2026-11-13）
+const dailyOff = () => DAILY_OFF_ALL && !(me && DAILY_FREE.includes(String(me.uid || '').toLowerCase()));
 const KAKU_FREE = ['sh@excureduct.co.jp'];   // 角ダクト注文は一旦グレー。比嘉 伸治だけ使える（ユーザー指示 2026-11-13）。戻すときは kakuOff を () => false に
 const kakuOff = () => !(me && KAKU_FREE.includes(String(me.uid || '').toLowerCase()));
 const OFF_TABS = { includes: n => offOn() && OFF_TABS_ALL.includes(n) };
@@ -2055,7 +2057,7 @@ async function leaveDecide(r, v) {
   if (r.self && cur && isLeave(cur.kubun)) fire(setDoc(doc(collection(db, 'notices')), { site: '', siteName: '有給', type: 'leave', text: dDay(r.date) + ' の' + (isHalf(cur.kubun) ? cur.kubun : '有給') + 'が' + (v === '承認' ? '承認されました。' : '却下されました。'), by: me.uid, byName: me.name || me.uid, at: Date.now(), members: [r.uid], mentions: [], target: '' }), 'お知らせ');
 }
 function dOpen() {
-  if (DAILY_OFF_ALL && offOn()) return;   // 一旦使えない（OFF_TABS の所を参照）
+  if (dailyOff()) return;   // 一旦使えない（OFF_TABS の所を参照）
   stopWatch();
   show('panelDaily', '日報', showList);
   $('speed').textContent = '';
