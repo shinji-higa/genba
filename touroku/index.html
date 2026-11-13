@@ -2,23 +2,20 @@
 <html lang="ja">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
 <title>作業員情報 ポータル</title>
 <meta name="robots" content="noindex">
-<!-- 作業員登録フォーム（Apps Script「作業員管理」本番）へ飛ぶだけのページ（2026-11-08）。
-     配布PDFに長いURLを載せると KANNA（PDFを画像で表示）で読み取りまちがいが起きたため、短いURLにした -->
-<meta http-equiv="refresh" content="0; url=https://script.google.com/macros/s/AKfycbz5QgQQD6u47iUUrsOmC0gScd1ZP3yhuZpI6YvpMMFi0xMvhPCkvW12xOxY3BLHmLzjbA/exec">
-<script>location.replace('https://script.google.com/macros/s/AKfycbz5QgQQD6u47iUUrsOmC0gScd1ZP3yhuZpI6YvpMMFi0xMvhPCkvW12xOxY3BLHmLzjbA/exec');</script>
+<!-- 作業員登録フォーム（Apps Script「作業員管理」本番）の短いURL。
+     2026-11-08：配布PDFの長いURLが KANNA で読みまちがえられたため、短いURLにした。
+     2026-11-13：飛ぶだけ → このページの中にはめ込む形に変更。Apps Script のページを直接開くと、
+     会社の外の人（ログインなし）には上に「Google Apps Script のユーザーによって作成されたもの」の帯が出るため（ユーザー指示）。
+     本番フォームのURLは変えない（配布済み）。/a/macros/excureduct.com/ の形ははめ込めないので /macros/s/ の形を使う。 -->
 <style>
-  body { font-family: -apple-system, "Hiragino Sans", "Meiryo", sans-serif; background: #111; color: #fff; display: flex; align-items: center; justify-content: center; min-height: 100vh; margin: 0; }
-  a { display: block; background: #fff; color: #111; font-weight: bold; font-size: 18px; padding: 16px 24px; border-radius: 10px; text-decoration: none; text-align: center; }
-  p { text-align: center; color: #ccc; }
+  html, body { margin: 0; height: 100%; background: #0b0b0d; }
+  iframe { border: 0; width: 100%; height: 100%; height: 100dvh; display: block; }
 </style>
 </head>
 <body>
-  <div>
-    <p>作業員情報 ポータルを開いています…</p>
-    <a href="https://script.google.com/macros/s/AKfycbz5QgQQD6u47iUUrsOmC0gScd1ZP3yhuZpI6YvpMMFi0xMvhPCkvW12xOxY3BLHmLzjbA/exec">開かないときはここを押してください</a>
-  </div>
+<iframe src="https://script.google.com/macros/s/AKfycbz5QgQQD6u47iUUrsOmC0gScd1ZP3yhuZpI6YvpMMFi0xMvhPCkvW12xOxY3BLHmLzjbA/exec" title="作業員情報 ポータル" allow="clipboard-write"></iframe>
 </body>
 </html>
