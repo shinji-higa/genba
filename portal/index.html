@@ -14,6 +14,30 @@
 <!-- 見た目は今の現場管理と同じ（app.css は現場管理の style をそのまま写したもの） -->
 <link rel="stylesheet" href="app.css?v=1">
 <style>
+  .av { display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 30px; border-radius: 50%; color: #111; font-size: 0.8rem; line-height: 1; font-weight: 700; border: 2px solid #fff; box-sizing: border-box; flex: 0 0 auto; overflow: hidden; white-space: nowrap; }
+  .av small { font-size: 0.56rem; line-height: 1; font-weight: 700; align-self: flex-end; margin: 0 0 5px 1px; }
+  .av-row { position: absolute; right: 12px; bottom: 9px; display: flex; align-items: center; pointer-events: none; }
+  .av-row .av + .av { margin-left: -8px; }
+  .av-more { margin-left: 3px; font-size: 0.74rem; font-weight: 700; color: #333; }
+  #panelDetail.dt-view label { display: inline-block; font-size: 0.7rem; font-weight: 600; background: #eee; padding: 1px 4px; border-radius: 2px; margin-bottom: 4px; }   /* 現場詳細の見出しは、現場選択のカードの「着手」「完成」と同じ見え方（2026-11-14 ユーザー指示） */
+  .drop-on { outline: 3px dashed #1a73e8 !important; outline-offset: 2px; background-color: #eef4ff !important; }   /* ファイルを引っぱってきている間の、落とせる場所（2026-11-15） */
+  .dt-multiline a { color: var(--link-blue); text-decoration: underline; }   /* 備考・その他ルールの URL と電話番号（2026-11-15） */
+  /* 落として追加の枠（KANNA の「ファイルを追加する」と同じ考え。2026-11-15 ユーザー指示）。マウスのあるパソコンだけ枠を出し、スマホ・iPad は今までの「＋ 追加」ボタン */
+  .drop-box { border: 2px dashed #777; background: #f2f2f2; border-radius: 6px; padding: 18px 12px; text-align: center; margin-bottom: 12px; }
+  .drop-box-t { font-weight: 700; font-size: 0.95rem; color: #222; }
+  .drop-box-or { margin-top: 10px; font-size: 0.85rem; color: #333; display: flex; justify-content: center; align-items: center; gap: 10px; }
+  .drop-box-or .btn { width: auto; min-width: 220px; }
+  .drop-box-to { margin-top: 10px; font-size: 0.8rem; color: #333; }
+  .drop-hint { font-size: 0.75rem; color: #444; margin-top: 4px; }
+  .pc-only { display: none; }
+  @media (hover: hover) and (pointer: fine) { .pc-only { display: block; } .touch-only { display: none !important; } }
+  /* 画面の下のボタン（現場情報編集・担当タブで同じ見え方。2026-11-15 ユーザー指示）。スマホは横いっぱいで縦に並べ、PCは右にそろえる */
+  .form-foot { margin-top: 16px; margin-bottom: 30px; display: flex; flex-direction: column; gap: 8px; }
+  @media (min-width: 960px) { .form-foot { flex-direction: row-reverse; justify-content: flex-start; } .form-foot .btn { width: auto; min-width: 220px; padding: 11px 24px; } }
+  html { scrollbar-gutter: stable; }   /* 縦のスクロールバーが出たり消えたりしても、画面の幅が変わらないよう場所を取っておく（パソコンで、絞り込みで現場が減ると全体が少し広がっていた。2026-11-14 ユーザー指摘） */
+  @media (max-width: 520px) { #flowFilters { gap: 4px; padding-bottom: 0; } #flowFilters .flow-filter-btn { flex: 1 1 auto; padding: 6px 3px; text-align: center; white-space: nowrap; letter-spacing: -0.02em; } }   /* 現場選択のフローのボタン：スマホでも1段のまま見切れないよう、字の大きさは変えずに余白を詰める（2026-11-14 ユーザー指示） */
+  @media (max-width: 380px) { #flowFilters { gap: 3px; } #flowFilters .flow-filter-btn { font-size: 0.7rem; padding: 6px 2px; } }   /* 小さめのスマホ（横360など）だけ、字を1段階小さくして入れる */
+  @media (max-width: 520px) { .s-roletag { display: none; } }   /* 担当タブ：スマホでは選択窓と同じ言葉の札を出さない */
   .site-card-btn { color: var(--text); }   /* iPhone でボタンの文字が青くなるのを防ぐ（リンクの色は変わらない） */
   #panelSettings .site-card-btn { height: auto; margin-bottom: 8px; }   /* PC 幅の「カードの高さをそろえる」は現場一覧だけ。人の管理の行には効かせない */
   /* iPhone の丸い角・下の線に部品がかからないように、上下左右に余白を取る */
@@ -117,7 +141,7 @@
   </div>
 </div>
 
-<script src="i18n.js?v=5"></script>
+<script src="i18n.js?v=6"></script>
 <script>i18nStart();</script>
 <script type="module">
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
@@ -144,7 +168,7 @@ auth.languageCode = 'ja';   // パスワード再設定のメールと画面を�
 // 端末の控え（電波なしでも見られる）は1つのタブだけが持つ。2つ目からのタブは、開いている間だけの控えでサーバーと直接やりとりする。
 // 前は全部のタブで控えを分け合っていて、サーバーとやりとりするタブが裏にあると、ほかのタブに最新が届くまで約28秒待っていた（2026-11-05 確認）
 const db = initializeFirestore(app, { localCache: persistentLocalCache({ tabManager: persistentSingleTabManager() }) });
-const APP_VER = 'Ver.20261113-02';
+const APP_VER = 'Ver.20261115-01';
 
 /* ---------- 電波なしでも使う（今の現場管理と同じ考え方） ----------
    ・保存は押した瞬間に完了の形。電波が戻ったら自動で送る（データは Firestore が端末に貯める）
@@ -374,6 +398,12 @@ const stopWatch = () => { if (stop) { stop(); stop = null; } xStop(); };
    mine：自分のコメントは元の文のまま出して「翻訳を見る」で訳を開ける。訳がまだ無いときと、元の文が直されたあとは、元の文を出す */
 const trOk = (text, tr) => tr && tr.out && tr.of === text ? tr : null;
 const trMain = (text, tr) => { const t = trOk(text, tr); return t && t.src !== portalLang() ? t.out : String(text == null ? '' : text); };
+/* 文の中の URL と電話番号を押せるようにする（備考・その他ルール。2026-11-15 ユーザー指示）。電話番号は 0 で始まる10〜11けた（ハイフン・全角の数字も可） */
+const linkText = s => esc(s).replace(/(https?:\/\/[A-Za-z0-9\-._~:/?#\[\]@!$&()*+,;=%]+)|(^|[^0-9０-９])([0０][0-9０-９]{1,4}[-－‐−ー―]?[0-9０-９]{1,4}[-－‐−ー―]?[0-9０-９]{3,4})(?![0-9０-９])/g, (m, url, pre, tel) => {
+  if (url) { const u = url.replace(/(&quot;|&#39;|&gt;|&lt;|[.,)])+$/, ''); return '<a href="' + u + '" target="_blank" rel="noopener noreferrer">' + u + '</a>' + url.slice(u.length); }
+  const d = tel.replace(/[０-９]/g, c => String.fromCharCode(c.charCodeAt(0) - 0xFEE0)).replace(/\D/g, '');
+  return d.length < 10 || d.length > 11 ? m : pre + '<a href="tel:' + d + '">' + tel + '</a>';
+});
 function trShow(text, tr, render, mine) {
   const s = String(text == null ? '' : text), t = trOk(s, tr), wrap = h => '<span data-i18n-skip>' + h + '</span>';
   render = render || esc;
@@ -393,6 +423,25 @@ document.addEventListener('click', e => {
   b.textContent = o.hidden ? b.dataset.trl : b.dataset.trh;
 }, true);
 const banner = (t, ng) => '<div class="info-card" style="' + (ng ? 'background:var(--error-bg);color:var(--error-text);' : 'background:var(--success-bg);color:var(--success-text);') + 'font-weight:600;">' + esc(t) + '</div>';
+/* パソコン：ファイルを引っぱってきて落とすと追加（2026-11-15 ユーザー指示）。落とせる場所は青い点線で囲む */
+const isFileDrag = e => [...((e.dataTransfer && e.dataTransfer.types) || [])].includes('Files');
+function dropOn(el, onFiles) {
+  if (!el || el.dataset.drop) return;
+  el.dataset.drop = '1';
+  let n = 0;
+  const on = v => el.classList.toggle('drop-on', v);
+  el.addEventListener('dragenter', e => { if (!isFileDrag(e)) return; e.preventDefault(); n++; on(true); });
+  el.addEventListener('dragover', e => { if (!isFileDrag(e)) return; e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; });
+  el.addEventListener('dragleave', e => { if (!isFileDrag(e)) return; if (--n <= 0) { n = 0; on(false); } });
+  el.addEventListener('drop', e => { if (!isFileDrag(e)) return; e.preventDefault(); e.stopPropagation(); n = 0; on(false); const f = [...e.dataTransfer.files]; if (f.length) onFiles(f, e); });
+}
+// 落とした先が「落とせる場所」でなかったとき、ブラウザがそのファイルを開いてポータルが消えないようにする
+document.addEventListener('dragover', e => { if (isFileDrag(e)) e.preventDefault(); });
+document.addEventListener('drop', e => { if (isFileDrag(e)) e.preventDefault(); });
+// 隠してある「ファイルを選ぶ」に、落としたファイルを入れる（選んだときと同じ動きになる）
+const putFiles = (input, files) => { const d = new DataTransfer(); files.forEach(f => d.items.add(f)); input.files = d.files; input.dispatchEvent(new Event('change')); };
+const isImg = f => String(f.type).startsWith('image/') || /\.(jpe?g|png|gif|webp|heic|heif)$/i.test(f.name || '');
+const onlyImages = files => { const ng = files.filter(f => !isImg(f)); if (ng.length) uiAlert('写真に入れられるのは画像だけです：\n' + ng.map(f => '・' + f.name).join('\n')); return files.filter(isImg); };
 const autoGrow = root => root.querySelectorAll('textarea.auto-expand').forEach(a => {
   const f = () => { a.style.height = 'auto'; a.style.height = a.scrollHeight + 4 + 'px'; };
   a.oninput = f; f();
@@ -520,9 +569,10 @@ function renderSites() {
   const q = $('inputSearchSite').value.trim().toLowerCase();
   const list = allSites.filter(s => (!q || String(s.siteName).toLowerCase().includes(q)) && (flowFilter === '全て表示' || s.flow === flowFilter));
   const box = $('siteCardsContainer');
+  avLoad(renderSites);
   if (!list.length) { box.innerHTML = '<div class="info-card" style="text-align:center; color:var(--muted);">該当する現場がありません。</div>'; return; }
   box.innerHTML = list.map(s =>
-    '<button type="button" class="site-card-btn" data-id="' + esc(s.id) + '">' +
+    '<button type="button" class="site-card-btn" data-id="' + esc(s.id) + '" style="position:relative;">' + avRow(s, 5) +
       '<div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:8px;">' +
         '<div style="font-size:1.02rem; font-weight:700; flex:1; padding-right:8px;">' + esc(s.siteName) + '</div>' +
         '<span class="flow-badge flow-color-' + esc(s.flow) + '">' + esc(s.flow) + '</span>' +
@@ -543,7 +593,7 @@ const dailyOff = () => DAILY_OFF_ALL && !(me && DAILY_FREE.includes(String(me.ui
 const KAKU_FREE = ['sh@excureduct.co.jp'];   // 角ダクト注文は一旦グレー。比嘉 伸治だけ使える（ユーザー指示 2026-11-13）。戻すときは kakuOff を () => false に
 const kakuOff = () => !(me && KAKU_FREE.includes(String(me.uid || '').toLowerCase()));
 const OFF_TABS = { includes: n => offOn() && OFF_TABS_ALL.includes(n) };
-const tabsOf = s => ['現場詳細', '報告', '写真', '資料', '注文'].concat(isManagerOf(s) ? ['担当'] : []);   // 担当はマスターと現場管理者だけ
+const tabsOf = s => ['現場詳細', '報告', '写真', '資料', '注文'].concat(isManagerOf(s) ? ['担当'] : []);   // 担当はマスターと現場管理者だけ（権限。グループ分けとは別。2026-11-14 ユーザー確認）
 const isManagerOf = s => me.isMaster || (s.roles || {})[me.uid] === '現場管理者';
 const canDelete = s => me.isMaster || (me.canAddSite && isManagerOf(s));
 const person = (co, n, t) => {
@@ -586,8 +636,9 @@ function showDetail(id, saved) {
   }, e => { $('panelDetail').innerHTML = banner('読み込めませんでした：' + e.message, true); });
 }
 function renderDetail(s) {
-  const addr = s.address ? '<a class="address-map-link" href="https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(s.address) + '" target="_blank" rel="noopener noreferrer">📍 ' + esc(s.address) + '</a>' : '未設定';
+  const addr = s.address ? '<a class="address-map-link" href="https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(s.address) + '" target="_blank" rel="noopener noreferrer">' + esc(s.address) + '</a>' : '未設定';
   const nearby = s.address ? '<div class="nearby-row" style="display:grid;">' + ['コンビニ', 'トイレ', '駐車場', 'ホームセンター'].map(k => '<button type="button" class="nearby-btn" data-k="' + k + '"><span>' + k + '</span></button>').join('') + '</div>' : '';
+  $('panelDetail').classList.toggle('dt-view', detailTab === '現場詳細');   // 現場詳細のときだけ、見出しを薄いグレーの札にする（css の #panelDetail.dt-view label）
   $('panelDetail').innerHTML =
     '<nav class="nav-tabs" style="margin: -16px -16px 14px -16px;">' + tabsOf(s).map(n => '<button type="button" class="nav-tab-item' + (n === detailTab ? ' active' : '') + '" data-t="' + n + '"' + (OFF_TABS.includes(n) ? ' disabled title="今は使えません" style="opacity:0.35; cursor:not-allowed;"' : '') + '>' + n + '</button>').join('') + '</nav>' +
     (detailTab === '注文' ? '<div id="oRoot"></div>' : detailTab === '担当' ? '<div id="sRoot"></div>' : detailTab === '報告' ? '<div id="rRoot"></div>' : detailTab === '写真' || detailTab === '資料' ? '<div id="xRoot"></div>' :
@@ -600,9 +651,11 @@ function renderDetail(s) {
       '<div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:12px; padding-bottom:8px; border-bottom:1px solid var(--border);">' +
         '<div style="font-size:1.15rem; font-weight:800; flex:1; padding-right:8px;">' + esc(s.siteName) + '</div>' +
         '<span class="flow-badge flow-color-' + esc(s.flow) + '">' + esc(s.flow) + '</span></div>' +
-      '<div class="form-group"><label>現場住所 (押すとGoogle地図アプリが開きます)</label><div style="font-size:0.92rem; line-height:1.5;">' + addr + '</div>' + nearby + '</div>' +
-      '<div class="grid-two-col form-group"><div><label>工期 着手</label><div style="font-size:0.92rem;">' + esc(s.startDate || '未設定') + '</div></div><div><label>工期 完成</label><div style="font-size:0.92rem;">' + esc(s.endDate || '未設定') + '</div></div></div>' +
-      '<div class="form-group"><label>工事内容</label><div class="dt-multiline">' + (s.workContent ? trShow(s.workContent, (s.tr || {}).workContent) : '未設定') + '</div></div>' +
+      '<div class="form-group"><div style="margin-bottom:6px;"><span style="font-size:0.7rem; font-weight:600; background:#eee; padding:1px 4px; border-radius:2px; white-space:nowrap;">現場住所</span></div><div style="font-size:0.92rem; line-height:1.5;">' + addr + '</div>' + nearby + '</div>' +
+      // 見出しは現場選択のカードの「着手」「完成」と同じ見え方（薄いグレーの札）にする（2026-11-14 ユーザー指示）
+      '<div class="form-group" style="display:flex; flex-wrap:wrap; gap:8px 24px;"><div style="white-space:nowrap;"><span style="font-size:0.7rem; font-weight:600; background:#eee; padding:1px 4px; border-radius:2px; white-space:nowrap;">工事着手</span> <span style="font-size:0.92rem;">' + esc(s.startDate || '未設定') + '</span></div><div style="white-space:nowrap;"><span style="font-size:0.7rem; font-weight:600; background:#eee; padding:1px 4px; border-radius:2px; white-space:nowrap;">工事完成</span> <span style="font-size:0.92rem;">' + esc(s.endDate || '未設定') + '</span></div></div>' +
+      '<div class="form-group"><div style="margin-bottom:6px;"><span style="font-size:0.7rem; font-weight:600; background:#eee; padding:1px 4px; border-radius:2px; white-space:nowrap;">工事概要</span></div><div class="dt-multiline">' + (s.workContent ? trShow(s.workContent, (s.tr || {}).workContent, linkText) : '未設定') + '</div></div>' +
+      '<div class="form-group"><label>担当者</label><div id="dtAv">' + dtAv(s) + '</div></div>' +
     '</div>' +
     '<div class="info-card">' +
       '<div class="form-group"><label>EXD案件担当者 / 連絡先</label><div>' + person('', s.exdChargeName, s.exdChargeTel) + '</div></div>' +
@@ -611,7 +664,7 @@ function renderDetail(s) {
       '<div class="form-group" style="margin-bottom: 0;"><label>現場担当者2 / 連絡先</label><div>' + person(s.siteStaff2Company, s.siteStaff2Name, s.siteStaff2Tel) + '</div></div>' +
     '</div>' +
     '<div class="images-row">' + imgBox(s, 1) + imgBox(s, 2) + '</div>' +
-    '<div class="info-card"><label>備考</label><div class="dt-multiline" style="margin-top:4px;">' + (s.notes ? trShow(s.notes, (s.tr || {}).notes) : '特になし') + '</div></div>' +
+    '<div class="info-card"><label>備考</label><div class="dt-multiline" style="margin-top:4px;">' + (s.notes ? trShow(s.notes, (s.tr || {}).notes, linkText) : '特になし') + '</div></div>' +
     '<div class="info-card">' +
       '<div class="card-header-row"><span style="font-weight: 700; font-size: 0.92rem;">⚠️ 施工に関する注意事項</span><div>' +
         '<button type="button" id="rEdit" class="btn btn-sub">✏️ 編集</button>' +
@@ -627,6 +680,7 @@ function renderDetail(s) {
   if (detailTab !== '現場詳細') return;
   // 写真・資料・報告は現場を開いた時点で読み始める（報告タブを押してから待っていた。2026-11-05 運用テスト No.6）
   if (!isOffline()) xEnsure(s, X ? X.kind : 'photo');
+  if (!avPeople) avLoad(() => { if ($('dtAv')) $('dtAv').innerHTML = dtAv(s); });   // 一覧より先に詳細を開いたときも、読み終わったら丸を出す
   autoGrow($('panelDetail'));
   $('panelDetail').querySelectorAll('.nearby-btn').forEach(b => {
     b.onclick = () => {
@@ -644,6 +698,7 @@ function renderDetail(s) {
   $('rEdit').onclick = () => {
     rulesEditing = true;
     fields().forEach(f => { f.disabled = false; f.readOnly = false; });
+    if ($('ruleOtherView')) { $('ruleOtherView').style.display = 'none'; $('f_ruleOther').style.display = ''; autoGrow($('panelDetail')); }
     $('rEdit').style.display = 'none'; $('rSave').style.display = 'inline-block'; $('rCancel').style.display = 'inline-block';
   };
   $('rCancel').onclick = () => { rulesEditing = false; renderDetail(s); };
@@ -661,8 +716,10 @@ function ruleFields(v, locked) {
   return '<div class="grid-two-col form-group">' + sel(RULES[0]) + sel(RULES[1]) + '</div>' +
     '<div class="grid-two-col form-group">' + sel(RULES[2]) + sel(RULES[3]) + '</div>' +
     '<div class="form-group">' + sel(RULES[4]) + '</div>' +
-    '<div class="form-group" style="margin-top: 12px;"><label>その他ルール（全権限で編集可能・全文自動展開）</label>' +
-    '<textarea id="f_ruleOther" class="' + (locked ? 'rule-field ' : '') + 'auto-expand"' + (locked ? ' readonly' : '') + ' placeholder="特になし">' + esc(v.ruleOther) + '</textarea>' + (locked && trOk(v.ruleOther, (v.tr || {}).ruleOther) && v.tr.ruleOther.src !== portalLang() ? '<div class="dt-multiline" style="margin-top:6px;">' + trShow(v.ruleOther, v.tr.ruleOther) + '</div>' : '') + '</div>';
+    '<div class="form-group" style="margin-top: 12px;"><label>その他ルール</label>' +
+    // 見るときは入力欄ではなく文で出す（入力欄の中では URL・電話番号を押せないため。2026-11-15 ユーザー指示）。「編集」を押すと入力欄に替わる
+    (locked ? '<div id="ruleOtherView" class="dt-multiline" style="border:1px solid var(--border); border-radius:4px; padding:8px 10px; background:#fafafa; min-height:2.4em;">' + (String(v.ruleOther || '').trim() ? trShow(v.ruleOther, (v.tr || {}).ruleOther, linkText) : '<span style="color:var(--muted);">特になし</span>') + '</div>' : '') +
+    '<textarea id="f_ruleOther" class="' + (locked ? 'rule-field ' : '') + 'auto-expand"' + (locked ? ' readonly style="display:none;"' : '') + ' placeholder="特になし">' + esc(v.ruleOther) + '</textarea></div>';
 }
 function readRules() {
   const data = {};
@@ -719,7 +776,7 @@ let cmPanels = {}, cmReadTimer = null, cmIO = null;
 async function cmPeopleLoad() {
   try {
     const c = collection(db, 'users'), seeAll = me.isMaster || me.group === 'エクスケア社員';
-    const q = seeAll ? c : query(c, where('home', '==', (me.group === 'マルトク' || me.group === 'NAFA') ? me.group : 'エクスケア'));
+    const q = seeAll ? c : query(c, where('home', '==', homeOf(me.group)));
     const snap = await getDocs(q);
     if (X) X.people = snap.docs.map(d => ({ id: d.id, ...d.data() })).filter(u => u.id !== me.uid);
   } catch (e) {}
@@ -858,38 +915,118 @@ document.addEventListener('click', e => {
 /* ---------- 担当（見た目と操作は今の現場管理と同じ）----------
    マスターは現場管理者も付けられる。現場管理者は一般作業員まで。マスター本人と自分は一覧に出さない。
    エクスケア社員とマスターは全員、ほかの人は同じグループの人だけ見える（ルールでも断る） */
-let sSite = null, sPeople = [], sPending = {};
+let sSite = null, sPeople = [], sPending = {}, sAdd = {}, sEm = {};   // sAdd：「担当を追加」を開いているグループ   // sEm：開いている緊急連絡先（人 → 'load'・'none'・'err'・{ name, tel }）。押したときだけ読む
 async function sOpen(s) {
-  sSite = s; sPending = {};
-  $('sRoot').innerHTML = '<div style="margin-bottom: 12px;"><button type="button" id="sSave" class="btn btn-dark">編集を完了</button></div><div id="sBox" style="display: flex; flex-direction: column; gap: 8px;"><div class="info-card" style="text-align: center; color: var(--muted);">担当者一覧を読み込んでいます...</div></div>';
+  sSite = s; sPending = {}; sEm = {}; sAdd = {};
+  $('sRoot').innerHTML = '<div id="sBox" style="display: flex; flex-direction: column; gap: 8px;"><div class="info-card" style="text-align: center; color: var(--muted);">担当者一覧を読み込んでいます...</div></div><div class="form-foot"><button type="button" id="sSave" class="btn btn-dark">編集を完了</button></div>';
   $('sSave').onclick = sSubmit;
   try {
     const c = collection(db, 'users'), seeAll = me.isMaster || me.group === 'エクスケア社員';
-    const q = seeAll ? c : query(c, where('home', '==', (me.group === 'マルトク' || me.group === 'NAFA') ? me.group : 'エクスケア'));
+    const q = seeAll ? c : query(c, where('home', '==', homeOf(me.group)));
     const snap = await getDocs(q);
     const list = snap.docs.map(d => ({ id: d.id, ...d.data() }));
     // 今この現場にいる、ほかの会社の人も出す（現場管理者は会社に関係なく、自分の現場の担当者を外せる。ルールは users の mgrs）
     const have = new Set(list.map(u => u.id)), more = (s.members || []).filter(id => !have.has(id) && id !== me.uid);
     const got = await Promise.allSettled(more.map(id => getDoc(doc(db, 'users', id))));
-    got.forEach((g, i) => { if (g.status === 'fulfilled' && g.value.exists()) list.push({ id: more[i], ...g.value.data() }); else list.push({ id: more[i], name: more[i] }); });
-    sPeople = list.filter(u => !u.isMaster && u.id !== me.uid).sort((a, b) => String(a.name).localeCompare(String(b.name), 'ja'));
+    got.forEach((g, i) => { if (g.status === 'fulfilled' && g.value.exists()) list.push({ id: more[i], ...g.value.data() }); else list.push({ id: more[i], name: more[i], unknown: true }); });
+    sPeople = list.filter(u => (!u.isMaster && u.id !== me.uid) || (s.members || []).includes(u.id)).sort((a, b) => String(a.name).localeCompare(String(b.name), 'ja'));
     sList();
   } catch (e) { if ($('sBox')) $('sBox').innerHTML = banner('読み込めませんでした（電波がないか、権限がありません）。', true); }
 }
-const sHome = u => (u.group === 'マルトク' || u.group === 'NAFA') ? u.group : 'エクスケア';   // 会社（エクスケア社員とエクスケアは同じ）
+/* グループ：保存している値（エクスケア社員・エクスケア・マルトク・NAFA・Other）はそのまま。画面に出す名前だけ DBEXD の「グループ一覧」に合わせる（2026-11-14 ユーザー指示）。
+   DBEXD のグループ名から人を作るときは、この表を逆に読む（EXD社員→エクスケア社員、EXD→エクスケア、マルトク設備→マルトク） */
+const G_LIST = ['エクスケア社員', 'エクスケア', 'マルトク', 'NAFA', 'Other'], G_LABEL = { 'エクスケア社員': 'EXD社員', 'エクスケア': 'EXD', 'マルトク': 'マルトク設備' };
+const gLabel = g => G_LABEL[g] || g;
+const gOf = u => u.unknown ? 'Other' : G_LIST.includes(u.group) ? u.group : u.group ? 'Other' : 'エクスケア';   // 空欄はエクスケア。読めなかった人・知らないグループは Other
+const gHead = (g, n) => '<div class="s-group" style="display:flex; align-items:center; gap:8px; margin-top:10px; padding:6px 10px; background:#333; color:#fff; border-radius:4px; font-weight:700; font-size:0.9rem;"><span data-i18n-skip>' + esc(gLabel(g)) + '</span><span style="font-weight:400; font-size:0.8rem;">' + n + '人</span></div>';
+/* 担当者の丸いしるし：名前の頭文字（姓の1文字＋名の1文字を小さく）。色はグループごと。
+   丸に要るのは名前とグループだけ。それだけを入れた名簿 people/{人} { n, g } を、ログイン登録者の全員が読む。
+   携帯・Google などが入った users は、今までどおり限られた人しか読めない（一般作業員による悪用を防ぐ。2026-11-14 ユーザー指示）。
+   people の中身は、マスターの画面が開くたびに users と見比べて自動でそろえる（足す・直す・消す。ためこまない）。
+   読み終わるまで丸は出さない。名簿に無い人の丸は出さない（「?」の丸は出さない） */
+const AV_COLOR = { 'エクスケア社員': ['#dcdcdc', '#111111'], 'エクスケア': ['#d3e3fb', '#143c7d'], 'マルトク': ['#d2efdd', '#0f5a2a'], 'NAFA': ['#fde2cf', '#8a2f06'], 'Other': ['#f1e7c4', '#5a4a00'] }, AV_NONE = ['#eeeeee', '#555555'];   // 地は薄く、文字は濃く（2026-11-14 ユーザー指示）
+let avPeople = null, avLoading = false, avWait = [];
+function avLoad(again) {
+  if (avPeople || !me) return;
+  if (again && !avWait.includes(again)) avWait.push(again);   // 読み終わったら、待っている画面を全部描き直す
+  if (avLoading) return;
+  avLoading = true;
+  const done = m => { avPeople = m; const l = avWait; avWait = []; l.forEach(f => { try { f(); } catch (e) {} }); };
+  if (me.isMaster) {
+    // マスター：users を読んで丸に使い、people とずれていたらそろえる
+    Promise.all([getDocs(collection(db, 'users')), getDocs(collection(db, 'people')).catch(() => null)]).then(([us, ps]) => {
+      const m = {}; us.docs.forEach(d => { const x = d.data(); m[d.id] = { n: x.name || '', g: x.group || '' }; });
+      done(m);
+      if (!ps) return;
+      const have = {}; ps.docs.forEach(d => { have[d.id] = d.data(); });
+      Object.keys(m).forEach(id => { if (!have[id] || have[id].n !== m[id].n || have[id].g !== m[id].g) setDoc(doc(db, 'people', id), m[id]).catch(() => {}); });
+      Object.keys(have).forEach(id => { if (!m[id]) deleteDoc(doc(db, 'people', id)).catch(() => {}); });
+    }).catch(() => done({})).finally(() => { avLoading = false; });   // 読めなかったときは丸を出さない（何度も読み直さない）
+    return;
+  }
+  getDocs(collection(db, 'people')).then(s => { const m = {}; s.docs.forEach(d => { const x = d.data(); m[d.id] = { n: x.n || '', g: x.g || '' }; }); done(m); }).catch(() => done({})).finally(() => { avLoading = false; });
+}
+const avInfo = (s, uid) => (avPeople || {})[uid] || null;
+const avOrder = () => { try { return localStorage.getItem('portalAvOrder') === 'group' ? 'group' : 'reg'; } catch (e) { return 'reg'; } };   // reg＝登録順（基本）、group＝現場管理者→グループ順。マスターの設定で切り替え（その端末だけ）
+const avList = s => (s.members || []).map(uid => { const i = avInfo(s, uid); return i && String(i.n || '').trim() ? { uid, n: i.n, g: gOf({ group: i.g }), none: false, mgr: (s.roles || {})[uid] === '現場管理者' } : null; }).filter(Boolean)
+  .sort((a, b) => avOrder() === 'reg' ? 0 : (b.mgr - a.mgr) || (G_LIST.indexOf(a.g) - G_LIST.indexOf(b.g)) || String(a.n).localeCompare(String(b.n), 'ja'));
+const avHtml = p => { const t = String(p.n || '').trim().split(/[\s\u3000]+/), a = Array.from(t[0] || '')[0] || '?', b = t[1] ? Array.from(t[1])[0] : '';
+  return '<span class="av" data-i18n-skip title="' + esc(p.n || '') + '" style="background:' + (p.none ? AV_NONE : AV_COLOR[p.g])[0] + '; color:' + (p.none ? AV_NONE : AV_COLOR[p.g])[1] + ';">' + esc(a) + (b ? '<small>' + esc(b) + '</small>' : '') + '</span>'; };
+const dtAv = s => { const l = avList(s); return l.length ? '<div style="display:flex; flex-wrap:wrap; gap:6px;">' + l.map(avHtml).join('') + '</div>' : '<div style="font-size:0.92rem;">' + (avPeople ? '未設定' : '読み込み中...') + '</div>'; };   // 現場詳細の担当者の丸
+const avRow = (s, max) => { const l = avList(s); return l.length ? '<div class="av-row">' + l.slice(0, max).map(avHtml).join('') + (l.length > max ? '<span class="av-more">+' + (l.length - max) + '</span>' : '') + '</div>' : ''; };
+const homeOf = g => (g === 'マルトク' || g === 'NAFA' || g === 'Other') ? g : 'エクスケア';   // 会社の家（エクスケア社員とエクスケアは同じ。Other はエクスケアとは別。2026-11-15 本番前の見直し）
+const sHome = u => homeOf(u.group);
 function sList() {
   const box = $('sBox');
   if (!box) return;
-  if (!sPeople.length) { box.innerHTML = '<div class="info-card" style="text-align:center; color:var(--muted);">登録者が存在しません。</div>'; return; }
-  const roles = sSite.roles || {};
-  box.innerHTML = sPeople.map(u => {
+  const roles = sSite.roles || {}, isIn = u => (sSite.members || []).includes(u.id);
+  const inList = sPeople.filter(isIn), addList = sPeople.filter(u => !isIn(u) && !u.isMaster && u.id !== me.uid);
+  if (!inList.length && !addList.length) { box.innerHTML = '<div class="info-card" style="text-align:center; color:var(--muted);">登録者が存在しません。</div>'; return; }
+  // グループごとに分けて出す（不具合報告 2026-11-13）。空欄のグループはエクスケアとして扱う（設定の画面と同じ）
+  const row = u => {
     const base = roles[u.id] || '担当なし', cur = sPending[u.id] !== undefined ? sPending[u.id] : base;
     const color = cur === '現場管理者' ? 'background:#111111; color:#ffffff;' : cur === '一般作業員' ? 'background:#e8f0fe; color:#1967d2;' : 'background:#f0f0f2; color:#333;';
-    const sel = '<select class="action-control-select" data-u="' + esc(u.id) + '" style="height:32px; font-size:0.8rem;">' + opts(me.isMaster ? ['担当なし', '一般作業員', '現場管理者'] : ['担当なし', '一般作業員'], cur) + '</select>';
-    return '<div class="info-card" style="display:flex; justify-content:space-between; align-items:center; padding:10px 14px; margin-bottom:0;"><div style="overflow:hidden; padding-right:8px;"><div style="font-weight:700; font-size:0.92rem; display:flex; align-items:center;"><span>' + esc(u.name || u.id) + '</span>' + (sHome(u) !== sHome(me) ? '<span style="font-size:0.72rem; font-weight:400; color:#555; margin-left:6px;">（' + esc(sHome(u)) + '）</span>' : '') + '<span style="font-size:0.7rem; font-weight:700; padding:2px 6px; border-radius:3px; margin-left:6px; ' + color + '">' + esc(cur) + '</span>' + (cur !== base ? '<span style="font-size:0.74rem; color:#b06000; font-weight:700; margin-left:4px;">[変更中]</span>' : '') + '</div><div style="font-size:0.75rem; color:var(--muted); margin-top:2px;">' + esc(u.id) + '</div></div><div style="flex-shrink:0;">' +
-      (!me.isMaster && base === '現場管理者' ? '<span style="font-size:0.8rem; font-weight:700; padding:4px 8px; background:#eee; border-radius:4px;">現場管理者</span>' : sel) + '</div></div>';
+    const sel = '<select class="action-control-select" data-u="' + esc(u.id) + '" style="height:32px; font-size:0.8rem; width:112px; min-width:112px; flex:0 0 112px;">' + opts(me.isMaster ? ['担当なし', '一般作業員', '現場管理者'] : ['担当なし', '一般作業員'], cur) + '</select>';
+    const tag = (t, st, cls) => '<span' + (cls ? ' class="' + cls + '"' : '') + ' style="font-size:0.72rem; font-weight:700; padding:2px 6px; border-radius:3px; white-space:nowrap; flex:0 0 auto; ' + st + '">' + t + '</span>';
+    // 1段目：名前｜札（新規現場追加者・現場管理者・一般作業員・担当なし）｜選択窓。2段目：携帯｜Google。折り返さない。ログインのメールは出さない（2026-11-14 ユーザー指示）
+    // スマホの幅では、選択窓と同じ言葉になる札（s-roletag）は出さない（1段に入りきらないため）。マスターでない人が現場管理者を見る行は選択窓が無いので札を残す
+    const noSel = (!me.isMaster && base === '現場管理者') || u.isMaster === true || u.id === me.uid;   // 自分とマスターは名前と札だけ（ここでは変えない）
+    const em = isManagerOf(sSite) && isIn(u);   // 緊急連絡先：担当に入っている人の行だけ。その現場の現場管理者とマスターに出す（ルールでも断る）
+    return '<div class="info-card" style="padding:10px 14px; margin-bottom:0;">' +
+      '<div style="display:flex; align-items:center; gap:6px;"><div style="flex:1 1 auto; min-width:0; font-weight:700; font-size:0.92rem; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" data-i18n-skip>' + esc(u.name || u.id) + '</div>' +
+        tag(esc(cur), color, noSel ? '' : 's-roletag') + (cur !== base ? '<span style="font-size:0.74rem; color:#b06000; font-weight:700; white-space:nowrap; flex:0 0 auto;">[変更中]</span>' : '') + (noSel ? '' : sel) + '</div>' +
+      // 2段目：携帯（押すと電話）｜新規現場追加者
+      (u.mobile || u.canAddSite === true ? '<div style="display:flex; align-items:center; gap:6px; margin-top:4px; font-size:0.8rem;">' +
+        (u.mobile ? '<div style="flex:0 0 auto; white-space:nowrap;"><span style="font-size:0.68rem; font-weight:700; background:#eee; color:#333; padding:0 4px; border-radius:2px; margin-right:4px;">携帯</span><a href="tel:' + esc(String(u.mobile).replace(/[^0-9+]/g, '')) + '" style="color:var(--link-blue); text-decoration:underline;">' + esc(u.mobile) + '</a></div>' : '') +
+        (u.canAddSite === true ? '<span style="flex:0 0 auto; font-size:0.68rem; font-weight:700; background:#eee; color:#333; padding:0 4px; border-radius:2px; white-space:nowrap;">新規現場追加者</span>' : '') +
+        '</div>' : '') +
+      // 3段目：Google アカウント（全部出す。押すとコピー）
+      (u.google ? '<div style="display:flex; align-items:center; gap:8px; margin-top:4px; font-size:0.8rem;"><div style="flex:0 1 auto; min-width:0; overflow-wrap:anywhere; user-select:all; -webkit-user-select:all;"><span style="user-select:none; -webkit-user-select:none; font-size:0.68rem; font-weight:700; background:#eee; color:#333; padding:0 4px; border-radius:2px; margin-right:4px;">Google</span>' + esc(u.google) + '</div><button type="button" data-copy="' + esc(u.google) + '" style="font-size:0.72rem; font-weight:700; padding:2px 8px; border-radius:3px; border:1px solid #333; background:#fff; color:#111; cursor:pointer; white-space:nowrap; flex:0 0 auto;">コピー</button></div>' : '') +
+      // 4段目：緊急連絡先のボタン（Google の下。2026-11-14 ユーザー指示）
+      (em ? '<div style="margin-top:4px;"><button type="button" data-em="' + esc(u.id) + '" style="font-size:0.72rem; font-weight:700; padding:2px 5px; border-radius:3px; border:1px solid #333; background:#fff; color:#111; cursor:pointer; white-space:nowrap; flex:0 0 auto;">緊急連絡先 ' + (sEm[u.id] ? '▲' : '▼') + '</button></div>' : '') +
+      (em && sEm[u.id] ? '<div style="margin-top:6px; padding:8px 10px; border:2px solid #b71c1c; border-radius:4px; background:#fff5f5; font-size:0.88rem;">' + (sEm[u.id] === 'load' ? '読み込んでいます…' : sEm[u.id] === 'none' ? '緊急連絡先の登録がありません。' : sEm[u.id] === 'err' ? '読み込めませんでした（電波がないか、権限がありません）。' :
+        '<div style="font-size:0.72rem; font-weight:700; color:#b71c1c;">緊急連絡先</div><div style="display:flex; flex-wrap:wrap; align-items:center; gap:4px 12px; margin-top:2px;"><span style="font-weight:700;" data-i18n-skip>' + esc(sEm[u.id].name || '（氏名なし）') + '</span>' + (sEm[u.id].tel ? '<a href="tel:' + esc(String(sEm[u.id].tel).replace(/[^0-9+]/g, '')) + '" style="color:var(--link-blue); text-decoration:underline; font-weight:700;">' + esc(sEm[u.id].tel) + '</a>' : '<span>（電話番号なし）</span>') + '</div>') + '</div>' : '') +
+      '</div>';
+  };
+  // グループごとに：見出し → 担当者 → 一番下に点線の枠（そのグループの「担当を追加」。押すと、まだ入っていない人がその場に開く）
+  box.innerHTML = G_LIST.map(g => {
+    const l = inList.filter(u => gOf(u) === g), c = addList.filter(u => gOf(u) === g);
+    if (!l.length && !c.length) return '';
+    return gHead(g, l.length) + l.map(row).join('') + (c.length ? '<div style="border:2px dashed #9e9e9e; border-radius:6px; padding:10px; display:flex; flex-direction:column; gap:8px;">' +
+      '<button type="button" data-add="' + esc(g) + '" class="btn btn-sub" style="width:100%; font-weight:700;"><span>' + (sAdd[g] ? '▲ 閉じる' : '＋ 担当を追加') + '</span></button>' +
+      (sAdd[g] ? c.map(row).join('') : '') + '</div>' : '');
   }).join('');
+  box.querySelectorAll('[data-add]').forEach(b => { b.onclick = () => { sAdd[b.dataset.add] = !sAdd[b.dataset.add]; sList(); }; });
   box.querySelectorAll('select').forEach(e => { e.onchange = () => { sPending[e.dataset.u] = e.value; sList(); }; });
+  box.querySelectorAll('[data-copy]').forEach(b => { b.onclick = async () => { try { await navigator.clipboard.writeText(b.dataset.copy); b.textContent = 'コピーしました'; } catch (e) { b.textContent = 'コピーできません'; } setTimeout(() => { b.textContent = 'コピー'; }, 1500); }; });
+  box.querySelectorAll('[data-em]').forEach(b => { b.onclick = async () => {
+    const id = b.dataset.em;
+    if (sEm[id]) { delete sEm[id]; sList(); return; }
+    sEm[id] = 'load'; sList();
+    try { const d = await getDoc(doc(db, 'emergency', id)); if (sEm[id] === 'load') sEm[id] = d.exists() ? { name: d.data().name || '', tel: d.data().tel || '' } : 'none'; }
+    catch (e) { if (sEm[id] === 'load') sEm[id] = 'err'; }
+    sList();
+  }; });
 }
 function sSubmit() {
   const ids = Object.keys(sPending).filter(k => sPending[k] !== ((sSite.roles || {})[k] || '担当なし'));
@@ -898,8 +1035,9 @@ function sSubmit() {
   let members = (sSite.members || []).slice(), managers = (sSite.managers || []).slice();
   ids.forEach(u => {
     const r = sPending[u];
-    members = members.filter(x => x !== u); managers = managers.filter(x => x !== u); delete roles[u];
-    if (r !== '担当なし') { members.push(u); roles[u] = r; if (r === '現場管理者') managers.push(u); }
+    managers = managers.filter(x => x !== u); delete roles[u];
+    if (r === '担当なし') members = members.filter(x => x !== u);
+    else { if (!members.includes(u)) members.push(u); roles[u] = r; if (r === '現場管理者') managers.push(u); }
   });
   const data = { members, roles };
   if (me.isMaster) data.managers = managers;
@@ -937,7 +1075,7 @@ function rOpen(s) {
 function rForm() {
   const box = $('rForm');
   if (box.innerHTML) { box.innerHTML = ''; return; }
-  const att = (id, label, btn, accept) => '<div class="form-group"><label>' + label + '</label><input type="file" id="' + id + 'F" style="display:none;"' + (accept ? ' accept="' + accept + '"' : '') + '><button type="button" class="btn btn-sub" id="' + id + 'B" style="width: 100%;">' + btn + '</button><div id="' + id + 'N" style="font-size: 0.75rem; color: var(--muted); margin-top: 4px;"></div><div id="' + id + 'W" style="display:none;"><label style="margin-top: 8px;">保存先フォルダ <span class="req">*</span></label><select id="' + id + 'S"></select></div></div>';
+  const att = (id, label, btn, accept) => '<div class="form-group"><label>' + label + '</label><input type="file" id="' + id + 'F" style="display:none;"' + (accept ? ' accept="' + accept + '"' : '') + '><button type="button" class="btn btn-sub" id="' + id + 'B" style="width: 100%;">' + btn + '</button><div class="drop-hint pc-only">ここにファイルをドラッグ＆ドロップしても追加できます</div><div id="' + id + 'N" style="font-size: 0.75rem; color: var(--muted); margin-top: 4px;"></div><div id="' + id + 'W" style="display:none;"><label style="margin-top: 8px;">保存先フォルダ <span class="req">*</span></label><select id="' + id + 'S"></select></div></div>';
   box.innerHTML = '<div class="info-card" style="border-color: var(--primary);"><div class="card-header-row"><span style="font-weight: 700; font-size: 0.95rem;">📝 新規報告入力</span><button type="button" class="btn btn-sub" id="rClose" style="padding: 2px 8px; font-size: 0.75rem;">✕ 閉じる</button></div>' +
     '<div class="form-group"><label>報告属性 <span class="req">*</span></label><select id="rCat">' + opts(R_CATS, '打合報告') + '</select></div>' +
     '<div class="form-group"><label>報告内容 <span class="req">*</span></label><textarea id="rText" class="auto-expand" placeholder="本日の作業内容や報告事項を入力してください" style="min-height: 90px;"></textarea></div>' +
@@ -948,6 +1086,7 @@ function rForm() {
   $('rClose').onclick = close; $('rCancel2').onclick = close;
   const pick = (id, kind) => {
     $(id + 'B').onclick = () => $(id + 'F').click();
+    dropOn($(id + 'B').parentNode, files => { if (kind === 'photo') files = onlyImages(files); if (files.length) putFiles($(id + 'F'), [files[0]]); });
     $(id + 'F').onchange = () => {
       const f = $(id + 'F').files[0];
       // 写真は送る前に小さな見本を出す（2026-11-05 運用テスト No.4）
@@ -1041,12 +1180,16 @@ function xOpen(s, kind) {
 function xShell() {
   const k = X.kind, L = xLabel(k);
   $('xRoot').innerHTML =
-    '<div style="margin-bottom: 12px; display: flex; gap: 8px; align-items: center;"><button type="button" id="xAdd" class="btn btn-dark" style="flex: 1;">＋ ' + L + 'を追加</button></div>' +
+    '<div class="touch-only" style="margin-bottom: 12px; display: flex; gap: 8px; align-items: center;"><button type="button" id="xAdd" class="btn btn-dark" style="flex: 1;">＋ ' + L + 'を追加</button></div>' +
+    '<div class="drop-box pc-only"><div class="drop-box-t">' + L + 'をここにドラッグ＆ドロップしてください</div>' +
+      '<div class="drop-box-or"><span>または</span><button type="button" id="xAdd2" class="btn btn-dark">ファイルを選択する</button></div>' +
+      '<div class="drop-box-to" id="xTo"></div></div>' +
     '<input type="file" id="xFile" multiple style="display:none;"' + (k === 'photo' ? ' accept="image/*"' : '') + '>' +
     '<div class="tree-graph-container" style="background: #f9f9fa; border: 1px solid var(--border); border-radius: 6px; padding: 12px; margin-bottom: 12px;">' +
       '<div class="folder-tool-row">' +
-        '<button type="button" id="xFAdd" class="btn btn-sub">📁 <span class="lbl-long">フォルダを追加</span><span class="lbl-short">フォルダ追加</span></button>' +
-        '<button type="button" id="xFMove" class="btn btn-sub">📁 <span class="lbl-long">フォルダの移動</span><span class="lbl-short">フォルダ移動</span></button>' +
+        '<button type="button" id="xFAdd" class="btn btn-sub">📁 <span class="lbl-long">フォルダを追加</span><span class="lbl-short">追加</span></button>' +
+        '<button type="button" id="xFMove" class="btn btn-sub">📁 <span class="lbl-long">フォルダの移動</span><span class="lbl-short">移動</span></button>' +
+        '<button type="button" id="xFRen" class="btn btn-sub">✏️ <span class="lbl-long">フォルダ名の変更</span><span class="lbl-short">名前変更</span></button>' +
         '<button type="button" id="xFDel" class="btn btn-sub btn-del del-admin">🗑️ <span class="lbl-long">選択中のフォルダの削除</span><span class="lbl-short">選択削除</span></button>' +
       '</div><div id="xTree" class="tree-graph-scroll" style="overflow-x: auto; padding-bottom: 6px;"></div></div>' +
     '<div id="xBulk" class="bulk-action-bar" style="display: none;"><span id="xCount" style="font-weight: 700; font-size: 0.8rem; white-space: nowrap;">0件選択中</span>' +
@@ -1065,7 +1208,8 @@ function xShell() {
   $('xMode').value = X.mode[k]; $('xSort').value = X.sort;
   $('xMode').onchange = () => { X.mode[X.kind] = $('xMode').value; xList(); };
   $('xSort').onchange = () => { X.sort = $('xSort').value; xList(); };
-  $('xAdd').onclick = xAdd;
+  $('xAdd').onclick = xAdd; $('xAdd2').onclick = xAdd;
+  dropOn($('xRoot'), (files, e) => { const b = e.target.closest && e.target.closest('.tree-node-btn'); xDrop(files, b ? b.dataset.f : X.active[X.kind]); });
   $('xFile').onchange = e => { const fs = [...e.target.files]; e.target.value = ''; if (fs.length) xUpload(X.kind, X.pending, fs); };
   $('xFAdd').onclick = async () => {
     const name = ((await uiPrompt('「' + xNameOf(X.active[X.kind]) + '」内に作成するフォルダ名を入力してください:')) || '').trim();
@@ -1079,6 +1223,17 @@ function xShell() {
     const b = writeBatch(db);
     X.selF.forEach(id => b.update(doc(xSub('folders'), id), { parent: to }));
     fire(b.commit(), 'フォルダの移動'); X.selF.clear();
+  };
+  // フォルダ名の変更（2026-11-15 ユーザー指示）。変えられるのは削除と同じ人だけ。中の写真・資料と、報告の添付はそのまま
+  $('xFRen').onclick = async () => {
+    if (X.selF.size !== 1) { uiAlert(X.selF.size ? '名前を変えるフォルダは、1つだけチェックを入れてください。' : '名前を変えるフォルダにチェックを入れてください。'); return; }
+    const id = [...X.selF][0], f = X.folders.find(x => x.id === id);
+    if (!f) return;
+    if (!xMayRemove(f)) { uiAlert('フォルダ名を変えられるのは、マスター・現場管理者、または自分が作ったフォルダだけです。'); return; }   // 削除と同じ人だけ（2026-11-15 ユーザー決定）
+    const name = ((await uiPrompt('新しいフォルダ名を入力してください:', f.name)) || '').trim();
+    if (!name || name === f.name) return;
+    fire(updateDoc(doc(xSub('folders'), id), { name }), 'フォルダ名「' + name + '」');
+    f.name = name; X.selF.clear(); xRender();
   };
   $('xFDel').onclick = async () => {
     if (!X.selF.size) { uiAlert('削除するフォルダにチェックを入れてください。'); return; }
@@ -1120,6 +1275,7 @@ function xRender() {
       (kids.length ? '<div class="tree-children-col">' + kids.map(c => '<div class="tree-child-row">' + node(c.id, false) + '</div>').join('') + '</div>' : '') + '</div>';
   };
   $('xTree').innerHTML = node('', true);
+  if ($('xTo')) $('xTo').textContent = X.active[X.kind] ? '入れる先：「' + xNameOf(X.active[X.kind]) + '」（下のフォルダを押すと変わります。フォルダの名前の上に落とすと、そのフォルダに入ります）' : '入れる先：まだ選んでいません（下のフォルダを押して選びます。選ばずに落としたときは、保存先を聞きます）';
   $('xTree').querySelectorAll('.tree-node-btn').forEach(b => { b.onclick = () => { X.active[X.kind] = b.dataset.f; X.sel.clear(); xRender(); }; });
   $('xTree').querySelectorAll('.tree-node-check').forEach(c => {
     c.onclick = e => e.stopPropagation();
@@ -1138,7 +1294,7 @@ function xList() {
   box.style.flexDirection = 'column'; box.style.gap = mode === 'textonly' ? '6px' : '';
   if (!items.length) {
     const sub = xKids(X.active[kind]).length;
-    box.innerHTML = '<div class="info-card" style="grid-column: 1/-1; width:100%; text-align:center; color:var(--muted);">' + (sub ? 'このフォルダ直下には' + L + 'がありません（サブフォルダを選択してください）。' : L + 'がありません。「' + L + 'を追加」から保存してください。') + '</div>';
+    box.innerHTML = '<div class="info-card" style="grid-column: 1/-1; width:100%; text-align:center; color:var(--muted);">' + (sub ? 'このフォルダ直下には' + L + 'がありません（サブフォルダを選択してください）。' : L + 'がありません。上から追加してください。') + '</div>';
     return;
   }
   const state = it => it.failed ? '<span style="color:var(--error-text); font-size:0.74rem;"> 送信できませんでした</span>' : it.uploading ? '<span style="color:var(--muted); font-size:0.74rem;"> 未送信</span>' : '';
@@ -1440,6 +1596,16 @@ async function xAdd() {
   X.pending = to;
   $('xFile').click();
 }
+async function xDrop(files, to) {
+  if (X.kind === 'photo') files = onlyImages(files);
+  if (!files.length) return;
+  if (!to) {
+    to = await xPick(xLabel(X.kind) + 'TOPには直接追加できません。保存先を選んでください', false, true);
+    if (to === null) return;
+  }
+  X.active[X.kind] = to; xRender();
+  xUpload(X.kind, to, files);
+}
 async function xMove(ids) {
   if (!ids.length) return;
   const from = [...new Set(xFiles().filter(f => ids.includes(f.id)).map(f => f.folder || ''))];
@@ -1466,7 +1632,7 @@ async function xRemove(ids) {
 /* 追加：写真は今の現場管理と同じく 1600px・画質 0.8 に縮める。一覧用の見本画像（長い辺 240px）は Firestore に入れる */
 function xPrepare(file, kind) {
   return new Promise(ok => {
-    const raw = () => { const r = new FileReader(); r.onload = () => ok({ name: file.name, mime: file.type || 'application/octet-stream', data: String(r.result).split(',')[1], thumb: '' }); r.readAsDataURL(file); };
+    const raw = () => { const r = new FileReader(); r.onerror = () => ok(null); r.onload = () => ok({ name: file.name, mime: file.type || 'application/octet-stream', data: String(r.result).split(',')[1], thumb: '' }); r.readAsDataURL(file); };
     // 資料は元のまま送る（今の現場管理と同じ）。縮めるのは写真だけ
     if (kind !== 'photo' || !/^image\/(jpeg|png|webp|heic)/i.test(file.type || '')) return raw();
     const url = URL.createObjectURL(file), img = new Image();
@@ -1490,8 +1656,10 @@ async function xUpload(kind, folder, files, quiet) {
   let lastId = '', names = [];
   const over = [...files].filter(f => f.size > UP_MAX);
   if (over.length) uiAlert('1つ200MBを超えるファイルは追加できません：\n' + over.map(f => '・' + f.name + '（' + Math.round(f.size / 1048576) + 'MB）').join('\n'));
+  const ng = [];
   for (const file of [...files].filter(f => f.size <= UP_MAX)) {
     const p = await xPrepare(file, kind);
+    if (!p) { ng.push(file.name); continue; }   // フォルダなど、読めないものは飛ばす
     const ref = doc(xSub('files')), siteId = X.s.id;
     const blob = new Blob([Uint8Array.from(atob(p.data), c => c.charCodeAt(0))], { type: p.mime });
     // 先に端末へ貯める（画面を閉じても電波がなくても消えない）。一覧には押した瞬間に出る
@@ -1500,6 +1668,7 @@ async function xUpload(kind, folder, files, quiet) {
     upPump();
     lastId = ref.id; names.push(p.name);
   }
+  if (ng.length) uiAlert('次のものは追加できませんでした（フォルダは、中のファイルを選んで落としてください）：\n' + ng.map(n => '・' + n).join('\n'));
   if (!quiet && names.length) { const k = X.kind; X.kind = kind; const f = xNameOf(folder); X.kind = k; notify(X.s, kind, '「' + f + '」に' + xLabel(kind) + 'を追加：' + clip(names.join('、'), 60) + (names.length > 1 ? '（' + names.length + '件）' : '')); }
   return lastId;
 }
@@ -1556,7 +1725,7 @@ function showSiteForm(s) {
   const date = (id, val, label) => '<div class="form-group"><label>' + label + '</label><div class="date-pick"><input type="date" id="' + id + '" class="date-input" value="' + val + '"><button type="button" class="btn btn-sub" data-clear="' + id + '">未定</button></div></div>';
   const exist = n => { const u = v['imageUrl' + n]; return u ? '登録済: <a href="' + esc(u) + '" target="_blank" rel="noopener noreferrer">画像を確認</a>' : v['imageThumb' + n] ? '登録済（送信待ち）' : ''; };
   const pic = n => '<div class="form-group"><label>外観画像' + n + '</label><input type="file" id="fImg' + n + '" accept="image/*" style="display:none;">' +
-    '<button type="button" class="btn btn-sub" id="fImgB' + n + '" style="width: 100%;">📷 写真を撮影 / 端末から選択</button>' +
+    '<button type="button" class="btn btn-sub" id="fImgB' + n + '" style="width: 100%;">📷 写真を撮影 / 端末から選択</button><div class="drop-hint pc-only">ここに画像をドラッグ＆ドロップしても追加できます</div>' +
     '<div id="fImgW' + n + '" style="display:none; margin-top:8px; text-align:center;"><img id="fImgP' + n + '" alt="" style="max-height:160px; border-radius:4px;"><br><button type="button" class="btn btn-sub" id="fImgC' + n + '" style="margin-top:4px;">✕ 選択解除</button></div>' +
     '<div id="fImgI' + n + '" style="font-size:0.75rem; color:var(--muted); margin-top:4px;">' + exist(n) + '</div></div>';
   show('panelNewSite', isNew ? '現場新規追加' : '現場情報編集', isNew ? showList : () => showDetail(s.id), isNew ? '← 現場選択へ' : '← 戻る');
@@ -1569,15 +1738,31 @@ function showSiteForm(s) {
       '<div class="form-group"><label>案件フロー</label><select id="f_flow">' + opts(FLOWS, v.flow || '作業前') + '</select></div></div>' +
     '<div class="info-card"><div class="card-header-row"><span style="font-weight: 700;">📅 工期</span></div>' + date('f_start', toIso(v.startDate), '工期 着手') + date('f_end', toIso(v.endDate), '工期 完成') + '</div>' +
     '<div class="info-card"><div class="card-header-row"><span style="font-weight: 700;">👤 担当者情報</span></div>' +
-      '<div class="grid-two-col form-group"><div><label>EXD案件担当者</label>' + inp('exdChargeName', '姓名') + '</div><div><label>連絡先</label>' + inp('exdChargeTel', '09012345678', 'tel') + '</div></div>' +
+      '<div class="grid-two-col form-group"><div><label>EXD案件担当者</label><select id="f_exdChargeName"><option value="">未設定</option>' + (v.exdChargeName ? '<option value="' + esc(v.exdChargeName) + '" selected>' + esc(v.exdChargeName) + '</option>' : '') + '</select>' +
+        '<div id="exdNote" style="font-size:0.75rem; color:var(--muted); margin-top:4px;">担当に入っているEXD社員から選びます（読み込み中）</div></div><div><label>連絡先</label>' + inp('exdChargeTel', '09012345678', 'tel') + '</div></div>' +
       staff('現場代理人', 'agent') + staff('現場担当者1', 'siteStaff1') + staff('現場担当者2', 'siteStaff2') + '</div>' +
     '<div class="info-card"><div class="card-header-row"><span style="font-weight: 700;">⚠️ 施工ルール・注意事項</span></div>' + ruleFields(v, false) + '</div>' +
     '<div class="info-card"><div class="card-header-row"><span style="font-weight: 700;">📷 外観画像</span></div>' + pic(1) + pic(2) +
       '<div class="form-group"><label>備考</label><textarea id="f_notes" class="auto-expand" placeholder="補足事項等">' + esc(v.notes) + '</textarea></div></div>' +
-    '<div style="margin-top: 16px; margin-bottom: 30px; display: flex; flex-direction: column; gap: 8px;">' +
+    '<div class="form-foot">' +
       '<button type="button" id="save" class="btn btn-dark">' + (isNew ? 'この内容で現場を登録' : 'この内容で現場情報を編集する') + '</button>' +
       '<button type="button" id="cancelForm" class="btn btn-sub">キャンセルして戻る</button><div id="err" style="font-size:0.85rem;"></div></div>';
   autoGrow($('panelNewSite'));
+  // EXD案件担当者の候補：この現場の担当者のうち、グループが EXD社員 の人（2026-11-15 ユーザー指示）。選ぶと携帯番号を連絡先に入れる
+  (async () => {
+    const ids = isNew ? [me.uid] : (s.members || []);
+    const got = await Promise.allSettled(ids.map(id => getDoc(doc(db, 'users', id)).then(d => d.exists() ? d.data() : null)));
+    const exd = got.map(g => g.status === 'fulfilled' ? g.value : null).filter(u => u && u.group === 'エクスケア社員' && u.name);
+    const sel = $('f_exdChargeName');
+    if (!sel) return;
+    const cur = sel.value, tel = {};
+    exd.forEach(u => { tel[u.name] = u.mobile || ''; });
+    const names = exd.map(u => u.name);
+    if (cur && !names.includes(cur)) names.push(cur);   // 前から入っている名前（担当に入っていない人）も残す
+    sel.innerHTML = '<option value="">未設定</option>' + names.map(n => '<option value="' + esc(n) + '"' + (n === cur ? ' selected' : '') + '>' + esc(n) + (n in tel ? '' : '（担当に入っていません）') + '</option>').join('');
+    $('exdNote').textContent = exd.length ? '担当に入っているEXD社員から選びます。選ぶと携帯番号が連絡先に入ります。' : '担当に入っているEXD社員がいません。先に「担当」タブで付けてください。';
+    sel.onchange = () => { $('f_exdChargeTel').value = sel.value ? (tel[sel.value] || '') : ''; };
+  })().catch(() => { if ($('exdNote')) $('exdNote').textContent = '担当者を読み込めませんでした（電波がないか、権限がありません）。'; });
   $('panelNewSite').querySelectorAll('[data-clear]').forEach(b => { b.onclick = () => { $(b.dataset.clear).value = ''; }; });
   $('cancelForm').onclick = () => backTo();
   const pics = {};
@@ -1585,6 +1770,7 @@ function showSiteForm(s) {
   [1, 2].forEach(n => {
     const clear = () => { $('fImg' + n).value = ''; $('fImgP' + n).src = ''; $('fImgW' + n).style.display = 'none'; $('fImgI' + n).innerHTML = exist(n); delete pics[n]; };
     $('fImgB' + n).onclick = () => $('fImg' + n).click();
+    dropOn($('fImgB' + n).parentNode, files => { files = onlyImages(files); if (files.length) putFiles($('fImg' + n), [files[0]]); });
     $('fImgC' + n).onclick = clear;
     $('fImg' + n).onchange = async () => {
       const f = $('fImg' + n).files[0];
@@ -1732,7 +1918,7 @@ function oHost(s, k) {
   const fns = {
     async getOrdererInfo() {
       const u = await oRead(() => getDoc(doc(db, 'users', me.uid)), () => getDocFromCache(doc(db, 'users', me.uid))).catch(() => null);
-      const x = (u && u.data()) || {}, home = me.group === 'マルトク' || me.group === 'NAFA' ? me.group : 'エクスケア', c = doc(db, 'companies', home);
+      const x = (u && u.data()) || {}, home = homeOf(me.group), c = doc(db, 'companies', home);
       const co = await oRead(() => getDoc(c), () => getDocFromCache(c)).catch(() => null);
       return { orderer: { name: me.name, mobile: x.mobile || '', google: x.google || '', group: home, company: co && co.exists() ? co.data() : { name: '', addr: '', tel: '', fax: '', logo: '', addrs: [] } } };
     },
@@ -2164,11 +2350,11 @@ function dRender() {
     if (e) {
       if (e.kubun === '出勤' || isHalf(e.kubun)) {
         const sub = [];
-        if (e.ot) sub.push('時間外 ' + e.ot + '時間');
+        if (e.ot) sub.push('<span>時間外 ' + e.ot + '時間</span>');
         if (e.early) sub.push('<span class="ds-missing">早退 ' + e.early + '時間</span>');
-        if (e.night) sub.push('🌙夜間作業');
-        if (e.site) sub.push(esc(e.site));
-        if (isHalf(e.kubun)) sub.unshift('<b>' + esc(e.kubun) + '</b>' + (e.leave ? '（' + esc(e.leave === '承認' ? '承認済み' : e.leave) + '）' : ''));
+        if (e.night) sub.push('<span>🌙夜間作業</span>');
+        if (e.site) sub.push('<span data-i18n-skip>' + esc(e.site) + '</span>');
+        if (isHalf(e.kubun)) sub.unshift('<b>' + esc(e.kubun) + '</b>' + (e.leave ? '<span>（' + esc(e.leave === '承認' ? '承認済み' : e.leave) + '）</span>' : ''));
         body = '<div>' + hm(+e.start) + '〜' + hm(+e.end) + '</div>' + (sub.length ? '<div class="dl-sub">' + sub.join(' · ') + '</div>' : '');
       } else body = '<b>' + esc(e.kubun) + '</b>' + (e.kubun === '有給' && e.leave ? ' <span' + (e.leave === '却下' ? ' class="ds-missing"' : '') + '>（' + esc(e.leave === '承認' ? '承認済み' : e.leave) + '）</span>' : '');
     } else if (d.type === '平日' && d.date <= today) body = '<span class="dl-miss">未入力</span>';
@@ -2606,7 +2792,7 @@ function hTeamDraw() {
       detail = '<div class="hl-detail">' + (kv.length ? '<dl class="hl-kv">' + kv.map(a => '<dt>' + esc(a[0]) + '</dt><dd>' + esc(a[1]) + '</dd>').join('') + '</dl>' : '') +
         (ph && ph.list ? '<div style="margin-top: 8px;">' + (ph.list.length ? hRows(ph.list) : 'まだ記録はありません。') + '</div>' : '<div class="hl-tact"><button type="button" class="btn btn-sub" data-more="' + esc(x.uid) + '"' + (ph ? ' disabled' : '') + '>' + (ph ? '読み込んでいます...' : '最近の記録を見る') + '</button></div>') + '</div>';
     }
-    return '<div class="hl-trow"><div class="hl-thead" data-p="' + esc(x.uid) + '">' + hBadge(r ? r.level : '') + '<div class="hl-tname"><span>' + esc(x.name) + '</span>' + (x.company ? '<small>' + esc(x.company) + '</small>' : '') + (r ? '<div class="dl-sub">' + esc(r.time + ' · ' + hBp(r)) + ((r.reasons || []).length ? ' · ' + esc(r.reasons.join('、')) : '') + '</div>' : '') + '</div><span style="color: var(--muted);">' + (open ? '▲' : '▼') + '</span></div>' +
+    return '<div class="hl-trow"><div class="hl-thead" data-p="' + esc(x.uid) + '">' + hBadge(r ? r.level : '') + '<div class="hl-tname"><span>' + esc(x.name) + '</span>' + (x.company ? '<small>' + esc(gLabel(x.company)) + '</small>' : '') + (r ? '<div class="dl-sub">' + esc(r.time + ' · ' + hBp(r)) + ((r.reasons || []).length ? ' · ' + esc(r.reasons.join('、')) : '') + '</div>' : '') + '</div><span style="color: var(--muted);">' + (open ? '▲' : '▼') + '</span></div>' +
       (act ? '<div class="hl-tact">' + act + '</div>' : '') + detail + (r ? hCmHtml(r.id) : '') + '</div>';
   }).join('');
   box.querySelectorAll('[data-p]').forEach(b => { b.onclick = () => { H.open[b.dataset.p] = !H.open[b.dataset.p]; hTeamDraw(); }; });
@@ -2919,14 +3105,19 @@ async function setOpen() {
     '<button type="button" id="pfSave" class="btn btn-dark" style="margin-top: 14px;">お知らせ通知設定を保存</button></div>' +
     '<div class="info-card"><div class="card-header-row"><span style="font-weight: 700;">👤 アカウント設定</span></div>' +
     '<div class="form-group"><label>名前</label><div style="font-weight:700;">' + esc(u.name || me.name || '') + '</div></div><div class="form-group"><label>アカウントID</label><div>' + esc(me.uid) + '</div></div>' +
-    '<div class="form-group"><label>グループ（マスターが決めます）</label><div style="font-weight:700;">' + esc(u.group || 'エクスケア') + '</div></div>' +
+    '<div class="form-group"><label>グループ（マスターが決めます）</label><div style="font-weight:700;">' + esc(gLabel(u.group || 'エクスケア')) + '</div></div>' +
     '<div class="form-group"><label for="acMb">携帯番号（伝票・注文書の注文者の欄に出ます）</label><input type="tel" id="acMb" value="' + esc(u.mobile) + '" placeholder="例: 090-1234-5678" inputmode="tel"></div>' +
     '<div class="form-group"><label for="acGo">googleアカウント</label><input type="text" id="acGo" value="' + esc(u.google) + '" placeholder="例: taro@gmail.com" autocomplete="off"></div>' +
     '<button type="button" id="acSave" class="btn btn-dark">アカウント設定を保存</button><button type="button" id="acPass" class="btn btn-sub" style="margin-top: 8px; width: 100%;">パスワードを変える（メールでご案内します）</button><div id="acMsg" class="set-note"></div></div>' +
     '<div class="info-card"><div class="card-header-row"><span style="font-weight: 700;">🛠 不具合の報告</span></div><button type="button" id="bugGo" class="btn btn-dark">不具合を報告する</button><div class="set-note">おかしな所を見つけたら、説明と画面の写真を送ってください。</div>' +
     (me.isMaster ? '<div class="set-sub-title">マスター</div><label class="switch-row"><span>各画面に不具合修正ボタンを出す（テスト運用の間）</span><input type="checkbox" id="bugSw"' + (bugShow ? ' checked' : '') + '></label><button type="button" id="bugAll" class="btn btn-outline" style="margin-top: 8px;">不具合報告の一覧</button>' : '') + '</div>' +
-    (me.isMaster ? '<div class="info-card"><button type="button" id="goUsers" class="btn btn-outline">人の管理</button></div>' : '');
+    (me.isMaster ? '<div class="info-card"><button type="button" id="goUsers" class="btn btn-outline">人の管理</button></div>' +
+      '<div class="info-card"><div style="font-weight:700; margin-bottom:8px;">担当者の丸の並び（マスターだけ・この端末だけ）</div>' +
+      '<label class="check-row"><input type="radio" name="avOrd" value="reg"' + (avOrder() === 'reg' ? ' checked' : '') + '>登録順（担当に付けた順）</label>' +
+      '<label class="check-row"><input type="radio" name="avOrd" value="group"' + (avOrder() === 'group' ? ' checked' : '') + '>現場管理者 → グループ順</label>' +
+      '<div class="set-note">見比べるための切り替えです。ほかの人の画面は登録順のままです。</div></div>' : '');
   pushWire('setPush');
+  document.querySelectorAll('input[name="avOrd"]').forEach(r => { r.onchange = () => { try { localStorage.setItem('portalAvOrder', r.value); } catch (e) {} }; });
   updateLangButtons();
   $('verBtn').onclick = async () => {
     $('verBtn').textContent = '入れ替えています…';
@@ -3069,6 +3260,10 @@ async function langSync() {
     else if (!l && portalLang() !== 'ja') fire(setDoc(pushRef(), { prefs: { lang: portalLang() } }, { merge: true }), '表示言語');
   } catch (e) {}
 }
+// 人の管理の1行。名前の横に、その人に付いている権限を札で出す（2026-11-14 ユーザー指示）
+const U_TAGS = [['isMaster', 'マスター'], ['canAddSite', '新規現場追加者'], ['canDaily', '日報'], ['isSenior', '60歳以上'], ['canPayroll', '給与管理'], ['canInvoice', '請求管理']];
+const uRow = u => '<button type="button" class="site-card-btn" data-id="' + esc(u.id) + '" style="margin-top:8px; display:flex; justify-content:space-between; align-items:center; gap:8px; text-align:left;"><div style="min-width:0; overflow:hidden; flex:1 1 auto;"><div style="font-size:1.02rem; font-weight:700;" data-i18n-skip>' + esc(u.name || u.id) + '</div><div style="font-size:0.8rem; color:var(--muted);">' + esc(u.id) + '</div></div>' +
+  '<div style="display:flex; flex-wrap:wrap; justify-content:flex-end; align-items:center; gap:4px 6px; flex:0 1 auto;">' + U_TAGS.filter(t => u[t[0]] === true).map(t => '<span style="font-size:0.74rem; font-weight:700; padding:1px 7px; border-radius:3px; border:1px solid #333; white-space:nowrap; ' + (t[0] === 'isMaster' ? 'background:#111; color:#fff;' : 'background:#fff; color:#111;') + '">' + t[1] + '</span>').join('') + '</div></button>';
 async function showUsers(note) {
   stopWatch();
   show('panelSettings', '人の管理', showList);
@@ -3079,7 +3274,7 @@ async function showUsers(note) {
     const us = snap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => (b.isMaster === true) - (a.isMaster === true) || a.id.localeCompare(b.id));
     $('panelSettings').innerHTML = (note ? banner(note) : '') +
       '<button type="button" id="add" class="btn btn-dark" style="margin-bottom: 12px;">＋ 人を追加</button>' +
-      us.map(u => '<button type="button" class="site-card-btn" data-id="' + esc(u.id) + '"><div style="font-size:1.02rem; font-weight:700;">' + esc(u.name || u.id) + (u.isMaster ? '（マスター）' : '') + '</div><div style="font-size:0.8rem; color:var(--muted);">' + esc(u.id) + '</div></button>').join('');
+      G_LIST.map(g => { const l = us.filter(u => gOf(u) === g); return l.length ? gHead(g, l.length) + l.map(uRow).join('') : ''; }).join('');
     $('add').onclick = showAddUser;
     $('panelSettings').querySelectorAll('.site-card-btn').forEach(b => { b.onclick = () => showUser(b.dataset.id); });
   } catch (e) { $('panelSettings').innerHTML = banner('読み込めませんでした：' + e.message, true); }
@@ -3091,7 +3286,7 @@ function showAddUser() {
     '<div class="form-group"><label>アカウントID（ログインIDになります）</label><input type="text" id="e" inputmode="email"></div>' +
     '<div class="form-group"><label>最初のパスワード（6文字以上）</label><input type="text" id="p" autocomplete="off"></div>' +
     // 会社（グループ）は必ず選ぶ。空欄のまま作るとエクスケアの人として扱われ、協力会社の人がエクスケア全員に見えてしまうため（2026-11-05 ユーザー指示 案A）
-    '<div class="form-group"><label>会社（グループ） <span class="req">*</span></label><select id="g">' + ['', 'エクスケア社員', 'エクスケア', 'マルトク', 'NAFA'].map(g => '<option value="' + g + '">' + (g || '選んでください') + '</option>').join('') + '</select></div>' +
+    '<div class="form-group"><label>会社（グループ） <span class="req">*</span></label><select id="g">' + ['', 'エクスケア社員', 'エクスケア', 'マルトク', 'NAFA', 'Other'].map(g => '<option value="' + g + '">' + (g ? gLabel(g) : '選んでください') + '</option>').join('') + '</select></div>' +
     '<label class="check-row"><input id="m" type="checkbox">マスターにする</label>' +
     '<button type="button" id="save" class="btn btn-dark" style="margin-top: 14px;">追加する</button><div id="err" style="margin-top: 8px; font-size:0.85rem;"></div></div>';
   $('save').onclick = async () => {
@@ -3103,7 +3298,7 @@ function showAddUser() {
     try {
       await admin('create', { email, password: $('p').value });
       // ログインはできたあとで人の情報の保存に失敗したときは、もう一度押せば続きから入る（サーバー側で同じメールを受け付ける。2026-11-04 不具合）
-      try { await setDoc(doc(db, 'users', email), { name, isMaster: $('m').checked, group: g, home: (g === 'マルトク' || g === 'NAFA') ? g : 'エクスケア' }); }
+      try { await setDoc(doc(db, 'users', email), { name, isMaster: $('m').checked, group: g, home: homeOf(g) }); }
       catch (e2) { throw new Error('ログインは作れましたが、人の情報を保存できませんでした（' + (e2.message || e2) + '）。もう一度「追加する」を押してください。'); }
       showUser(email, '追加しました。担当現場を選んで保存してください。');
     } catch (e) { $('save').disabled = false; $('err').textContent = e.message; }
@@ -3127,7 +3322,7 @@ async function showUser(uid, note) {
       '<label class="check-row" style="margin-top: 8px;"><input id="cp" type="checkbox"' + (d.canPayroll ? ' checked' : '') + '>給与管理</label>' +
       '<label class="check-row" style="margin-top: 8px;"><input id="ci" type="checkbox"' + (d.canInvoice ? ' checked' : '') + '>請求管理</label>' +
       '<div class="form-group" style="margin-top: 10px;"><label>携帯番号（伝票・注文書の注文者の欄に出ます）</label><input type="tel" id="mb" value="' + esc(d.mobile) + '" placeholder="例: 090-1234-5678"></div>' +
-      '<div class="form-group" style="margin-top: 10px;"><label>グループ</label><select id="g">' + ['', 'エクスケア社員', 'エクスケア', 'マルトク', 'NAFA'].map(g => '<option value="' + g + '"' + ((d.group || '') === g ? ' selected' : '') + '>' + (g || '（空欄：エクスケアとして扱う）') + '</option>').join('') + '</select></div></div>' +
+      '<div class="form-group" style="margin-top: 10px;"><label>グループ</label><select id="g">' + ['', 'エクスケア社員', 'エクスケア', 'マルトク', 'NAFA', 'Other'].map(g => '<option value="' + g + '"' + ((d.group || '') === g ? ' selected' : '') + '>' + (g ? gLabel(g) : '（空欄：EXDとして扱う）') + '</option>').join('') + '</select></div></div>' +
       '<div class="info-card"><div class="card-header-row"><span style="font-weight: 700;">担当現場</span></div>' + list.map(s => {
         const role = (s.roles || {})[uid], on = (s.members || []).indexOf(uid) !== -1;
         return '<div class="site-row"><label class="check-row"><input type="checkbox" data-s="' + esc(s.id) + '"' + (on ? ' checked' : '') + '>' + esc(s.siteName) + '</label>' +
@@ -3141,17 +3336,18 @@ async function showUser(uid, note) {
       try {
         const b = writeBatch(db);
         const g = $('g').value;
-        b.update(doc(db, 'users', uid), { name: $('n').value.trim(), isMaster: $('m').checked, canAddSite: $('ca').checked, canDaily: $('cd').checked, isSenior: $('sn').checked, canPayroll: $('cp').checked, canInvoice: $('ci').checked, mobile: $('mb').value.trim(), group: g, home: (g === 'マルトク' || g === 'NAFA') ? g : 'エクスケア' });
+        b.update(doc(db, 'users', uid), { name: $('n').value.trim(), isMaster: $('m').checked, canAddSite: $('ca').checked, canDaily: $('cd').checked, isSenior: $('sn').checked, canPayroll: $('cp').checked, canInvoice: $('ci').checked, mobile: $('mb').value.trim(), group: g, home: homeOf(g) });
         list.forEach(s => {
           const on = P.querySelector('[data-s="' + s.id + '"]').checked, role = P.querySelector('[data-r="' + s.id + '"]').value;
-          const members = (s.members || []).filter(x => x !== uid), roles = { ...(s.roles || {}) };
+          const members = on ? (s.members || []).slice() : (s.members || []).filter(x => x !== uid), roles = { ...(s.roles || {}) };
           delete roles[uid];
-          if (on) { members.push(uid); roles[uid] = role; }
+          if (on) { if (!members.includes(uid)) members.push(uid); roles[uid] = role; }
           const managers = (s.managers || []).filter(x => x !== uid);
           if (on && role === '現場管理者') managers.push(uid);
           if (on !== ((s.members || []).indexOf(uid) !== -1) || (on && (s.roles || {})[uid] !== role)) b.update(doc(db, 'sites', s.id), { members, roles, managers });
         });
         await b.commit();
+        avPeople = null;   // 丸に出す名前・グループを読み直す
         showUsers('保存しました。');
       } catch (e) { $('err').textContent = '保存できませんでした：' + e.message; }
     };

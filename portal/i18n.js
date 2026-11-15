@@ -366,6 +366,47 @@ I18N_ES_RE.unshift(
   [/^(.+)の数字を確認してください（(.+)）$/, 'Revise el número de $1 ($2)']
 );
 
+/* ---------- 2026-11-14 日本語のまま残っていた所（現場カードの未読・注文メニュー・日報・体調） ---------- */
+Object.assign(I18N_ES, {
+  '金物注文（添付）': 'Herrajes (adjunto)', 'フード注文': 'Campana', 'ダンパー': 'Compuerta (damper)', '内張チャンバー・ボックス': 'Cámara / caja con forro',
+  'PDF・写真を添付': 'Adjuntar PDF o fotos', '厨房フードの寸法を入力': 'Medidas de la campana de cocina', 'テンプレートから入力': 'Ingresar desde plantilla',
+  '今は使えません': 'No disponible por ahora', '閉じる': 'Cerrar', '担当者': 'Personal asignado', '担当を追加': 'Agregar personal', '追加できる人はいません。': 'No hay personas para agregar.', 'この現場の担当者はいません。「担当を追加」から付けてください。': 'No hay personal asignado. Use "Agregar personal".', 'その他ルール': 'Otras reglas', '工事着手': 'Inicio de obra', '工事完成': 'Fin de obra', '工事概要': 'Descripción de la obra', 'コピー': 'Copiar', 'コピーしました': 'Copiado', 'コピーできません': 'No se pudo copiar', '緊急連絡先': 'Contacto de emergencia', '緊急連絡先 ▼': 'Contacto de emergencia ▼', '緊急連絡先 ▲': 'Contacto de emergencia ▲', '緊急連絡先の登録がありません。': 'No hay contacto de emergencia registrado.', '（氏名なし）': '(sin nombre)', '（電話番号なし）': '(sin teléfono)', '携帯': 'Celular', 'マスター': 'Maestro', '新規現場追加者': 'Puede crear obras', '60歳以上': '60 años o más', '給与管理': 'Nómina', '請求管理': 'Facturación', '（空欄：EXDとして扱う）': '(vacío: se trata como EXD)', 'この期間の日報': 'Registros de este período', '（申請中）': '(solicitado)', '（承認済み）': '(aprobado)', '（却下）': '(rechazado)',
+  '申請中': 'Solicitado', '承認済み': 'Aprobado', 'ここから未読': 'No leídos desde aquí', '@あなた': '@usted', '日報を開く': 'Abrir registro diario'
+});
+/* ---------- 2026-11-15 フォルダ名の変更・ファイルを落として追加・EXD案件担当者の選び方 ---------- */
+Object.assign(I18N_ES, {
+  'フォルダ名の変更': 'Cambiar nombre de carpeta', '名前変更': 'Renombrar', '追加': 'Agregar', '移動': 'Mover',
+  '新しいフォルダ名を入力してください:': 'Escriba el nuevo nombre de la carpeta:',
+  '名前を変えるフォルダにチェックを入れてください。': 'Marque la carpeta que quiere renombrar.',
+  '名前を変えるフォルダは、1つだけチェックを入れてください。': 'Marque solo una carpeta para renombrar.',
+  '資料をここにドラッグ＆ドロップしてください': 'Arrastre y suelte documentos aquí', '写真をここにドラッグ＆ドロップしてください': 'Arrastre y suelte fotos aquí',
+  '資料がありません。上から追加してください。': 'No hay documentos. Agréguelos desde arriba.', '写真がありません。上から追加してください。': 'No hay fotos. Agréguelas desde arriba.',
+  '読み込み中...': 'Cargando...',
+  'または': 'o', 'ファイルを選択する': 'Elegir archivo',
+  'ここにファイルをドラッグ＆ドロップしても追加できます': 'También puede arrastrar y soltar un archivo aquí', 'ここに画像をドラッグ＆ドロップしても追加できます': 'También puede arrastrar y soltar una imagen aquí',
+  '入れる先：まだ選んでいません（下のフォルダを押して選びます。選ばずに落としたときは、保存先を聞きます）': 'Destino: sin elegir (toque una carpeta abajo; si suelta sin elegir, se le preguntará)',
+  '未設定': 'Sin definir', '担当に入っているEXD社員から選びます（読み込み中）': 'Elija entre el personal EXD asignado (cargando)',
+  '担当に入っているEXD社員から選びます。選ぶと携帯番号が連絡先に入ります。': 'Elija entre el personal EXD asignado. Su celular se llena solo.',
+  '担当に入っているEXD社員がいません。先に「担当」タブで付けてください。': 'No hay personal EXD asignado. Agréguelo primero en la pestaña "Personal".',
+  '担当者を読み込めませんでした（電波がないか、権限がありません）。': 'No se pudo cargar el personal (sin señal o sin permiso).',
+  'フォルダ名を変えられるのは、マスター・現場管理者、または自分が作ったフォルダだけです。': 'Solo el maestro, el encargado de obra o quien creó la carpeta puede cambiar su nombre.'
+});
+I18N_ES_RE.unshift([/^入れる先：「(.+)」（下のフォルダを押すと変わります。フォルダの名前の上に落とすと、そのフォルダに入ります）$/, 'Destino: "$1" (toque otra carpeta para cambiar; si suelta sobre el nombre de una carpeta, se guarda allí)']);
+I18N_ES_RE.unshift([/^次のものは追加できませんでした（フォルダは、中のファイルを選んで落としてください）：\n([\s\S]*)$/, 'No se pudo agregar (para carpetas, suelte los archivos de adentro):\n$1']);
+I18N_ES_RE.unshift([/^写真に入れられるのは画像だけです：\n([\s\S]*)$/, 'En Fotos solo se pueden agregar imágenes:\n$1']);
+I18N_ES_RE.unshift(
+  [/^未読 (\d+)$/, 'No leídos $1'],
+  [/^(\d+)人$/, '$1'],
+  [/^(\d{4})年(\d{1,2})月分（(.+)）$/, '$2/$1 ($3)'],
+  [/^💬 コメント(.*)$/, function(m, r) { return '💬 Comentarios' + r.replace(/(\d+)件/, '$1').replace(/・未読(\d+)/, ' · $1 sin leer'); }],
+  [/^💬(.*?) (\d+)件(?:・未読(\d+))?$/, function(m, r, n, u) { return '💬' + r + ' ' + n + (u ? ' · ' + u + ' sin leer' : ''); }],
+  [/^時間外 ([\d.]+)時間$/, 'Horas extra $1 h'],
+  [/^早退 ([\d.]+)時間$/, 'Faltan $1 h'],
+  [/^まだ入力していない項目があります：(.+)$/, function(m, l) { return 'Faltan datos: ' + l.split('、').map(function(p) { var h = i18nLookup(p); return h == null ? p : h; }).join(', '); }],
+  [/^(\d{1,2}:\d{2}) 測定 · 血圧 (\d+\/\d+)(?: · 脈拍 (\d+))?$/, function(m, a, b, c) { return a + ' · Presión ' + b + (c ? ' · Pulso ' + c : ''); }],
+  [/^記録 (\d+)日分　最新：(\d+\/\d+)(?: · 脈拍 (\d+))?$/, function(m, a, b, c) { return a + ' días registrados · Último: ' + b + (c ? ' · Pulso ' + c : ''); }]
+);
+
 function i18nStart() {
   if (LANG === 'es') i18nHasEs = true;
   document.documentElement.lang = LANG;
