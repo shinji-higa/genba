@@ -19,6 +19,7 @@
   .av-row { position: absolute; right: 12px; bottom: 9px; display: flex; align-items: center; pointer-events: none; }
   .av-row .av + .av { margin-left: -8px; }
   .av-more { margin-left: 3px; font-size: 0.74rem; font-weight: 700; color: #333; }
+  .set-sub-title { display: block; width: fit-content; font-size: 0.86rem; font-weight: 700; color: var(--text); background: #e6e6e9; padding: 3px 10px; border-radius: 3px; margin: 18px 0 6px; }   /* 設定の見出しも、現場詳細の見出しと同じ薄いグレーの札（2026-11-16 ユーザー指示） */
   #panelDetail.dt-view label { display: inline-block; font-size: 0.7rem; font-weight: 600; background: #eee; padding: 1px 4px; border-radius: 2px; margin-bottom: 4px; }   /* 現場詳細の見出しは、現場選択のカードの「着手」「完成」と同じ見え方（2026-11-14 ユーザー指示） */
   .drop-on { outline: 3px dashed #1a73e8 !important; outline-offset: 2px; background-color: #eef4ff !important; }   /* ファイルを引っぱってきている間の、落とせる場所（2026-11-15） */
   .dt-multiline a { color: var(--link-blue); text-decoration: underline; }   /* 備考・その他ルールの URL と電話番号（2026-11-15） */
@@ -84,6 +85,18 @@
   .fv-zrow, .fv-rot { display: flex; gap: 8px; }
   .fv-zoom .fv-rot button { width: auto; padding: 0 12px; font-size: 0.85rem; white-space: nowrap; }
   .fv-btn:disabled { opacity: 0.6; }
+  .pf-tbl { width: 100%; border-collapse: collapse; font-size: 0.9rem; font-weight: 600; margin-top: 6px; } .pf-tbl td { padding: 10px 4px; border-top: 1px solid #eee; text-align: center; } .pf-tbl td:first-child { text-align: left; padding-left: 0; } .pf-tbl .pf-head td { font-size: 0.78rem; color: #555; border-top: 0; padding-bottom: 4px; } .pf-tbl input { width: 22px; height: 22px; accent-color: #111; } .pf-tbl.pf-lock { opacity: 0.55; } .pf-none { color: #999; }
+  .pf-must { margin: 4px 0 0; padding-left: 1.3em; font-size: 0.88rem; line-height: 1.8; }
+  .must-note { border: 2px solid #111; border-radius: 6px; padding: 8px 10px; margin: 10px 0 4px; font-size: 0.86rem; font-weight: 700; line-height: 1.6; background: #fff; color: #111; }   /* 体調は必ず届く注意書き（2026-11-16 ユーザー指示） */
+  .q-row { display: flex; align-items: center; gap: 8px; margin: 6px 0; } .q-row select { width: auto; min-width: 92px; } .q-days { display: flex; gap: 4px; margin: 6px 0; } .q-days .daily-kb { flex: 1; min-width: 0; padding: 6px 0; }
+  .cm-rep { margin-left: 8px; font-size: 0.72rem; font-weight: 700; padding: 1px 8px; border: 1px solid #555; border-radius: 10px; background: #fff; color: #111; cursor: pointer; }   /* コメントの返信ボタン */
+  /* 閉じるボタン（2026-11-16 ユーザー指示）：PC もスマホも右の端に白いボタン（右上のアプリを閉じるボタンと押し間違えないように）。PC は「✕ 閉じる」、スマホは場所がないので大きな「✕」だけ。左の ✕ は出さない */
+  .fv-bar #fvClose { display: none; }
+  .fv-close2 { background: #ffffff; color: #111111; font-weight: 800; padding: 9px 18px; margin-left: 6px; }
+  .fv-close2 .fv-cl-t { margin-left: 4px; }
+  @media not all and (hover: hover) and (pointer: fine) and (min-width: 700px) { .fv-bar .fv-close2 { min-width: 46px; height: 42px; padding: 0 10px; font-size: 1.3rem; } .fv-close2 .fv-cl-t { display: none; } }
+  /* スマホ：上の帯にボタンが並ぶとファイル名が見えないので、ファイル名は2段目に横幅いっぱいで出す（2026-11-16 ユーザー指示） */
+  @media not all and (hover: hover) and (pointer: fine) and (min-width: 700px) { .fv-bar { flex-wrap: wrap; row-gap: 6px; } .fv-bar .fv-count { margin-right: auto; } .fv-bar .fv-title { order: 10; flex: 1 0 100%; font-size: 0.9rem; } }
   @media (max-width: 520px) { .fv-bar { gap: 5px; } .fv-bar .fv-btn { padding: 8px 8px; font-size: 0.8rem; } }   /* スマホは上の帯のボタンを小さくして、ファイル名を残す */
   .fv-page { position: absolute; left: 50%; transform: translateX(-50%); background: rgba(0,0,0,0.7); color: #fff; padding: 4px 14px; border-radius: 14px; font-size: 0.85rem; font-weight: 700; z-index: 3; display: none; pointer-events: none; }
   .fv-thumbs { display: none; position: absolute; left: 0; bottom: 0; width: 150px; overflow-y: auto; background: #1e1e1e; z-index: 4; padding: 10px 0; box-sizing: border-box; text-align: center; -webkit-overflow-scrolling: touch; }
@@ -179,7 +192,7 @@
   </div>
 </div>
 
-<script src="i18n.js?v=7"></script>
+<script src="i18n.js?v=8"></script>
 <script>i18nStart();</script>
 <script type="module">
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
@@ -206,31 +219,45 @@ auth.languageCode = 'ja';   // パスワード再設定のメールと画面を�
 // 端末の控え（電波なしでも見られる）は1つのタブだけが持つ。2つ目からのタブは、開いている間だけの控えでサーバーと直接やりとりする。
 // 前は全部のタブで控えを分け合っていて、サーバーとやりとりするタブが裏にあると、ほかのタブに最新が届くまで約28秒待っていた（2026-11-05 確認）
 const db = initializeFirestore(app, { localCache: persistentLocalCache({ tabManager: persistentSingleTabManager() }) });
-const APP_VER = 'Ver.20261116-01';
+const APP_VER = 'Ver.20261116-02';
 /* 更新の内容（2026-11-16 ユーザー指示）。新しい Ver に入れ替わったあと最初に開いたとき、まだ見ていない Ver の分を窓で出す。設定の「更新履歴を見る」でも全部見られる。
-   書くのは増えた機能だけ（見た目の説明は省く。ユーザー指示 2026-11-15）。who：all＝全員、mgr＝現場管理者とマスターだけ。
+   載せるもの（2026-11-16 ユーザー決定）：増えた機能／使う人が気づく不具合の直し（困っていた・報告が来たもの。裏の直しは載せない）／押す場所や使い方が変わる見た目の変更（色や大きさだけの変更は載せない）。
+   1項目は短い1〜2文、です・ます、日本語と es（スペイン語）。who：all＝全員、mgr＝現場管理者とマスターだけ（この2つだけ）。
+   k：new＝増えたこと、change＝変わったこと（押す場所・使い方）、fix＝直したこと。窓はこの3つの見出しに分けて出す（ユーザー決定 案C）。
+   設定の更新履歴で見られるのは直近1年分。1年より古い Ver は、本番に入れるときに README（更新履歴の控え）へ移して、ここから消す（ユーザー決定 案1）。載せるものが無い Ver は足さない（窓も出ない）。
+   本番に入れる前に、窓の文をユーザーに見せて確かめる。古い Ver の分は消さない。
+   画像（img）：押す場所が変わったもの・新しいボタンができたものだけ、その所に赤い枠を付けた画面の画像を rel/ に置いて付ける（名前・電話番号は見本にする。ユーザー決定 2026-11-16）。
    本番に入れるときは、いちばん上の ver: 'NEXT' を本当の Ver（APP_VER と同じ）に、date をその日に書きかえる */
 const RELEASES = [
+  { ver: 'Ver.20261116-02', date: '2026/11/16', items: [
+    { who: 'all', k: 'change', img: 'rel/20261116_flow-default.png', ja: '現場選択は、最初から「進行中」の現場だけを出すようになりました。ほかの現場は上のボタン（全て表示など）で切り替えます。', es: 'La selección de obras ahora muestra primero solo las obras «En curso». Use los botones de arriba («Todos», etc.) para ver las demás.' },
+    { who: 'all', k: 'new', img: 'rel/20261116_reply-button.png', ja: 'コメントに「返信」ボタンが付きました。押すとその人を @ で指定して書けます。また、自分がコメントした所にほかの人がコメントすると「あなたのコメントへのレス」として、設定に関係なく通知が届きます。', es: 'Los comentarios tienen el botón «Responder» (menciona a esa persona con @). Si alguien comenta donde usted comentó, recibirá «Respuesta a tu comentario» aunque tenga avisos desactivados.' },
+    { who: 'all', k: 'new', ja: '自分が出した報告・写真・資料にコメントが付くと、「あなたの〇〇へのコメント」として設定に関係なく通知が届きます。', es: 'Si alguien comenta un informe, foto o documento que usted subió, recibirá el aviso aunque tenga avisos desactivados.' },
+    { who: 'all', k: 'new', img: 'rel/20261116_comment-setting.png', ja: '通知の設定で、報告・写真・資料ごとに「追加・編集」と「コメント」を分けて選べます。一番上の「全部通知する」をオフにすると選べます。', es: 'En la configuración de avisos puede elegir por separado «Agregar/editar» y «Comentarios» para informes, fotos y documentos (desactive «Avisar de todo» para elegir).' },
+    { who: 'all', k: 'new', img: 'rel/20261116_quiet-setting.png', ja: '通知の設定で「鳴らさない時間帯」（時刻と曜日）を選べます。その間も体調の知らせは必ず届きます。', es: 'En la configuración de avisos puede elegir un horario sin sonido (hora y días). Los avisos de salud siempre llegan.' },
+    { who: 'all', k: 'new', ja: '体調の通知も、「体調を開く」「コメントを開く」で、その日のその人の記録へ飛びます。コメントの通知はコメント欄も開きます。', es: 'Los avisos de salud también abren directamente el registro de esa persona y ese día con «Abrir salud» o «Abrir comentarios» (los de comentarios abren también los comentarios).' },
+    { who: 'all', k: 'change', img: 'rel/20261116_close-button.png', ja: '写真・PDFを閉じるボタンは、右上の白いボタンになりました（パソコンは「✕ 閉じる」、スマホは大きな「✕」）。', es: 'Para cerrar fotos y PDF use el botón blanco de arriba a la derecha («✕ Cerrar» en PC, «✕» grande en el teléfono).' }
+  ] },
   { ver: 'Ver.20261116-01', date: '2026/11/16', items: [
-    { who: 'all', ja: '更新の内容を、この窓でお知らせするようになりました。これまでの更新は「設定」の「更新履歴を見る」で見られます。', es: 'Ahora las novedades de cada actualización se muestran en esta ventana. Puede ver el historial en Configuración → «Ver historial de actualizaciones».' },
-    { who: 'all', ja: 'お知らせの「報告を開く」「写真を開く」「資料を開く」「コメントを開く」などを押すと、知らせのあった報告・写真・資料・コメントへそのまま飛びます。スマホに届いた通知を押したときも同じです。', es: 'Al pulsar «Abrir informe», «Abrir fotos», «Abrir documentos» o «Abrir comentarios» en un aviso, se abre directamente lo avisado. Lo mismo al tocar una notificación del teléfono.' },
-    { who: 'all', ja: '写真・PDFを開いた画面に「印刷」ボタンが付きました（パソコン・スマホとも）。', es: 'Se agregó el botón «Imprimir» al abrir fotos y PDF (PC y teléfono).' },
-    { who: 'all', ja: '写真・PDFの向きを「↻」で変えられます（PDFは「このページ」と「全ページ」）。変えた向きは保存され、だれが開いてもその向きで出ます。', es: 'Puede girar fotos y PDF con «↻» (en PDF: «Esta página» o «Todas»). La orientación se guarda para todos.' },
-    { who: 'all', ja: 'ページが2つ以上のPDFは、ページの一覧から見たいページへ飛べます（パソコンは左に並びます。スマホは「ページ一覧」）。', es: 'En PDF de varias páginas puede saltar a una página desde la lista (en PC a la izquierda; en el teléfono con «Páginas»).' },
-    { who: 'all', ja: 'パソコンでPDFを開くと、1ページ全体が画面に入る大きさで出ます。さらに小さくもできます。拡大したときは、左ボタンを押したまま動かすと見える所が動きます。', es: 'En PC el PDF se abre mostrando la página entera y se puede reducir más. Al ampliar, arrastre con el botón izquierdo para moverse.' },
-    { who: 'all', ja: 'スマホで写真・資料を開いて横にスワイプすると、となりのファイルへ滑らかに移ります。', es: 'En el teléfono, deslice a los lados para pasar suavemente al archivo siguiente.' },
-    { who: 'all', ja: 'ホーム画面のアイコンに、見ていないお知らせの数が出ます（iPhoneは、ホーム画面に置いて通知を受け取る設定にしているとき）。', es: 'El icono de la pantalla de inicio muestra el número de avisos sin leer (en iPhone, si la app está en la pantalla de inicio y recibe notificaciones).' },
-    { who: 'all', ja: 'お知らせの一覧で、下のほうが見られないことがあったのを直しました。', es: 'Se corrigió que a veces no se veía la parte de abajo de la lista de avisos.' }
+    { who: 'all', k: 'new', ja: '更新の内容を、この窓でお知らせするようになりました。これまでの更新は「設定」の「更新履歴を見る」で見られます。', es: 'Ahora las novedades de cada actualización se muestran en esta ventana. Puede ver el historial en Configuración → «Ver historial de actualizaciones».' },
+    { who: 'all', k: 'new', ja: 'お知らせの「報告を開く」「写真を開く」「資料を開く」「コメントを開く」などを押すと、知らせのあった報告・写真・資料・コメントへそのまま飛びます。スマホに届いた通知を押したときも同じです。', es: 'Al pulsar «Abrir informe», «Abrir fotos», «Abrir documentos» o «Abrir comentarios» en un aviso, se abre directamente lo avisado. Lo mismo al tocar una notificación del teléfono.' },
+    { who: 'all', k: 'new', ja: '写真・PDFを開いた画面に「印刷」ボタンが付きました（パソコン・スマホとも）。', es: 'Se agregó el botón «Imprimir» al abrir fotos y PDF (PC y teléfono).' },
+    { who: 'all', k: 'new', ja: '写真・PDFの向きを「↻」で変えられます（PDFは「このページ」と「全ページ」）。変えた向きは保存され、だれが開いてもその向きで出ます。', es: 'Puede girar fotos y PDF con «↻» (en PDF: «Esta página» o «Todas»). La orientación se guarda para todos.' },
+    { who: 'all', k: 'new', ja: 'ページが2つ以上のPDFは、ページの一覧から見たいページへ飛べます（パソコンは左に並びます。スマホは「ページ一覧」）。', es: 'En PDF de varias páginas puede saltar a una página desde la lista (en PC a la izquierda; en el teléfono con «Páginas»).' },
+    { who: 'all', k: 'change', ja: 'パソコンでPDFを開くと、1ページ全体が画面に入る大きさで出ます。さらに小さくもできます。拡大したときは、左ボタンを押したまま動かすと見える所が動きます。', es: 'En PC el PDF se abre mostrando la página entera y se puede reducir más. Al ampliar, arrastre con el botón izquierdo para moverse.' },
+    { who: 'all', k: 'change', ja: 'スマホで写真・資料を開いて横にスワイプすると、となりのファイルへ滑らかに移ります。', es: 'En el teléfono, deslice a los lados para pasar suavemente al archivo siguiente.' },
+    { who: 'all', k: 'new', ja: 'ホーム画面のアイコンに、見ていないお知らせの数が出ます（iPhoneは、ホーム画面に置いて通知を受け取る設定にしているとき）。', es: 'El icono de la pantalla de inicio muestra el número de avisos sin leer (en iPhone, si la app está en la pantalla de inicio y recibe notificaciones).' },
+    { who: 'all', k: 'fix', ja: 'お知らせの一覧で、下のほうが見られないことがあったのを直しました。', es: 'Se corrigió que a veces no se veía la parte de abajo de la lista de avisos.' }
   ] },
   { ver: 'Ver.20261115-01', date: '2026/11/15', items: [
-    { who: 'mgr', ja: '「担当」タブで、担当の人の緊急連絡先を見られるようになりました（現場管理者とマスターだけ）。', es: 'En la pestaña «Encargados» se puede ver el contacto de emergencia de cada persona (solo administradores de obra y master).' },
-    { who: 'all', ja: '写真・資料のフォルダ名を変えられるようになりました（マスター・現場管理者・そのフォルダを作った人）。', es: 'Se puede cambiar el nombre de las carpetas de fotos y documentos (master, administradores de obra y quien creó la carpeta).' },
-    { who: 'all', ja: 'パソコンでは、写真・資料をファイルを引っぱって落とすだけで追加できます。', es: 'En PC se pueden agregar fotos y documentos arrastrando los archivos.' },
-    { who: 'mgr', ja: '現場情報編集の「EXD案件担当者」を、担当のEXD社員から選べます。選ぶと携帯番号が自動で入ります。', es: 'En la edición de la obra, el «Encargado EXD» se elige de los empleados EXD asignados y su móvil se completa solo.' },
-    { who: 'all', ja: '「工事概要」「備考」「その他ルール」のURLと電話番号を押せるようになりました。', es: 'Las URL y teléfonos en «Resumen», «Notas» y «Otras reglas» ahora se pueden pulsar.' }
+    { who: 'mgr', k: 'new', ja: '「担当」タブで、担当の人の緊急連絡先を見られるようになりました（現場管理者とマスターだけ）。', es: 'En la pestaña «Encargados» se puede ver el contacto de emergencia de cada persona (solo administradores de obra y master).' },
+    { who: 'all', k: 'new', ja: '写真・資料のフォルダ名を変えられるようになりました（マスター・現場管理者・そのフォルダを作った人）。', es: 'Se puede cambiar el nombre de las carpetas de fotos y documentos (master, administradores de obra y quien creó la carpeta).' },
+    { who: 'all', k: 'new', ja: 'パソコンでは、写真・資料をファイルを引っぱって落とすだけで追加できます。', es: 'En PC se pueden agregar fotos y documentos arrastrando los archivos.' },
+    { who: 'mgr', k: 'new', ja: '現場情報編集の「EXD案件担当者」を、担当のEXD社員から選べます。選ぶと携帯番号が自動で入ります。', es: 'En la edición de la obra, el «Encargado EXD» se elige de los empleados EXD asignados y su móvil se completa solo.' },
+    { who: 'all', k: 'new', ja: '「工事概要」「備考」「その他ルール」のURLと電話番号を押せるようになりました。', es: 'Las URL y teléfonos en «Resumen», «Notas» y «Otras reglas» ahora se pueden pulsar.' }
   ] },
   { ver: 'Ver.20261113-02', date: '2026/11/13', items: [
-    { who: 'all', ja: '「注文」タブが使えるようになりました（角ダクト注文は準備中）。', es: 'La pestaña «Pedidos» ya se puede usar (pedido de ductos rectangulares: en preparación).' }
+    { who: 'all', k: 'new', ja: '「注文」タブが使えるようになりました（角ダクト注文は準備中）。', es: 'La pestaña «Pedidos» ya se puede usar (pedido de ductos rectangulares: en preparación).' }
   ] }
 ];
 const relVer = r => r.ver === 'NEXT' ? APP_VER : r.ver;
@@ -596,7 +623,7 @@ function showLogin() {
 $('out').onclick = async () => { await pushDrop().catch(() => {}); signOut(auth); };
 
 /* ---------- 現場一覧 ---------- */
-let allSites = [], flowFilter = '全て表示';
+let allSites = [], flowFilter = '進行中';   // 現場選択は最初から「進行中」だけ（2026-11-16 ユーザー指示）
 $('flowFilters').innerHTML = ['全て表示'].concat(FLOWS).map(f =>
   '<button type="button" class="flow-filter-btn flow-color-' + (f === '全て表示' ? 'ALL' : f) + (f === flowFilter ? ' active' : '') + '" data-f="' + f + '">' + f + '</button>').join('');
 $('flowFilters').querySelectorAll('button').forEach(b => {
@@ -870,21 +897,32 @@ function cmButtons() {
   });
 }
 function cmRefresh() { cmButtons(); Object.values(cmPanels).forEach(cmDraw); }
+// コメント欄（.cm-list）は文を訳さないよう言葉の置きかえを止めているので、ボタンや案内の字はここで言語に合わせる（2026-11-16）
+const jaEs = (ja, es) => (window.portalLang && portalLang() === 'es') ? es : ja;
 function cmDraw(p) {
   const list = p.root.querySelector('.cm-list');
   if (!list) return;
   const items = cmList(p.k, p.id), read = p.readTs, near = list.scrollHeight - list.scrollTop - list.clientHeight < 60;
-  if (!items.length) { list.innerHTML = '<div class="cm-empty">まだコメントはありません。<br>最初のコメントを送ってみましょう。</div>'; return; }
+  if (!items.length) { list.innerHTML = '<div class="cm-empty">' + jaEs('まだコメントはありません。<br>最初のコメントを送ってみましょう。', 'Aún no hay comentarios.<br>Envíe el primero.') + '</div>'; return; }
   const first = items.find(c => c.by !== me.uid && (c.at || 0) > read);
   if (cmIO) list.querySelectorAll('.cm-row').forEach(r => cmIO.unobserve(r));
   const names = (X.people || []).map(u => u.name).concat(me.name).filter(Boolean).sort((a, b) => b.length - a.length).map(n => esc(n).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
   const re = names.length ? new RegExp('@(' + names.join('|') + ')', 'g') : null;
   list.innerHTML = items.map(c => {
     const mine = c.by === me.uid, un = !mine && (c.at || 0) > read;
-    return (first && c === first && items[0] !== c ? '<div class="cm-divider">ここから未読</div>' : '') +
+    return (first && c === first && items[0] !== c ? '<div class="cm-divider">' + jaEs('ここから未読', 'No leídos desde aquí') + '</div>' : '') +
       '<div class="cm-row' + (mine ? ' mine' : '') + (un ? ' cm-unread' : '') + '" data-at="' + (c.at || 0) + '"><div class="cm-meta">' + (mine ? '' : esc(c.byName) + '　') + esc(rWhen(c.at)) +
-      (mine || me.isMaster ? '<button type="button" class="cm-del" data-del="' + esc(c.id) + '">削除</button>' : '') + '</div><div class="cm-bubble">' + trShow(c.text, (c.tr || {}).text, x => re ? esc(x).replace(re, '<span class="cm-mention">@$1</span>') : esc(x), mine) + '</div></div>';
+      (mine ? '' : '<button type="button" class="cm-rep" data-rep="' + esc(c.byName || '') + '">' + jaEs('返信', 'Responder') + '</button>') + (mine || me.isMaster ? '<button type="button" class="cm-del" data-del="' + esc(c.id) + '">' + jaEs('削除', 'Eliminar') + '</button>' : '') + '</div><div class="cm-bubble">' + trShow(c.text, (c.tr || {}).text, x => re ? esc(x).replace(re, '<span class="cm-mention">@$1</span>') : esc(x), mine) + '</div></div>';
   }).join('');
+  // 返信：その人を @ で指定した形で書き始める（指定された人には、設定に関係なく通知が届く。2026-11-16 ユーザー決定）
+  list.querySelectorAll('[data-rep]').forEach(b => {
+    b.onclick = () => {
+      const ta = p.root.querySelector('textarea'), at = '@' + b.dataset.rep + ' ';
+      if (!ta || !b.dataset.rep) return;
+      if (!ta.value.includes(at.trim())) ta.value = at + ta.value;
+      ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length); ta.dispatchEvent(new Event('input'));
+    };
+  });
   list.querySelectorAll('[data-del]').forEach(b => {
     b.onclick = async () => { if (await uiConfirm('このコメントを削除しますか？', '削除')) fire(updateDoc(doc(xSub('comments'), b.dataset.del), { deleted: true, deletedAt: Date.now() }), 'コメントの削除'); };
   });
@@ -932,7 +970,9 @@ function cmPanel(k, id, root, label, draft) {
     if (text.length > 2000) { uiAlert('コメントは2000文字以内で入力してください。'); return; }
     const mentions = (X.people || []).filter(u => text.includes('@' + u.name)).map(u => u.id);
     fire(setDoc(doc(xSub('comments')), { kind: k, target: id, label, text, by: me.uid, byName: me.name || me.uid, at: Date.now(), mentions, deleted: false }), 'コメント');
-    notify(X.s, k, '「' + clip(label, 30) + '」にコメント：' + clip(text, 80), { mentions, go: { t: k, id, cm: 1 } });
+    const replies = [...new Set(cmList(k, id).map(c => c.by))].filter(u => u && u !== me.uid && !mentions.includes(u));   // 前にここへコメントした人＝この人たちへのレス
+    const src = k === 'report' ? (X.reports || []).find(r => r.id === id) : (X.files || []).find(f => f.id === id), owner = src && src.by && src.by !== me.uid ? src.by : '';   // その報告・写真・資料を出した人（必ず届く。2026-11-16 ユーザー決定）
+    notify(X.s, k, '「' + clip(label, 30) + '」にコメント：' + clip(text, 80), { mentions, replies, owner, go: { t: k, id, cm: 1 } });
     ta.value = ''; grow(); box.style.display = 'none';
     setTimeout(() => { const l = root.querySelector('.cm-list'); if (l) l.scrollTop = l.scrollHeight; }, 50);
   };
@@ -1427,7 +1467,7 @@ function viewerOpen(list, index) {
       '<div class="fv-bar"><button type="button" class="fv-btn" id="fvClose" aria-label="閉じる">✕</button>' +
       '<div class="fv-title" id="fvTitle"></div><span class="fv-count" id="fvCount"></span>' +
       '<button type="button" class="fv-btn" id="fvThBtn" style="display:none;">ページ一覧</button><button type="button" class="fv-btn" id="fvPrint">印刷</button>' +
-      '<a class="fv-btn" id="fvExt" target="_blank" rel="noopener noreferrer">保存</a></div>' +
+      '<a class="fv-btn" id="fvExt" target="_blank" rel="noopener noreferrer">保存</a><button type="button" class="fv-btn fv-close2" id="fvClose2" aria-label="閉じる">✕<span class="fv-cl-t">閉じる</span></button></div>' +
       '<div class="fv-body" id="fvBody"></div><div class="fv-thumbs" id="fvThumbs"></div><div class="fv-page" id="fvPage"></div>' +
       '<button type="button" class="fv-nav fv-prev" id="fvPrev" aria-label="前へ">‹</button>' +
       '<button type="button" class="fv-nav fv-next" id="fvNext" aria-label="次へ">›</button>' +
@@ -1436,6 +1476,7 @@ function viewerOpen(list, index) {
       '<div class="fv-info" id="fvInfo"></div>';
     document.body.appendChild(v);
     $('fvClose').onclick = () => viewerClose();
+    $('fvClose2').onclick = () => viewerClose();
     $('fvPrev').onclick = () => viewerStep(-1);
     $('fvNext').onclick = () => viewerStep(1);
     $('fvOut').onclick = () => viewerSetScale(VW.scale / 1.5);
@@ -1485,7 +1526,7 @@ function viewerStep(d) {
 function viewerShow() {
   const it = VW.list[VW.index], n = VW.list.length, ext = $('fvExt');
   $('fvTitle').textContent = it.name || '';
-  $('fvCount').textContent = n > 1 ? (VW.index + 1) + ' / ' + n : '';
+  $('fvCount').innerHTML = n > 1 ? '<span>ファイル</span> ' + (VW.index + 1) + ' / ' + n : '';   // フォルダの中の何番目のファイルか。ページの数と見分けられるよう「ファイル」と付ける（2026-11-16 ユーザー指示）
   $('fvPrev').style.display = (n > 1 && VW.index > 0) ? '' : 'none';
   $('fvNext').style.display = (n > 1 && VW.index < n - 1) ? '' : 'none';
   ext.href = it.url || (it.driveId ? 'https://drive.google.com/file/d/' + it.driveId + '/view' : '#');
@@ -1619,7 +1660,7 @@ function pdfTrack() {
   cs.forEach(c => { if (c.offsetTop <= mid) cur = +c.dataset.p; });
   if (body.scrollTop > 0 && body.scrollTop + body.clientHeight >= body.scrollHeight - 2 && cs.length === n) cur = n;   // 下まで送ったら最後のページ
   VW.curPage = cur;
-  if (n > 1) $('fvPage').textContent = cur + ' / ' + n;
+  if (n > 1) $('fvPage').innerHTML = '<span>ページ</span> ' + cur + ' / ' + n;
   const th = $('fvThumbs'), on = th.querySelector('.fv-th.on');
   if (on && +on.dataset.p === cur) return;
   if (on) on.classList.remove('on');
@@ -2772,12 +2813,12 @@ async function hPortal() {
   } catch (e) {}
 }
 let H = null;
-function hOpen() {
+function hOpen(goto) {
   stopWatch();
   show('panelHealth', '体調チェック', showList);
   $('speed').textContent = '';
   const mine = me.isMaster || me.isSenior;
-  H = { view: mine ? 'mine' : 'team', canMine: mine, canTeam: false, list: [], consent: !mine, editing: false, dirty: false, second: false, ans: {}, sym: [], teamDate: dsOf(new Date()), team: [], open: {}, person: {}, cm: {} };
+  H = { view: mine ? 'mine' : 'team', canMine: mine, canTeam: false, list: [], consent: !mine, editing: false, dirty: false, second: false, ans: {}, sym: [], teamDate: dsOf(new Date()), team: [], open: {}, person: {}, cm: {}, goto: goto || null, flash: null };
   const bp = (n, ph1, ph2, ph3) => '<div class="hl-bp"><div><small>上（最高）</small><input type="tel" inputmode="numeric" maxlength="3" id="hS' + n + '"' + ph1 + ' autocomplete="off"></div><div><small>下（最低）</small><input type="tel" inputmode="numeric" maxlength="3" id="hD' + n + '"' + ph2 + ' autocomplete="off"></div><div><small>脈拍（任意）</small><input type="tel" inputmode="numeric" maxlength="3" id="hP' + n + '"' + ph3 + ' autocomplete="off"></div></div>';
   let summerHead = false;
   $('panelHealth').innerHTML =
@@ -2830,7 +2871,13 @@ function hOpen() {
     off.push(onSnapshot(doc(db, 'healthConsent', me.uid), d => { if (d.exists()) H.consent = true; else if (!d.metadata.fromCache) H.consent = false; hRender(); }, () => {}));
   }
   stop = () => { off.forEach(f => f()); if (H) { if (H.teamOff) H.teamOff(); Object.values(H.cm).forEach(c => c.off && c.off()); } };
-  hPeople().then(list => { if (!H) return; H.canTeam = me.isMaster || list.length > 0; H.people = list; hRender(); if (H.view === 'team') hTeamLoad(); }).catch(() => {});
+  hPeople().then(list => {
+    if (!H) return;
+    H.canTeam = me.isMaster || list.length > 0; H.people = list; hRender();
+    // 通知から：ほかの人の記録は「みんなの体調」をその日付で開く
+    if (H.goto && !H.goto.mine && H.canTeam) { H.teamDate = H.goto.ds; H.open = {}; hView('team'); }
+    else if (H.view === 'team') hTeamLoad();
+  }).catch(() => {});
   hRender();
 }
 const hTodayRec = () => H.list.find(r => r.date === dsOf(new Date())) || null;
@@ -2955,6 +3002,7 @@ function hRender() {
     $('hHist').innerHTML = H.list.length ? hRows(H.list, true) : '<div style="color: var(--muted); font-size: 0.85rem;">まだ記録はありません。</div>';
     hCmWire($('hHist'));
   }
+  hGoTry('mine');
 }
 function hResultHtml(r) {
   const lv = H_LV[r.level] || H_LV.ok, msg = { ok: '問題ありません。今日も安全に作業しましょう。', warn: '職長（現場の責任者）に伝えてください。高所作業・重機の作業は見合わせてください。', stop: '今日は作業をしないでください。職長に連絡し、早めに医療機関を受診してください。' }[r.level];
@@ -2966,7 +3014,7 @@ function hResultHtml(r) {
     '<button type="button" class="btn btn-sub" id="hFix">修正する</button></div>';
 }
 const hCmHtml = id => '<div class="hl-cm"><button type="button" class="btn btn-sub" data-cm="' + esc(id) + '" style="padding: 2px 8px; font-size: 0.75rem;">💬 コメント ' + (H.cm[id] && H.cm[id].open ? '▲' : '▼') + '</button><div data-cmbox="' + esc(id) + '"></div></div>';
-const hRows = (list, cm) => list.map(r => '<div class="hl-hist"><div class="hl-row"><div class="hl-row-date">' + esc(hDate(r.date)) + '<div class="dl-sub">' + esc(r.time) + '</div></div><div class="hl-row-body">' + esc(hBp(r)) + (r.reasons && r.reasons.length ? '<div class="dl-sub">' + esc(r.reasons.join('、')) + '</div>' : '') + '</div>' + hBadge(r.level) + '</div>' + (cm ? hCmHtml(r.id) : '') + '</div>').join('');
+const hRows = (list, cm) => list.map(r => '<div class="hl-hist" data-hid="' + esc(r.id) + '"><div class="hl-row"><div class="hl-row-date">' + esc(hDate(r.date)) + '<div class="dl-sub">' + esc(r.time) + '</div></div><div class="hl-row-body">' + esc(hBp(r)) + (r.reasons && r.reasons.length ? '<div class="dl-sub">' + esc(r.reasons.join('、')) + '</div>' : '') + '</div>' + hBadge(r.level) + '</div>' + (cm ? hCmHtml(r.id) : '') + '</div>').join('');
 /* 記録ごとのコメント（health/{id}/comments） */
 function hCmWire(root) {
   root.querySelectorAll('[data-cm]').forEach(b => { b.onclick = () => hCmToggle(b.dataset.cm, root); });
@@ -2996,12 +3044,50 @@ function hCmDraw(id, root) {
     fire(setDoc(doc(collection(db, 'health', id, 'comments')), { text, by: me.uid, byName: me.name || me.uid, at: Date.now() }), 'コメント');
     ta.value = '';
     const r = H.list.concat(H.team).find(x => x.id === id);
-    if (r) hNotice(r, '「' + hDate(r.date) + ' ' + (r.name || '') + 'の体調」にコメント：' + clip(text, 80), id);
+    if (r) hNotice(r, '「' + hDate(r.date) + ' ' + (r.name || '') + 'の体調」にコメント：' + clip(text, 80), id, { t: 'health', cm: 1 });
   };
 }
-function hNotice(r, text, target) {
+/* 体調の通知から飛ぶ（2026-11-16 ユーザー決定 案1）。target は記録の番号（yyyyMMdd:本人）。
+   ほかの人の記録 → みんなの体調をその日付で開いて、その人の行を開いて青い枠。自分の記録 → 自分の記録のその日の行。
+   コメントの通知はコメント欄も開く（前のお知らせには印が無いので、文の「にコメント：」で見分ける） */
+const hIsCm = it => !!((it.go && it.go.cm) || /にコメント：/.test(it.text || ''));
+function hGo(it) {
+  const m = /^(\d{4})(\d{2})(\d{2}):(.+)$/.exec(it.target || '');
+  if (!m) { hOpen(); return; }
+  hOpen({ ds: m[1] + '/' + m[2] + '/' + m[3], uid: m[4], id: it.target, cm: hIsCm(it), mine: m[4] === me.uid, until: Date.now() + 15000 });
+}
+function hGoTry(where) {
+  if (!H) return;
+  const g = H.goto;
+  if (g && Date.now() > g.until) H.goto = null;
+  else if (g && where === 'team' && !g.mine && H.teamDate === g.ds && $('hTeamList')) {
+    const rec = H.team.find(r => r.id === g.id);
+    if (!rec && !(H.people || []).some(p => p.uid === g.uid)) return;   // まだ届いていない
+    H.goto = null;
+    if (!H.open[g.uid]) { H.open[g.uid] = true; hTeamDraw(); }
+    H.flash = { key: 'p:' + g.uid, until: Date.now() + 2600, scroll: true };
+    if (g.cm && rec && !(H.cm[rec.id] && H.cm[rec.id].open)) hCmToggle(rec.id, $('hTeamList'));
+  } else if (g && where === 'mine' && g.mine && $('hHist')) {
+    if (!H.list.some(r => r.id === g.id)) return;
+    H.goto = null;
+    H.flash = { key: 'h:' + g.id, until: Date.now() + 2600, scroll: true };
+    if (g.cm && !(H.cm[g.id] && H.cm[g.id].open)) hCmToggle(g.id, $('hHist'));
+  }
+  // 青い枠（描き直しても付け直す）
+  const f = H.flash;
+  if (!f) return;
+  const left = f.until - Date.now();
+  if (left <= 0) { H.flash = null; return; }
+  const id = f.key.slice(2), head = f.key[0] === 'p' ? document.querySelector('#hTeamList .hl-thead[data-p="' + CSS.escape(id) + '"]') : null;
+  const el = f.key[0] === 'p' ? head && head.closest('.hl-trow') : document.querySelector('#hHist .hl-hist[data-hid="' + CSS.escape(id) + '"]');
+  if (!el) return;
+  if (!el.classList.contains('go-flash')) { el.classList.add('go-flash'); setTimeout(() => el.classList.remove('go-flash'), left); }
+  // 体調の画面は開いた直後に何度か描き直されて、なめらかに送ると途中で止まるので、すぐ送って少し後にもう一度送る
+  if (f.scroll) { f.scroll = false; el.scrollIntoView({ block: 'center' }); setTimeout(() => { const h2 = f.key[0] === 'p' ? document.querySelector('#hTeamList .hl-thead[data-p="' + CSS.escape(id) + '"]') : null, e2 = f.key[0] === 'p' ? h2 && h2.closest('.hl-trow') : document.querySelector('#hHist .hl-hist[data-hid="' + CSS.escape(id) + '"]'); if (e2) e2.scrollIntoView({ block: 'center' }); }, 600); }
+}
+function hNotice(r, text, target, go) {
   const members = [...new Set([r.uid].concat(r.viewers || []))].filter(x => x !== me.uid);
-  fire(setDoc(doc(collection(db, 'notices')), { site: '', siteName: '体調チェック', type: 'health', text, by: me.uid, byName: me.name || me.uid, at: Date.now(), members, mentions: [], target: target || '' }), 'お知らせ');
+  fire(setDoc(doc(collection(db, 'notices')), { site: '', siteName: '体調チェック', type: 'health', text, by: me.uid, byName: me.name || me.uid, at: Date.now(), members, mentions: [], target: target || '', ...(go ? { go } : {}) }), 'お知らせ');
 }
 function hSave() {
   const v = id => $(id).value.trim(), summer = hSummer(), today = dsOf(new Date());
@@ -3080,6 +3166,7 @@ function hTeamDraw() {
       (act ? '<div class="hl-tact">' + act + '</div>' : '') + detail + (r ? hCmHtml(r.id) : '') + '</div>';
   }).join('');
   box.querySelectorAll('[data-p]').forEach(b => { b.onclick = () => { H.open[b.dataset.p] = !H.open[b.dataset.p]; hTeamDraw(); }; });
+  setTimeout(() => hGoTry('team'), 0);   // 下のボタンの用意が終わってから
   box.querySelectorAll('[data-ok]').forEach(b => { b.onclick = () => {
     const r = H.team.find(x => x.id === b.dataset.ok);
     fire(updateDoc(doc(db, 'health', r.id), { checks: (r.checks || []).concat([{ uid: me.uid, by: me.name || me.uid, at: Date.now() }]) }), '体調の確認');
@@ -3378,14 +3465,32 @@ async function setOpen() {
   const [pd, ud] = await Promise.all([read(pushRef()), read(doc(db, 'users', me.uid))]);
   if (!$('panelSettings').classList.contains('active')) return;
   const pf = (pd && pd.exists() && pd.data().prefs) || {}, u = (ud && ud.data()) || {}, t = pf.types || {}, muted = pf.mutedSites || [];
-  const types = [['report', '報告の追加・編集'], ['photo', '写真の追加・編集'], ['doc', '資料の追加・編集'], ['site', '現場情報の追加・編集']];
+  // 種類ごとに「追加・編集」と「コメント」（2026-11-16 ユーザー決定 案A）。キーは report・report_cm など。現場情報にコメントは無い
+  const types = [['report', '報告', true], ['photo', '写真', true], ['doc', '資料', true], ['site', '現場情報', false]];
+  const keys = types.flatMap(a => a[2] ? [a[0], a[0] + '_cm'] : [a[0]]);
+  // 前の設定（全体オフ＝全部止める）からの読みかえ：全体オフだった人は「全部通知する」オフで表も全部外す
+  const oldOff = pf.enabled === false && pf.allTypes == null;
+  const allOn = pf.allTypes != null ? pf.allTypes === true : !oldOff && !Object.values(t).some(v => v === false);
+  const tOn = key => !oldOff && t[key] !== false;
+  const q = pf.quiet || {}, qDays = Array.isArray(q.days) ? q.days : [0, 1, 2, 3, 4, 5, 6];
+  const tOpts = v => Array.from({ length: 48 }, (_, i) => { const s = Math.floor(i / 2) + ':' + (i % 2 ? '30' : '00'); return '<option value="' + s + '"' + (s === v ? ' selected' : '') + '>' + s + '</option>'; }).join('');
   P.innerHTML =
     '<div class="info-card"><div class="card-header-row"><span style="font-weight: 700;">📱 アプリの版</span></div><div style="font-size: 0.95rem; margin-bottom: 10px;">今の版：<b>' + APP_VER + '</b></div><button type="button" id="verBtn" class="btn btn-dark">最新の版にする</button><div class="set-note">新しい版が出ているときは、押すと入れ替わります。</div><button type="button" id="relBtn" class="btn btn-outline" style="margin-top: 10px;">更新履歴を見る</button></div>' +
     '<div class="info-card"><div class="card-header-row" style="margin-bottom: 0;"><span style="font-weight: 700;">🌐 表示言語</span>' + LANG_SW + '</div></div>' +
     '<div class="info-card"><div class="card-header-row"><span style="font-weight: 700;">🔔 お知らせ通知設定</span></div>' + pushBoxHtml('setPush') +
-    '<div class="set-sub-title">通知する内容</div>' + sw('pfAll', 'お知らせを通知する（全体）', pf.enabled !== false) + types.map(a => sw('pf_' + a[0], a[1], t[a[0]] !== false)).join('') +
+    '<div class="must-note">⚠️ 体調の知らせ（要確認・作業不可・体調へのコメント）は、下の設定に関係なく必ず届きます。全体をオフにしても、鳴らさない時間でも届きます。</div>' +
+    '<div class="set-sub-title">通知する内容</div>' + sw('pfAll', '全部通知する', allOn) +
+    '<div class="set-note" style="margin-top: 2px;">オンのときは下の内容が全部届きます。オフにすると、1つずつ選べます。</div>' +
+    '<table class="pf-tbl"><tr class="pf-head"><td></td><td>追加・編集</td><td>コメント</td></tr>' + types.map(a => '<tr><td>' + a[1] + '</td><td><input type="checkbox" id="pf_' + a[0] + '"' + (allOn || tOn(a[0]) ? ' checked' : '') + '></td><td>' + (a[2] ? '<input type="checkbox" id="pf_' + a[0] + '_cm"' + (allOn || tOn(a[0] + '_cm') ? ' checked' : '') + '>' : '<span class="pf-none">－</span>') + '</td></tr>').join('') + '</table>' +
+    '<div class="set-note">コメントの列は、ほかの人が出した報告・写真・資料へのコメントです。</div>' +
+    '<div class="set-sub-title">必ず届くもの（オフにできません）</div><ul class="pf-must"><li>自分を「@」で指定したコメント</li><li>自分のコメントへのレス</li><li>自分が出した報告・写真・資料へのコメント</li><li>体調の知らせ</li></ul>' +
     '<div class="set-sub-title">通知する現場</div>' + (allSites.length ? allSites.map(s => '<label class="switch-row"><span>' + esc(s.siteName) + '</span><input type="checkbox" data-site="' + esc(s.id) + '"' + (muted.includes(s.id) ? '' : ' checked') + '></label>').join('') : '<div class="set-note">担当の現場はありません。</div>') +
-    '<div class="set-note">オフにした内容・現場は端末に通知しません（お知らせ一覧には表示されます）。自分が行った操作は通知されません。@で指定されたコメントと体調の知らせは、設定に関係なく届きます。</div>' +
+    '<div class="set-note">オフにした内容・現場は端末に通知しません（お知らせ一覧には表示されます）。自分が行った操作は通知されません。「必ず届くもの」は、現場をオフにしても届きます。</div>' +
+    '<div class="set-sub-title">鳴らさない時間</div>' + sw('pfQ', '鳴らさない時間帯を使う', !!q.on) +
+    '<div class="q-row"><select id="pfQFrom" aria-label="始まり">' + tOpts(q.from || '20:00') + '</select><span>〜</span><select id="pfQTo" aria-label="終わり">' + tOpts(q.to || '7:00') + '</select></div>' +
+    '<div class="q-days">' + DOW.map((w, i) => '<button type="button" class="daily-kb' + (qDays.includes(i) ? ' active' : '') + '" data-qd="' + i + '">' + w + '</button>').join('') + '</div>' +
+    '<div class="set-note" style="margin-top: 2px;">選んだ曜日の、この時間は鳴らしません。夜をまたぐとき（20:00〜7:00 など）は、始まりの曜日で決まります。</div>' +
+    '<div class="set-note">鳴らさない時間でも、お知らせの一覧には全部出ます。</div>' +
     '<button type="button" id="pfSave" class="btn btn-dark" style="margin-top: 14px;">お知らせ通知設定を保存</button></div>' +
     '<div class="info-card"><div class="card-header-row"><span style="font-weight: 700;">👤 アカウント設定</span></div>' +
     '<div class="form-group"><label>名前</label><div style="font-weight:700;">' + esc(u.name || me.name || '') + '</div></div><div class="form-group"><label>アカウントID</label><div>' + esc(me.uid) + '</div></div>' +
@@ -3403,17 +3508,24 @@ async function setOpen() {
   pushWire('setPush');
   document.querySelectorAll('input[name="avOrd"]').forEach(r => { r.onchange = () => { try { localStorage.setItem('portalAvOrder', r.value); } catch (e) {} }; });
   updateLangButtons();
-  $('relBtn').onclick = () => relShow(RELEASES.filter(r => relVer(r) <= APP_VER && relItems(r).length), '更新履歴');
+  $('relBtn').onclick = () => relShow(RELEASES.filter(r => relVer(r) <= APP_VER && relRecent(r) && relItems(r).length), '更新履歴');
   $('verBtn').onclick = async () => {
     $('verBtn').textContent = '入れ替えています…';
     try { await refreshShell(); } catch (e) {}
     location.reload();
   };
+  P.querySelectorAll('[data-qd]').forEach(b => { b.onclick = () => b.classList.toggle('active'); });
+  const tblSync = () => { const on = $('pfAll').checked; keys.forEach(k => { const c = $('pf_' + k); if (!c) return; if (on) { c.dataset.was = c.checked ? '1' : ''; c.checked = true; } else if (c.dataset.was !== undefined) c.checked = c.dataset.was === '1'; c.disabled = on; }); P.querySelector('.pf-tbl').classList.toggle('pf-lock', on); };
+  keys.forEach(k => { const c = $('pf_' + k); if (c) c.dataset.was = tOn(k) ? '1' : ''; });
+  $('pfAll').onchange = tblSync; tblSync();
   $('pfSave').onclick = () => {
     const types_ = {}, mutedSites = [];
-    types.forEach(a => { types_[a[0]] = $('pf_' + a[0]).checked; });
+    const days = [...P.querySelectorAll('[data-qd].active')].map(b => +b.dataset.qd);
+    if ($('pfQ').checked && !days.length) { uiAlert('鳴らさない曜日を1つ以上選んでください。'); return; }
+    const quiet = { on: $('pfQ').checked, from: $('pfQFrom').value, to: $('pfQTo').value, days };
+    keys.forEach(k => { types_[k] = $('pfAll').checked ? true : $('pf_' + k).checked; });
     P.querySelectorAll('[data-site]').forEach(c => { if (!c.checked) mutedSites.push(c.dataset.site); });
-    fire(setDoc(pushRef(), { prefs: { enabled: $('pfAll').checked, types: types_, mutedSites, lang: portalLang() } }, { merge: true }), '通知設定');
+    fire(setDoc(pushRef(), { prefs: { enabled: true, allTypes: $('pfAll').checked, types: types_, mutedSites, lang: portalLang(), quiet } }, { merge: true }), '通知設定');
     $('pfSave').textContent = '保存しました ✓';
     setTimeout(() => { if ($('pfSave')) $('pfSave').textContent = 'お知らせ通知設定を保存'; }, 1500);
   };
@@ -3440,7 +3552,7 @@ const nIsRead = it => (it.at || 0) <= (nReads.all || 0) || !!(nReads.ids || {})[
 const nMine = () => nItems.filter(it => it.by !== me.uid);
 const nSiteUnread = id => nMine().filter(it => it.site === id && !nIsRead(it)).length;
 function notify(s, type, text, opt) {
-  fire(setDoc(doc(collection(db, 'notices')), { site: s.id, siteName: s.siteName, type, text, by: me.uid, byName: me.name || me.uid, at: Date.now(), members: s.members || [], mentions: (opt && opt.mentions) || [], ...(opt && opt.go ? { go: opt.go } : {}) }), 'お知らせ');
+  fire(setDoc(doc(collection(db, 'notices')), { site: s.id, siteName: s.siteName, type, text, by: me.uid, byName: me.name || me.uid, at: Date.now(), members: s.members || [], mentions: (opt && opt.mentions) || [], ...(opt && opt.go ? { go: opt.go } : {}), ...(opt && opt.replies && opt.replies.length ? { replies: opt.replies } : {}), ...(opt && opt.owner ? { owner: opt.owner } : {}) }), 'お知らせ');
 }
 /* 通知から飛ぶ（2026-11-16 ユーザー指示）。報告ならその報告、写真・資料ならそのフォルダを開いてそのファイルを青い枠で知らせる。
    コメントの通知はコメント欄も開く。15秒たっても見つからなければあきらめる（消されたときなど） */
@@ -3499,7 +3611,7 @@ function goTry() {
 }
 // お知らせを開く（一覧の「開く」と、スマホに届いた通知を押したとき）
 function nOpenIt(it) {
-  if (it.site) nGo(it); else if (it.type === 'leave') dOpen(); else hOpen();
+  if (it.site) nGo(it); else if (it.type === 'leave') dOpen(); else hGo(it);
 }
 async function nOpenById(id) {
   if (!me) { nOpenId = id; return; }
@@ -3525,6 +3637,9 @@ function appBadge(n) {
   try { if (window.caches) caches.open('portal-badge').then(c => c.put(new URL('__badge', location.href).href, new Response(String(n || 0)))).catch(() => {}); } catch (e) {}
 }
 /* 更新の窓（2026-11-16 ユーザー指示） */
+const REL_KINDS = [['new', '増えたこと', 'Novedades'], ['change', '変わったこと', 'Cambios'], ['fix', '直したこと', 'Correcciones']];
+// 設定の更新履歴は直近1年分（日付の無いのは次の版）
+const relRecent = r => { if (!r.date) return true; const p = r.date.split('/').map(Number), d = new Date(p[0], p[1] - 1, p[2]); return Date.now() - d.getTime() <= 366 * 86400000; };
 const relMgr = () => !!me && (me.isMaster || (allSites || []).some(s => (s.managers || []).includes(me.uid)));
 const relItems = (r, all) => r.items.filter(i => all || i.who !== 'mgr' || relMgr());
 function relShow(list, title) {
@@ -3533,12 +3648,15 @@ function relShow(list, title) {
   back.style.cssText = 'position:fixed;inset:0;z-index:10000;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;padding:16px;';
   back.innerHTML = '<div role="dialog" aria-modal="true" style="background:#fff;color:#111;border:1px solid #333;border-radius:8px;max-width:520px;width:100%;max-height:calc(100dvh - 32px);display:flex;flex-direction:column;box-shadow:0 6px 24px rgba(0,0,0,.35);">' +
     '<div style="padding:14px 16px 8px;font-weight:800;font-size:1.05rem;border-bottom:1px solid #ccc;">' + esc(title) + '</div>' +
-    '<div data-i18n-skip style="overflow-y:auto;padding:4px 16px 8px;-webkit-overflow-scrolling:touch;">' + list.map(r => '<div style="margin-top:12px;"><div style="font-weight:800;font-size:0.95rem;">' + esc(relVer(r)) + (r.date ? '<span style="font-weight:600;color:#555;font-size:0.85rem;">　' + esc(r.date) + '</span>' : '') + '</div>' +
-      '<ul style="margin:6px 0 0;padding-left:1.3em;font-size:0.9rem;line-height:1.6;">' + relItems(r, master).map(i => '<li style="margin-bottom:4px;">' + esc(es ? i.es : i.ja) + (master && i.who === 'mgr' ? '<span style="font-size:0.75rem;font-weight:700;border:1px solid #555;border-radius:3px;padding:0 4px;margin-left:4px;white-space:nowrap;">' + (es ? 'administradores' : '現場管理者向け') + '</span>' : '') + '</li>').join('') + '</ul></div>').join('') + '</div>' +
+    '<div data-i18n-skip style="overflow-y:auto;padding:4px 16px 8px;-webkit-overflow-scrolling:touch;">' + list.map(r => '<div style="margin-top:12px;"><div style="font-weight:800;font-size:0.95rem;">' + esc(r.ver === 'NEXT' ? (es ? 'Próxima versión (aún no publicada)' : '次の版（本番前）') : r.ver) + (r.date ? '<span style="font-weight:600;color:#555;font-size:0.85rem;">　' + esc(r.date) + '</span>' : '') + '</div>' +
+      REL_KINDS.map(([k, ja, esL]) => { const l = relItems(r, master).filter(i => (i.k || 'new') === k); return l.length ? '<div style="margin-top:8px;font-weight:800;font-size:0.85rem;border-left:4px solid #111;padding-left:6px;">' + (es ? esL : ja) + '</div>' +
+        '<ul style="margin:4px 0 0;padding-left:1.3em;font-size:0.9rem;line-height:1.6;">' + l.map(i => '<li style="margin-bottom:3px;">' + esc(es ? i.es : i.ja) + (master && i.who === 'mgr' ? '<span style="font-size:0.75rem;font-weight:700;border:1px solid #555;border-radius:3px;padding:0 4px;margin-left:4px;white-space:nowrap;">' + (es ? 'administradores' : '現場管理者向け') + '</span>' : '') + (i.img ? '<img src="' + esc(i.img) + '" alt="" data-relimg style="display:block;max-width:100%;max-height:140px;margin:6px 0 4px;border:1px solid #999;border-radius:4px;cursor:zoom-in;">' : '') + '</li>').join('') + '</ul>' : ''; }).join('') + '</div>').join('') + '</div>' +
     '<div style="padding:10px 16px 14px;border-top:1px solid #ccc;display:flex;justify-content:flex-end;"><button type="button" class="btn btn-dark" style="width:auto;padding:8px 28px;">閉じる</button></div></div>';
   document.body.appendChild(back);
   const close = () => back.remove();
   back.querySelector('button').onclick = close;
+  // 画像は押すと画面いっぱいに大きく出す。もう一度押すと戻る
+  back.querySelectorAll('[data-relimg]').forEach(im => { im.onclick = e => { e.stopPropagation(); const z = document.createElement('div'); z.style.cssText = 'position:fixed;inset:0;z-index:10001;background:rgba(0,0,0,.85);display:flex;align-items:center;justify-content:center;padding:12px;cursor:zoom-out;'; z.innerHTML = '<img src="' + esc(im.getAttribute('src')) + '" alt="" style="max-width:100%;max-height:100%;background:#fff;">'; z.onclick = () => z.remove(); document.body.appendChild(z); }; });
   back.onclick = e => { if (e.target === back) close(); };
 }
 // 新しい Ver で最初に開いたとき、まだ見ていない Ver の分を出す。初めてこの端末でログインした人には出さない
@@ -3623,7 +3741,7 @@ function nRender() {
     html += '<div class="notice-card' + (read ? '' : ' unread') + '" data-n="' + esc(it.id) + '"><div class="notice-card-top">' + (read ? '' : '<span class="notice-new">未読</span>') +
       '<span class="notice-type t-' + esc(it.type) + '">' + esc(N_TYPES[it.type] || 'お知らせ') + '</span>' + ((it.mentions || []).includes(me.uid) ? '<span class="notice-mention">@あなた</span>' : '') +
       '<span style="flex:1;"></span><span>' + esc(rWhen(it.at)) + '</span></div>' + (nSort === 'site' ? '' : '<div class="notice-site">' + esc(it.siteName) + '</div>') +
-      '<div class="notice-text">' + trShow(it.text, (it.tr || {}).text) + '</div><div class="notice-foot"><span>👤 ' + esc(it.byName) + '</span><span style="flex:1;"></span><button type="button" class="btn btn-sub" data-open="' + esc(it.site) + '" data-ot="' + esc(it.type) + '" style="padding:2px 8px; font-size:0.75rem;">' + (it.type === 'health' ? '体調を開く' : it.type === 'leave' ? '日報を開く' : !it.go ? '現場を開く' : it.go.t === 'rules' ? '注意事項を開く' : it.go.cm ? 'コメントを開く' : (GO_TAB[it.go.t] || '現場') + 'を開く') + '</button></div></div>';
+      '<div class="notice-text">' + trShow(it.text, (it.tr || {}).text) + '</div><div class="notice-foot"><span>👤 ' + esc(it.byName) + '</span><span style="flex:1;"></span><button type="button" class="btn btn-sub" data-open="' + esc(it.site) + '" data-ot="' + esc(it.type) + '" style="padding:2px 8px; font-size:0.75rem;">' + (it.type === 'health' ? (hIsCm(it) ? 'コメントを開く' : '体調を開く') : it.type === 'leave' ? '日報を開く' : !it.go ? '現場を開く' : it.go.t === 'rules' ? '注意事項を開く' : it.go.cm ? 'コメントを開く' : (GO_TAB[it.go.t] || '現場') + 'を開く') + '</button></div></div>';
   });
   if (rest > 0) html += '<button type="button" class="btn btn-sub" id="nMore" style="width:100%; margin-top:8px;">▼ 以前のお知らせを表示（残り' + rest + '件）</button>';
   $('nBox').innerHTML = html;
