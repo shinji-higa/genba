@@ -400,6 +400,9 @@ Object.assign(I18N_ES, {
   '追加・編集': 'Agregar/editar', '現場情報': 'Datos de la obra', 'コメントの列は、ほかの人が出した報告・写真・資料へのコメントです。': 'La columna Comentarios es para comentarios en informes, fotos y documentos subidos por otros.',
   '必ず届くもの（オフにできません）': 'Siempre llegan (no se pueden desactivar)', '自分を「@」で指定したコメント': 'Comentarios que le mencionan con @', '自分のコメントへのレス': 'Respuestas a sus comentarios', '自分が出した報告・写真・資料へのコメント': 'Comentarios en sus informes, fotos y documentos', '体調の知らせ': 'Avisos de salud',
   'オフにした内容・現場は端末に通知しません（お知らせ一覧には表示されます）。自分が行った操作は通知されません。「必ず届くもの」は、現場をオフにしても届きます。': 'No se avisará de los contenidos y obras desactivados (sí aparecen en la lista). No se avisa de sus propias acciones. «Siempre llegan» llega aunque la obra esté desactivada.',
+  'やめる': 'Cancelar', '移動先を選ぶ': 'Elegir destino', '名前を変える': 'Cambiar nombre', '削除する': 'Eliminar',
+  '移動するフォルダにチェックを入れて、「移動先を選ぶ」を押してください。': 'Marque las carpetas a mover y pulse «Elegir destino».',
+  '名前を変えるフォルダを1つチェックして、「名前を変える」を押してください。': 'Marque una carpeta y pulse «Cambiar nombre».',
   'または': 'o', 'ファイルを選択する': 'Elegir archivo',
   'ここにファイルをドラッグ＆ドロップしても追加できます': 'También puede arrastrar y soltar un archivo aquí', 'ここに画像をドラッグ＆ドロップしても追加できます': 'También puede arrastrar y soltar una imagen aquí',
   '入れる先：まだ選んでいません（下のフォルダを押して選びます。選ばずに落としたときは、保存先を聞きます）': 'Destino: sin elegir (toque una carpeta abajo; si suelta sin elegir, se le preguntará)',
@@ -411,6 +414,7 @@ Object.assign(I18N_ES, {
 });
 I18N_ES_RE.unshift([/^入れる先：「(.+)」（下のフォルダを押すと変わります。フォルダの名前の上に落とすと、そのフォルダに入ります）$/, 'Destino: "$1" (toque otra carpeta para cambiar; si suelta sobre el nombre de una carpeta, se guarda allí)']);
 I18N_ES_RE.unshift([/^次のものは追加できませんでした（フォルダは、中のファイルを選んで落としてください）：\n([\s\S]*)$/, 'No se pudo agregar (para carpetas, suelte los archivos de adentro):\n$1']);
+I18N_ES_RE.unshift([/^削除するフォルダにチェックを入れて、「削除する」を押してください。中の(写真|資料)もいっしょに削除されます。$/, 'Marque las carpetas a eliminar y pulse «Eliminar». También se eliminará su contenido.']);
 I18N_ES_RE.unshift([/^写真に入れられるのは画像だけです：\n([\s\S]*)$/, 'En Fotos solo se pueden agregar imágenes:\n$1']);
 I18N_ES_RE.unshift(
   [/^未読 (\d+)$/, 'No leídos $1'],

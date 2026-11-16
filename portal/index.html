@@ -87,7 +87,47 @@
   .fv-btn:disabled { opacity: 0.6; }
   .pf-tbl { width: 100%; border-collapse: collapse; font-size: 0.9rem; font-weight: 600; margin-top: 6px; } .pf-tbl td { padding: 10px 4px; border-top: 1px solid #eee; text-align: center; } .pf-tbl td:first-child { text-align: left; padding-left: 0; } .pf-tbl .pf-head td { font-size: 0.78rem; color: #555; border-top: 0; padding-bottom: 4px; } .pf-tbl input { width: 22px; height: 22px; accent-color: #111; } .pf-tbl.pf-lock { opacity: 0.55; } .pf-none { color: #999; }
   .pf-must { margin: 4px 0 0; padding-left: 1.3em; font-size: 0.88rem; line-height: 1.8; }
-  .must-note { border: 2px solid #111; border-radius: 6px; padding: 8px 10px; margin: 10px 0 4px; font-size: 0.86rem; font-weight: 700; line-height: 1.6; background: #fff; color: #111; }   /* 体調は必ず届く注意書き（2026-11-16 ユーザー指示） */
+  .hl-edited { font-weight: 700; color: #111; }   /* 体調の「15:46 修正」 */
+  .tree-chk { display: flex; align-items: center; justify-content: center; flex: none; width: 34px; height: 34px; margin-right: 6px; border: 1.5px solid var(--border); border-radius: 8px; background: #fff; cursor: pointer; box-sizing: border-box; }   /* フォルダを選ぶチェックの四角（名前のボタンと離す） */
+  .tree-chk.on { border: 2px solid #111; background: #f0f0f2; }
+  .tree-chk .tree-node-check { margin: 0; width: 18px; height: 18px; }
+  .tree-node-btn.active.folder-selected { background: #111 !important; color: #fff !important; box-shadow: 0 0 0 3px #9e9e9e; }   /* 開いているフォルダにチェックしても名前が見えるように（前は白い字に薄いグレーの背景で消えていた） */
+  .tree-graph-container { position: relative; }
+  /* フォルダの一覧（案B） */
+  .ft-list { overflow-x: visible !important; display: flex; flex-direction: column; gap: 2px; margin-top: 8px; }
+  .ft-row { display: flex; align-items: center; gap: 4px; min-height: 40px; }
+  .ft-tog { flex: none; width: 34px; height: 34px; border: 0; background: none; font-size: 0.9rem; color: #111; cursor: pointer; padding: 0; }
+  .ft-tog.ft-none { display: inline-block; cursor: default; }
+  .ft-list .tree-node-btn.ft-name { flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; text-align: left; border: 1.5px solid transparent; border-radius: 6px; background: transparent; box-shadow: none; padding: 8px 10px; font-size: 0.92rem; white-space: normal; color: var(--text); }
+  .ft-list .tree-node-btn.ft-name:hover { border-color: #bbb; }
+  .ft-list .tree-node-btn.ft-name.active { background: #111; color: #fff; border-color: #111; }
+  .ft-list .tree-node-btn.ft-name.folder-selected { background: #f0f0f2 !important; border: 2px solid #111 !important; color: #111 !important; }
+  .ft-list .tree-node-btn.ft-name.active.folder-selected { background: #111 !important; color: #fff !important; box-shadow: 0 0 0 3px #9e9e9e; }
+  /* フォルダの見せ方（案A。PC は左に全体の一覧） */
+  .fa-wrap { display: block; }
+  .fa-tree .ft-cnt { display: block; font-size: 0.72rem; font-weight: 600; opacity: 0.8; margin-top: 1px; }   /* 左の一覧：数はフォルダ名の下の行に（狭い幅で名前が折れないように） */
+  .rel-em { background: #e6e6e9; color: #111; font-weight: 800; padding: 1px 4px; border-radius: 3px; }   /* 更新の窓の強調（**…**） */
+  .fa-tag { display: inline-block; background: #e6e6e9; color: #111; font-weight: 700; padding: 0 6px; border-radius: 3px; margin-right: 6px; }   /* 「資料 n件」の札（いつものハイライト） */
+  .tree-node-btn.active .fa-tag { background: #fff; color: #111; }   /* 開いているフォルダ（黒）では反転 */
+  .fa-wrap .fa-tree { display: none; }   /* スマホは右の案Aだけ */
+  @media (min-width: 700px) { .fa-wrap .fa-tree { display: flex; margin-top: 0; } .fa-wrap .fa-main { display: none; } }   /* PC はフォルダの一覧だけ（2026-11-16 ユーザー決定）。スマホは今いる場所＋大きな行だけ */
+  .fa-view { overflow-x: visible !important; margin-top: 8px; }
+  .fa-crumb { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; margin-bottom: 10px; }
+  .fa-view .tree-node-btn.fa-c { padding: 4px 10px; font-size: 0.84rem; border-radius: 14px; }
+  .fa-sep { color: #777; font-weight: 700; }
+  .fa-line { display: flex; align-items: center; gap: 6px; margin-bottom: 8px; }
+  .fa-view .tree-node-btn.fa-row { flex: 1; min-width: 0; width: 100%; display: flex; align-items: center; gap: 12px; text-align: left; white-space: normal; border: 1.5px solid #bbb; border-radius: 8px; background: #fff; padding: 10px 12px; font-size: 0.95rem; color: var(--text); box-shadow: none; }
+  .fa-view .tree-node-btn.fa-up { margin-bottom: 8px; background: #f3f3f5; }
+  .fa-view .tree-node-btn.fa-row.folder-selected { background: #f0f0f2 !important; border: 2px solid #111 !important; }
+  .fa-ico { flex: none; font-size: 1.3rem; } .fa-name { flex: 1; min-width: 0; word-break: break-all; font-weight: 700; } .fa-sub { display: block; font-size: 0.75rem; font-weight: 600; color: #555; margin-top: 2px; } .fa-go { flex: none; font-size: 1.3rem; color: #555; }
+  .fa-none { font-size: 0.82rem; color: #666; padding: 4px 2px; }
+  .ft-ico { flex: none; } .ft-label { flex: 1; min-width: 0; word-break: break-all; } .ft-cnt { flex: none; font-size: 0.75rem; font-weight: 600; opacity: 0.8; }
+  .xf-bar { border: 2px solid #111; border-radius: 6px; background: #fff; padding: 8px 10px; margin: 8px 0 10px; } .xf-msg { font-size: 0.86rem; font-weight: 700; line-height: 1.6; } .xf-btns { display: flex; gap: 8px; margin-top: 8px; } .xf-btns .btn { flex: 1; } .xf-btns .xf-del { background: var(--error-text); border-color: var(--error-text); }   /* フォルダを選ぶときの帯 */
+  .folder-tool-row .xf-on { background: #111 !important; color: #fff !important; border-color: #111 !important; }   /* 選ぶ状態のボタン */
+  .tree-more { position: absolute; right: 1px; top: 52px; bottom: 1px; width: 40px; display: none; align-items: center; justify-content: flex-end; padding-right: 6px; box-sizing: border-box; background: linear-gradient(to right, rgba(249,249,250,0), #f9f9fa 65%); font-size: 1.1rem; color: #111; pointer-events: none; border-radius: 0 6px 6px 0; }   /* 右にまだフォルダがある印 */
+  .tree-has-kids { font-size: 0.7rem; margin-left: 2px; }
+  .tree-list { display: flex; flex-direction: column; gap: 8px; } .tree-list-row { display: flex; align-items: center; } .tree-list-line { color: #999; margin-right: 6px; font-size: 0.9rem; }
+  .must-note { margin: 10px 0 4px; font-size: 0.88rem; font-weight: 800; line-height: 1.6; color: #111; }   /* 体調は必ず届く注意書き：枠は付けず太字だけ（2026-11-16 ユーザー指示） */   /* 体調は必ず届く注意書き（2026-11-16 ユーザー指示） */
   .q-row { display: flex; align-items: center; gap: 8px; margin: 6px 0; } .q-row select { width: auto; min-width: 92px; } .q-days { display: flex; gap: 4px; margin: 6px 0; } .q-days .daily-kb { flex: 1; min-width: 0; padding: 6px 0; }
   .cm-rep { margin-left: 8px; font-size: 0.72rem; font-weight: 700; padding: 1px 8px; border: 1px solid #555; border-radius: 10px; background: #fff; color: #111; cursor: pointer; }   /* コメントの返信ボタン */
   /* 閉じるボタン（2026-11-16 ユーザー指示）：PC もスマホも右の端に白いボタン（右上のアプリを閉じるボタンと押し間違えないように）。PC は「✕ 閉じる」、スマホは場所がないので大きな「✕」だけ。左の ✕ は出さない */
@@ -192,7 +232,7 @@
   </div>
 </div>
 
-<script src="i18n.js?v=8"></script>
+<script src="i18n.js?v=9"></script>
 <script>i18nStart();</script>
 <script type="module">
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
@@ -219,7 +259,7 @@ auth.languageCode = 'ja';   // パスワード再設定のメールと画面を�
 // 端末の控え（電波なしでも見られる）は1つのタブだけが持つ。2つ目からのタブは、開いている間だけの控えでサーバーと直接やりとりする。
 // 前は全部のタブで控えを分け合っていて、サーバーとやりとりするタブが裏にあると、ほかのタブに最新が届くまで約28秒待っていた（2026-11-05 確認）
 const db = initializeFirestore(app, { localCache: persistentLocalCache({ tabManager: persistentSingleTabManager() }) });
-const APP_VER = 'Ver.20261116-02';
+const APP_VER = 'Ver.20261116-03';
 /* 更新の内容（2026-11-16 ユーザー指示）。新しい Ver に入れ替わったあと最初に開いたとき、まだ見ていない Ver の分を窓で出す。設定の「更新履歴を見る」でも全部見られる。
    載せるもの（2026-11-16 ユーザー決定）：増えた機能／使う人が気づく不具合の直し（困っていた・報告が来たもの。裏の直しは載せない）／押す場所や使い方が変わる見た目の変更（色や大きさだけの変更は載せない）。
    1項目は短い1〜2文、です・ます、日本語と es（スペイン語）。who：all＝全員、mgr＝現場管理者とマスターだけ（この2つだけ）。
@@ -229,6 +269,14 @@ const APP_VER = 'Ver.20261116-02';
    画像（img）：押す場所が変わったもの・新しいボタンができたものだけ、その所に赤い枠を付けた画面の画像を rel/ に置いて付ける（名前・電話番号は見本にする。ユーザー決定 2026-11-16）。
    本番に入れるときは、いちばん上の ver: 'NEXT' を本当の Ver（APP_VER と同じ）に、date をその日に書きかえる */
 const RELEASES = [
+  { ver: 'Ver.20261116-03', date: '2026/11/16', items: [
+    { who: 'all', k: 'new', ja: '不具合を報告すると、マスターのスマホ・パソコンにすぐ通知が届くようになりました。', es: 'Al reportar un fallo, los responsables (master) reciben un aviso al instante.' },
+    { who: 'all', k: 'change', img: 'rel/20261116_folder-view.png', ja: '写真・資料のフォルダの出方が変わりました。スマホは、今いる場所（資料TOP ＞ …）と、中のフォルダの大きな行で出ます。行を押すと中に入ります。パソコンは、全体のフォルダの一覧で出ます（▶で開く・▼で閉じる）。**フォルダ名の下の「資料 0件 フォルダ 1（資料 1件）」は、そのフォルダの資料の数・下にあるフォルダの数（下の階層も全部）・かっこの中は下のフォルダ（下の階層も全部）に入っている資料の数です。写真のフォルダも同じで、「写真 0枚」のように出ます。** フォルダの表示方法を大きく変えました。表示方法で変えてほしい点があれば、画面の右の「不具合修正」から報告してください。', es: 'Cambió la forma de mostrar las carpetas. En el teléfono se ve la ubicación actual (TOP > …) y filas grandes con las carpetas internas; toque una fila para entrar. En PC se ve la lista completa de carpetas (▶ abre, ▼ cierra). **Bajo el nombre, «0 archivo(s) 1 carpeta(s) (1 archivo(s))» indica: archivos de esa carpeta, carpetas debajo (todos los niveles) y, entre paréntesis, archivos dentro de esas carpetas (todos los niveles). En fotos es igual («0 foto(s)»).** Cambiamos mucho la forma de mostrar las carpetas; si quiere que se cambie algo, avísenos con «Reportar fallo» (a la derecha de la pantalla).' },
+    { who: 'all', k: 'new', ja: '体調の記録を「修正する」で直すと、「15:46 修正」のように直した時刻が出ます（自分の記録・みんなの体調）。', es: 'Al corregir un registro de salud se muestra la hora de la corrección (p. ej., «corregido 15:46»).' },
+    { who: 'all', k: 'change', img: 'rel/20261116_folder-check.png', ja: '写真・資料のフォルダのチェックは、普段は出なくなりました。「移動」「名前変更」「選択削除」を押すとチェックが出るので、フォルダを選んでから帯のボタンで実行します（間違えてチェックしないように）。', es: 'Las casillas de las carpetas ya no se muestran siempre. Pulse «Mover», «Renombrar» o «Eliminar» para que aparezcan, elija las carpetas y confirme con el botón de la barra.' },
+    { who: 'all', k: 'fix', ja: '体調ボタンで開くと、空の「みんなの体調」が出て自分の記録を付けられないことがあったのを直しました。', es: 'Se corrigió que al abrir Salud a veces aparecía «Salud de todos» vacío y no se podía registrar.' },
+    { who: 'all', k: 'fix', ja: '開いているフォルダにチェックを入れると、フォルダ名が見えなくなっていたのを直しました。', es: 'Se corrigió que el nombre de la carpeta abierta desaparecía al marcarla.' }
+  ] },
   { ver: 'Ver.20261116-02', date: '2026/11/16', items: [
     { who: 'all', k: 'change', img: 'rel/20261116_flow-default.png', ja: '現場選択は、最初から「進行中」の現場だけを出すようになりました。ほかの現場は上のボタン（全て表示など）で切り替えます。', es: 'La selección de obras ahora muestra primero solo las obras «En curso». Use los botones de arriba («Todos», etc.) para ver las demás.' },
     { who: 'all', k: 'new', img: 'rel/20261116_reply-button.png', ja: 'コメントに「返信」ボタンが付きました。押すとその人を @ で指定して書けます。また、自分がコメントした所にほかの人がコメントすると「あなたのコメントへのレス」として、設定に関係なく通知が届きます。', es: 'Los comentarios tienen el botón «Responder» (menciona a esa persona con @). Si alguien comenta donde usted comentó, recibirá «Respuesta a tu comentario» aunque tenga avisos desactivados.' },
@@ -236,7 +284,7 @@ const RELEASES = [
     { who: 'all', k: 'new', img: 'rel/20261116_comment-setting.png', ja: '通知の設定で、報告・写真・資料ごとに「追加・編集」と「コメント」を分けて選べます。一番上の「全部通知する」をオフにすると選べます。', es: 'En la configuración de avisos puede elegir por separado «Agregar/editar» y «Comentarios» para informes, fotos y documentos (desactive «Avisar de todo» para elegir).' },
     { who: 'all', k: 'new', img: 'rel/20261116_quiet-setting.png', ja: '通知の設定で「鳴らさない時間帯」（時刻と曜日）を選べます。その間も体調の知らせは必ず届きます。', es: 'En la configuración de avisos puede elegir un horario sin sonido (hora y días). Los avisos de salud siempre llegan.' },
     { who: 'all', k: 'new', ja: '体調の通知も、「体調を開く」「コメントを開く」で、その日のその人の記録へ飛びます。コメントの通知はコメント欄も開きます。', es: 'Los avisos de salud también abren directamente el registro de esa persona y ese día con «Abrir salud» o «Abrir comentarios» (los de comentarios abren también los comentarios).' },
-    { who: 'all', k: 'change', img: 'rel/20261116_close-button.png', ja: '写真・PDFを閉じるボタンは、右上の白いボタンになりました（パソコンは「✕ 閉じる」、スマホは大きな「✕」）。', es: 'Para cerrar fotos y PDF use el botón blanco de arriba a la derecha («✕ Cerrar» en PC, «✕» grande en el teléfono).' }
+    { who: 'all', k: 'change', img: 'rel/20261116_close-button2.png', ja: '写真・PDFを閉じるボタンは、右上の白いボタンになりました（パソコンは「✕ 閉じる」、スマホは大きな「✕」）。', es: 'Para cerrar fotos y PDF use el botón blanco de arriba a la derecha («✕ Cerrar» en PC, «✕» grande en el teléfono).' }
   ] },
   { ver: 'Ver.20261116-01', date: '2026/11/16', items: [
     { who: 'all', k: 'new', ja: '更新の内容を、この窓でお知らせするようになりました。これまでの更新は「設定」の「更新履歴を見る」で見られます。', es: 'Ahora las novedades de cada actualización se muestran en esta ventana. Puede ver el historial en Configuración → «Ver historial de actualizaciones».' },
@@ -649,7 +697,7 @@ function showList() {
   $('btnGoDaily').onclick = dOpen;
   { const g = $('btnGoDaily'), off = dailyOff(); g.disabled = off; g.title = off ? '今は使えません' : ''; g.style.opacity = off ? '0.35' : ''; g.style.cursor = off ? 'not-allowed' : ''; }
   leaveWatch();
-  $('btnGoHealth').onclick = hOpen;
+  $('btnGoHealth').onclick = () => hOpen();   // 押したときの情報を「飛ぶ先」として渡さない（Ver.20261116-02 で、体調ボタンで開くと日付の無いみんなの体調が空で開いていた）
   let hChecked = false;
   stop = onSnapshot(sitesQuery(), { includeMetadataChanges: true }, snap => {
     allSites = snap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => a.order - b.order);
@@ -1285,7 +1333,7 @@ function rEdit(r, card) {
 
 function xOpen(s, kind) {
   xEnsure(s, kind);
-  X.kind = kind; X.selMode = false; X.sel.clear(); X.selF.clear();
+  X.kind = kind; X.selMode = false; X.sel.clear(); X.selF.clear(); X.fMode = '';
   xShell();
   xRender();
 }
@@ -1303,7 +1351,8 @@ function xShell() {
         '<button type="button" id="xFMove" class="btn btn-sub">📁 <span class="lbl-long">フォルダの移動</span><span class="lbl-short">移動</span></button>' +
         '<button type="button" id="xFRen" class="btn btn-sub">✏️ <span class="lbl-long">フォルダ名の変更</span><span class="lbl-short">名前変更</span></button>' +
         '<button type="button" id="xFDel" class="btn btn-sub btn-del del-admin">🗑️ <span class="lbl-long">選択中のフォルダの削除</span><span class="lbl-short">選択削除</span></button>' +
-      '</div><div id="xTree" class="tree-graph-scroll" style="overflow-x: auto; padding-bottom: 6px;"></div></div>' +
+      '</div><div id="xFBar" class="xf-bar" style="display:none;"><div id="xFMsg" class="xf-msg"></div><div class="xf-btns"><button type="button" id="xFGo" class="btn btn-dark"></button><button type="button" id="xFCancel" class="btn btn-sub">やめる</button></div></div>' +
+      '<div id="xTree" class="tree-graph-scroll" style="overflow-x: auto; padding-bottom: 6px;"></div><div class="tree-more" id="xTreeMore" aria-hidden="true">▶</div></div>' +
     '<div id="xBulk" class="bulk-action-bar" style="display: none;"><span id="xCount" style="font-weight: 700; font-size: 0.8rem; white-space: nowrap;">0件選択中</span>' +
       '<div style="display: flex; gap: 6px; align-items: center;">' +
         '<button type="button" id="xAll" class="btn btn-sub" style="font-size: 0.78rem; background: #ffffff; color: #111111;">全選択</button>' +
@@ -1327,17 +1376,31 @@ function xShell() {
     const name = ((await uiPrompt('「' + xNameOf(X.active[X.kind]) + '」内に作成するフォルダ名を入力してください:')) || '').trim();
     if (name) xNewFolder(name, X.active[X.kind]);
   };
-  $('xFMove').onclick = async () => {
+  // フォルダを選ぶ状態（2026-11-16 ユーザー指示）。チェックは普段は出さず、ここで出す。選ぶ状態ではフォルダの名前を押してもチェックが入る
+  const F_MODES = { move: ['移動するフォルダにチェックを入れて、「移動先を選ぶ」を押してください。', '移動先を選ぶ', 'xFMove'], ren: ['名前を変えるフォルダを1つチェックして、「名前を変える」を押してください。', '名前を変える', 'xFRen'], del: ['削除するフォルダにチェックを入れて、「削除する」を押してください。中の' + L + 'もいっしょに削除されます。', '削除する', 'xFDel'] };
+  const fMode = m => {
+    X.fMode = X.fMode === m ? '' : m; X.selF.clear();
+    const on = !!X.fMode, def = F_MODES[X.fMode] || [];
+    $('xFBar').style.display = on ? '' : 'none';
+    if (on) { $('xFMsg').textContent = def[0]; $('xFGo').textContent = def[1]; $('xFGo').classList.toggle('xf-del', X.fMode === 'del'); }
+    Object.keys(F_MODES).forEach(k => $(F_MODES[k][2]).classList.toggle('xf-on', X.fMode === k));
+    xRender();
+  };
+  X.fModeEnd = () => { if (X.fMode) fMode(X.fMode); };
+  $('xFCancel').onclick = () => X.fModeEnd();
+  $('xFGo').onclick = () => ({ move: fMove, ren: fRen, del: fDel })[X.fMode]();
+  $('xFMove').onclick = () => fMode('move'); $('xFRen').onclick = () => fMode('ren'); $('xFDel').onclick = () => fMode('del');
+  const fMove = async () => {
     if (!X.selF.size) { uiAlert('移動するフォルダにチェックを入れてください。'); return; }
     const to = await xPick('移動先のフォルダを選んでください', true);
     if (to === null) return;
     if ([...X.selF].some(id => id === to || xDescendants(id).includes(to))) { uiAlert('自分の中には移動できません。'); return; }
     const b = writeBatch(db);
     X.selF.forEach(id => b.update(doc(xSub('folders'), id), { parent: to }));
-    fire(b.commit(), 'フォルダの移動'); X.selF.clear();
+    fire(b.commit(), 'フォルダの移動'); X.selF.clear(); X.fModeEnd();
   };
   // フォルダ名の変更（2026-11-15 ユーザー指示）。変えられるのは削除と同じ人だけ。中の写真・資料と、報告の添付はそのまま
-  $('xFRen').onclick = async () => {
+  const fRen = async () => {
     if (X.selF.size !== 1) { uiAlert(X.selF.size ? '名前を変えるフォルダは、1つだけチェックを入れてください。' : '名前を変えるフォルダにチェックを入れてください。'); return; }
     const id = [...X.selF][0], f = X.folders.find(x => x.id === id);
     if (!f) return;
@@ -1345,9 +1408,9 @@ function xShell() {
     const name = ((await uiPrompt('新しいフォルダ名を入力してください:', f.name)) || '').trim();
     if (!name || name === f.name) return;
     fire(updateDoc(doc(xSub('folders'), id), { name }), 'フォルダ名「' + name + '」');
-    f.name = name; X.selF.clear(); xRender();
+    f.name = name; X.selF.clear(); X.fModeEnd(); xRender();
   };
-  $('xFDel').onclick = async () => {
+  const fDel = async () => {
     if (!X.selF.size) { uiAlert('削除するフォルダにチェックを入れてください。'); return; }
     const ids = new Set();
     X.selF.forEach(id => { ids.add(id); xDescendants(id).forEach(x => ids.add(x)); });
@@ -1358,6 +1421,7 @@ function xShell() {
     xBatch([...[...ids].map(id => ['folders', id]), ...files.map(f => ['files', f.id])], { deleted: true });
     X.selF.clear();
     if (ids.has(X.active[X.kind])) X.active[X.kind] = '';
+    X.fModeEnd();
   };
   $('xSelBtn').onclick = () => { X.selMode = !X.selMode; X.sel.clear(); xBulk(); xList(); };
   $('xEnd').onclick = () => { X.selMode = false; X.sel.clear(); xBulk(); xList(); };
@@ -1376,25 +1440,56 @@ const xNameOf = id => { const f = xFolders().find(x => x.id === id); return f ? 
 function xRender() {
   if (!$('xTree')) return;
   if (X.active[X.kind] && !xFolders().some(f => f.id === X.active[X.kind])) X.active[X.kind] = '';
-  const files = xFiles();
-  const node = (id, root) => {
-    const kids = root ? xKids('') : xKids(id);
-    const f = root ? null : xFolders().find(x => x.id === id);
-    const on = X.active[X.kind] === (root ? '' : id), chk = !root && X.selF.has(id);
-    return '<div class="tree-branch"><div class="tree-node-col"><button type="button" class="tree-node-btn' + (on ? ' active' : '') + (chk ? ' folder-selected' : '') + '" data-f="' + (root ? '' : esc(id)) + '">' +
-      (root ? '' : '<input type="checkbox" class="tree-node-check"' + (chk ? ' checked' : '') + ' data-c="' + esc(id) + '">') +
-      esc(root ? xLabel(X.kind) + 'TOP' : f.name) + (root ? '' : ' <span style="font-size:0.7rem; font-weight:normal; opacity:0.8;">(' + files.filter(x => x.folder === id).length + ')</span>') + '</button></div>' +
-      (kids.length ? '<div class="tree-children-col">' + kids.map(c => '<div class="tree-child-row">' + node(c.id, false) + '</div>').join('') + '</div>' : '') + '</div>';
+  const files = xFiles(), a = X.active[X.kind], tree = $('xTree'), photo = X.kind === 'photo';
+  // 数の書き方：写真は「枚」、資料は「件」（2026-11-16 ユーザー指示）
+  const num = n => photo ? jaEs('写真 ' + n + '枚', n + ' foto(s)') : jaEs('資料 ' + n + '件', n + ' archivo(s)');
+  const direct = id => files.filter(x => x.folder === id).length;
+  const inside = id => xDescendants(id).reduce((s, d) => s + direct(d), 0);
+  X.ftOpen = X.ftOpen || {};
+  const ok = id => X.kind + ':' + id;
+  for (let p = a; p; p = (xFolders().find(f => f.id === p) || {}).parent || '') X.ftOpen[ok(p)] = true;   // 開いているフォルダまでの道は開く
+
+  // 左（PC だけ）：全体のフォルダの一覧。▶で開く・▼で閉じる。押すとそのフォルダへ（PC で全体を一目で見るため。2026-11-16 ユーザー指示）
+  const tRow = (id, depth) => {
+    const root = id === '', kids = xKids(id), open = root || !!X.ftOpen[ok(id)], f = root ? null : xFolders().find(x => x.id === id);
+    const tog = kids.length && !root ? '<button type="button" class="ft-tog" data-t="' + esc(id) + '" aria-label="' + (open ? '閉じる' : '開く') + '">' + (open ? '▼' : '▶') + '</button>' : '<span class="ft-tog ft-none"></span>';
+    const n = direct(id), k = root ? 0 : inside(id), m = root ? 0 : xDescendants(id).length, chk = !root && X.selF.has(id);
+    const box = X.fMode && !root ? '<label class="tree-chk' + (chk ? ' on' : '') + '" aria-label="選ぶ"><input type="checkbox" class="tree-node-check"' + (chk ? ' checked' : '') + ' data-c="' + esc(id) + '"></label>' : '';
+    return '<div class="ft-row" style="padding-left:' + (depth * 18) + 'px;">' + tog + box +
+      '<button type="button" class="tree-node-btn ft-name' + (a === id ? ' active' : '') + (chk ? ' folder-selected' : '') + '" data-f="' + esc(id) + '"><span class="ft-ico">📁</span><span class="ft-label">' + esc(root ? xLabel(X.kind) + 'TOP' : f.name) + (root ? '' : '<span class="ft-cnt"><span class="fa-tag">' + esc(num(n)) + '</span>' + esc((m ? jaEs('フォルダ ' + m, m + ' carpeta(s)') : '') + (k ? '（' + num(k) + '）' : '')) + '</span>') + '</span></button></div>' +
+      (open ? kids.map(c => tRow(c.id, depth + 1)).join('') : '');
   };
-  $('xTree').innerHTML = node('', true);
-  if ($('xTo')) $('xTo').textContent = X.active[X.kind] ? '入れる先：「' + xNameOf(X.active[X.kind]) + '」（下のフォルダを押すと変わります。フォルダの名前の上に落とすと、そのフォルダに入ります）' : '入れる先：まだ選んでいません（下のフォルダを押して選びます。選ばずに落としたときは、保存先を聞きます）';
-  $('xTree').querySelectorAll('.tree-node-btn').forEach(b => { b.onclick = () => { X.active[X.kind] = b.dataset.f; X.sel.clear(); xRender(); }; });
-  $('xTree').querySelectorAll('.tree-node-check').forEach(c => {
+  // 右（スマホはこれだけ）：今いる場所＋上のフォルダへ＋中のフォルダの大きな行（2026-11-16 ユーザー決定 案A）
+  const path = []; for (let p = a; p; p = (xFolders().find(f => f.id === p) || {}).parent || '') path.unshift(p);
+  const crumb = '<div class="fa-crumb">' + ['', ...path].map((id, i, arr) => (i ? '<span class="fa-sep">＞</span>' : '') + '<button type="button" class="tree-node-btn fa-c' + (i === arr.length - 1 ? ' active' : '') + '" data-f="' + esc(id) + '">' + esc(id ? xNameOf(id) : xLabel(X.kind) + 'TOP') + '</button>').join('') + '</div>';
+  const parent = a ? ((xFolders().find(f => f.id === a) || {}).parent || '') : null;
+  const up = a ? '<button type="button" class="tree-node-btn fa-row fa-up" data-f="' + esc(parent) + '"><span class="fa-ico">⬆</span><span class="fa-name">' + esc(jaEs('上のフォルダへ', 'Carpeta superior')) + '<span class="fa-sub">' + esc(parent ? xNameOf(parent) : xLabel(X.kind) + 'TOP') + '</span></span></button>' : '';
+  const kidRows = xKids(a).map(c => {
+    const chk = X.selF.has(c.id), m = xDescendants(c.id).length, k = inside(c.id);   // フォルダの数は下の全部の階層（2026-11-16 ユーザー決定）
+    // 例：資料 0件・フォルダ 1（資料 1件）。かっこの中は、中のフォルダに入っている数
+    // 「資料 n件」の所は、いつもの薄いグレーの札（開いている時は反転）。2026-11-16 ユーザー指示
+    const info = '<span class="fa-tag">' + esc(num(direct(c.id))) + '</span>' + esc((m ? jaEs('フォルダ ' + m, m + ' carpeta(s)') : '') + (k ? '（' + num(k) + '）' : ''));
+    // チェックは「移動」「名前変更」「選択削除」を押したときだけ（2026-11-16 ユーザー指示）
+    const box = X.fMode ? '<label class="tree-chk' + (chk ? ' on' : '') + '" aria-label="選ぶ"><input type="checkbox" class="tree-node-check"' + (chk ? ' checked' : '') + ' data-c="' + esc(c.id) + '"></label>' : '';
+    return '<div class="fa-line">' + box + '<button type="button" class="tree-node-btn fa-row' + (chk ? ' folder-selected' : '') + '" data-f="' + esc(c.id) + '"><span class="fa-ico">📁</span><span class="fa-name">' + esc(c.name) + '<span class="fa-sub">' + info + '</span></span><span class="fa-go">›</span></button></div>';
+  }).join('');
+  tree.classList.add('fa-view');
+  tree.innerHTML = '<div class="fa-wrap"><div class="fa-tree ft-list">' + tRow('', 0) + '</div><div class="fa-main">' + crumb + up + (kidRows || '<div class="fa-none">' + esc(jaEs('この中にフォルダはありません。', 'No hay carpetas aquí.')) + '</div>') + '</div></div>';
+  if ($('xTo')) $('xTo').textContent = a ? '入れる先：「' + xNameOf(a) + '」（下のフォルダを押すと変わります。フォルダの名前の上に落とすと、そのフォルダに入ります）' : '入れる先：まだ選んでいません（下のフォルダを押して選びます。選ばずに落としたときは、保存先を聞きます）';
+  tree.querySelectorAll('.ft-tog[data-t]').forEach(b => { b.onclick = () => { const k = ok(b.dataset.t); X.ftOpen[k] = !X.ftOpen[k]; xRender(); }; });
+  tree.querySelectorAll('.tree-node-btn').forEach(b => { b.onclick = () => {
+    const id = b.dataset.f;
+    // 選ぶ状態では、中のフォルダの行は開かずにチェック（今いる場所・上のフォルダへ・左の一覧は、今までどおり移る）
+    if (X.fMode && ((b.classList.contains('fa-row') && !b.classList.contains('fa-up')) || (b.classList.contains('ft-name') && id))) { if (!id) return; if (X.selF.has(id)) X.selF.delete(id); else X.selF.add(id); xRender(); return; }
+    X.active[X.kind] = id; if (id) X.ftOpen[ok(id)] = true; X.sel.clear(); xRender(); }; });
+  tree.querySelectorAll('.tree-node-check').forEach(c => {
     c.onclick = e => e.stopPropagation();
     c.onchange = () => { if (c.checked) X.selF.add(c.dataset.c); else X.selF.delete(c.dataset.c); xRender(); };
   });
+  if ($('xTreeMore')) $('xTreeMore').style.display = 'none';
   xList();
 }
+function xTreeMore() {}
 function xItems() {
   const a = X.active[X.kind], l = xFiles().filter(f => (f.folder || '') === a);
   return l.sort((p, q) => X.sort === 'newest' ? (q.at || 0) - (p.at || 0) : (p.at || 0) - (q.at || 0));
@@ -2814,6 +2909,7 @@ async function hPortal() {
 }
 let H = null;
 function hOpen(goto) {
+  if (!goto || !goto.ds) goto = null;   // 飛ぶ先は通知からのものだけ
   stopWatch();
   show('panelHealth', '体調チェック', showList);
   $('speed').textContent = '';
@@ -2880,6 +2976,8 @@ function hOpen(goto) {
   }).catch(() => {});
   hRender();
 }
+// 修正した時刻の札（「15:46 修正」）
+const hEdited = r => { if (!r || !r.editedAt) return ''; const d = new Date(r.editedAt), t = d.getHours() + ':' + pad2(d.getMinutes()); return jaEs(t + ' 修正', 'corregido ' + t); };
 const hTodayRec = () => H.list.find(r => r.date === dsOf(new Date())) || null;
 function hSecond(on) {
   H.second = !!on;
@@ -3010,11 +3108,11 @@ function hResultHtml(r) {
   return '<div class="hl-result ' + r.level + '"><div class="hl-result-icon">' + lv.icon + '</div><div class="hl-result-title">' + lv.label + '</div><div class="hl-result-msg">' + msg + '</div>' +
     (sos ? '<div class="hl-result-sos">胸の痛み・息苦しさが強いときは、すぐに119番に電話してください。</div>' : '') +
     (r.reasons && r.reasons.length ? '<ul class="hl-reasons">' + r.reasons.map(x => '<li>• ' + esc(x) + '</li>').join('') + '</ul>' : '') +
-    '<div class="hl-result-vals">' + esc(r.time + ' 測定 · 血圧 ' + hBp(r)) + '</div>' + ((r.checks || []).length ? '<div style="margin-top: 6px;">' + hChecks(r.checks) + '</div>' : '') +
+    '<div class="hl-result-vals">' + esc(r.time + ' 測定 · 血圧 ' + hBp(r)) + (r.editedAt ? '<div class="hl-edited">' + esc(hEdited(r)) + '</div>' : '') + '</div>' + ((r.checks || []).length ? '<div style="margin-top: 6px;">' + hChecks(r.checks) + '</div>' : '') +
     '<button type="button" class="btn btn-sub" id="hFix">修正する</button></div>';
 }
 const hCmHtml = id => '<div class="hl-cm"><button type="button" class="btn btn-sub" data-cm="' + esc(id) + '" style="padding: 2px 8px; font-size: 0.75rem;">💬 コメント ' + (H.cm[id] && H.cm[id].open ? '▲' : '▼') + '</button><div data-cmbox="' + esc(id) + '"></div></div>';
-const hRows = (list, cm) => list.map(r => '<div class="hl-hist" data-hid="' + esc(r.id) + '"><div class="hl-row"><div class="hl-row-date">' + esc(hDate(r.date)) + '<div class="dl-sub">' + esc(r.time) + '</div></div><div class="hl-row-body">' + esc(hBp(r)) + (r.reasons && r.reasons.length ? '<div class="dl-sub">' + esc(r.reasons.join('、')) + '</div>' : '') + '</div>' + hBadge(r.level) + '</div>' + (cm ? hCmHtml(r.id) : '') + '</div>').join('');
+const hRows = (list, cm) => list.map(r => '<div class="hl-hist" data-hid="' + esc(r.id) + '"><div class="hl-row"><div class="hl-row-date">' + esc(hDate(r.date)) + '<div class="dl-sub">' + esc(r.time) + '</div>' + (r.editedAt ? '<div class="dl-sub hl-edited">' + esc(hEdited(r)) + '</div>' : '') + '</div><div class="hl-row-body">' + esc(hBp(r)) + (r.reasons && r.reasons.length ? '<div class="dl-sub">' + esc(r.reasons.join('、')) + '</div>' : '') + '</div>' + hBadge(r.level) + '</div>' + (cm ? hCmHtml(r.id) : '') + '</div>').join('');
 /* 記録ごとのコメント（health/{id}/comments） */
 function hCmWire(root) {
   root.querySelectorAll('[data-cm]').forEach(b => { b.onclick = () => hCmToggle(b.dataset.cm, root); });
@@ -3110,7 +3208,7 @@ function hSave() {
   const j = hJudge(f, summer), prev = hTodayRec(), id = hId(today, me.uid);
   const viewers = [...new Set(allSites.filter(s => (s.members || []).includes(me.uid)).flatMap(s => s.managers || []))].filter(x => x !== me.uid);
   // 書き換えたときは「確認済み」を外す（内容が変わったため）
-  const rec = { ...f, uid: me.uid, name: me.name || me.uid, date: today, level: j.level, reasons: j.reasons, savedAt: Date.now(), checks: [], viewers };
+  const rec = { ...f, uid: me.uid, name: me.name || me.uid, date: today, level: j.level, reasons: j.reasons, savedAt: Date.now(), checks: [], viewers, ...(prev ? { editedAt: Date.now() } : {}) };   // 修正したときは、その時刻も残す（2026-11-16 徳川さんの不具合報告）
   fire(setDoc(doc(db, 'health', id), rec), '体調チェック');
   localStorage.setItem('portalHealthDone:' + me.uid, today);
   // 要確認・作業不可になった（または前より悪くなった）ときだけ知らせる
@@ -3162,7 +3260,7 @@ function hTeamDraw() {
       detail = '<div class="hl-detail">' + (kv.length ? '<dl class="hl-kv">' + kv.map(a => '<dt>' + esc(a[0]) + '</dt><dd>' + esc(a[1]) + '</dd>').join('') + '</dl>' : '') +
         (ph && ph.list ? '<div style="margin-top: 8px;">' + (ph.list.length ? hRows(ph.list) : 'まだ記録はありません。') + '</div>' : '<div class="hl-tact"><button type="button" class="btn btn-sub" data-more="' + esc(x.uid) + '"' + (ph ? ' disabled' : '') + '>' + (ph ? '読み込んでいます...' : '最近の記録を見る') + '</button></div>') + '</div>';
     }
-    return '<div class="hl-trow"><div class="hl-thead" data-p="' + esc(x.uid) + '">' + hBadge(r ? r.level : '') + '<div class="hl-tname"><span>' + esc(x.name) + '</span>' + (x.company ? '<small>' + esc(gLabel(x.company)) + '</small>' : '') + (r ? '<div class="dl-sub">' + esc(r.time + ' · ' + hBp(r)) + ((r.reasons || []).length ? ' · ' + esc(r.reasons.join('、')) : '') + '</div>' : '') + '</div><span style="color: var(--muted);">' + (open ? '▲' : '▼') + '</span></div>' +
+    return '<div class="hl-trow"><div class="hl-thead" data-p="' + esc(x.uid) + '">' + hBadge(r ? r.level : '') + '<div class="hl-tname"><span>' + esc(x.name) + '</span>' + (x.company ? '<small>' + esc(gLabel(x.company)) + '</small>' : '') + (r ? '<div class="dl-sub">' + esc(r.time + ' · ' + hBp(r)) + ((r.reasons || []).length ? ' · ' + esc(r.reasons.join('、')) : '') + (r.editedAt ? ' · <b class="hl-edited">' + esc(hEdited(r)) + '</b>' : '') + '</div>' : '') + '</div><span style="color: var(--muted);">' + (open ? '▲' : '▼') + '</span></div>' +
       (act ? '<div class="hl-tact">' + act + '</div>' : '') + detail + (r ? hCmHtml(r.id) : '') + '</div>';
   }).join('');
   box.querySelectorAll('[data-p]').forEach(b => { b.onclick = () => { H.open[b.dataset.p] = !H.open[b.dataset.p]; hTeamDraw(); }; });
@@ -3616,6 +3714,8 @@ function nOpenIt(it) {
 async function nOpenById(id) {
   if (!me) { nOpenId = id; return; }
   nOpenId = '';
+  // 不具合報告の通知（札が portal-bug-番号）はマスターの不具合報告の一覧を開く（2026-11-16 ユーザー指示）
+  if (/^bug-/.test(id)) { if (me.isMaster) bugList(); return; }
   let it = nItems.find(x => x.id === id);
   if (!it) { try { const d = await getDoc(doc(db, 'notices', id)); if (d.exists()) it = { id, ...d.data() }; } catch (e) {} }
   if (!it) return;
@@ -3650,7 +3750,7 @@ function relShow(list, title) {
     '<div style="padding:14px 16px 8px;font-weight:800;font-size:1.05rem;border-bottom:1px solid #ccc;">' + esc(title) + '</div>' +
     '<div data-i18n-skip style="overflow-y:auto;padding:4px 16px 8px;-webkit-overflow-scrolling:touch;">' + list.map(r => '<div style="margin-top:12px;"><div style="font-weight:800;font-size:0.95rem;">' + esc(r.ver === 'NEXT' ? (es ? 'Próxima versión (aún no publicada)' : '次の版（本番前）') : r.ver) + (r.date ? '<span style="font-weight:600;color:#555;font-size:0.85rem;">　' + esc(r.date) + '</span>' : '') + '</div>' +
       REL_KINDS.map(([k, ja, esL]) => { const l = relItems(r, master).filter(i => (i.k || 'new') === k); return l.length ? '<div style="margin-top:8px;font-weight:800;font-size:0.85rem;border-left:4px solid #111;padding-left:6px;">' + (es ? esL : ja) + '</div>' +
-        '<ul style="margin:4px 0 0;padding-left:1.3em;font-size:0.9rem;line-height:1.6;">' + l.map(i => '<li style="margin-bottom:3px;">' + esc(es ? i.es : i.ja) + (master && i.who === 'mgr' ? '<span style="font-size:0.75rem;font-weight:700;border:1px solid #555;border-radius:3px;padding:0 4px;margin-left:4px;white-space:nowrap;">' + (es ? 'administradores' : '現場管理者向け') + '</span>' : '') + (i.img ? '<img src="' + esc(i.img) + '" alt="" data-relimg style="display:block;max-width:100%;max-height:140px;margin:6px 0 4px;border:1px solid #999;border-radius:4px;cursor:zoom-in;">' : '') + '</li>').join('') + '</ul>' : ''; }).join('') + '</div>').join('') + '</div>' +
+        '<ul style="margin:4px 0 0;padding-left:1.3em;font-size:0.9rem;line-height:1.6;">' + l.map(i => '<li style="margin-bottom:3px;">' + esc(es ? i.es : i.ja).replace(/\*\*(.+?)\*\*/g, '<b class="rel-em">$1</b>') + (master && i.who === 'mgr' ? '<span style="font-size:0.75rem;font-weight:700;border:1px solid #555;border-radius:3px;padding:0 4px;margin-left:4px;white-space:nowrap;">' + (es ? 'administradores' : '現場管理者向け') + '</span>' : '') + (i.img ? '<img src="' + esc(i.img) + '" alt="" data-relimg style="display:block;width:100%;height:auto;margin:6px 0 4px;border:1px solid #999;border-radius:4px;cursor:zoom-in;">' : '') + '</li>').join('') + '</ul>' : ''; }).join('') + '</div>').join('') + '</div>' +
     '<div style="padding:10px 16px 14px;border-top:1px solid #ccc;display:flex;justify-content:flex-end;"><button type="button" class="btn btn-dark" style="width:auto;padding:8px 28px;">閉じる</button></div></div>';
   document.body.appendChild(back);
   const close = () => back.remove();
