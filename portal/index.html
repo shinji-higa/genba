@@ -232,7 +232,7 @@
   </div>
 </div>
 
-<script src="i18n.js?v=9"></script>
+<script src="i18n.js?v=10"></script>
 <script>i18nStart();</script>
 <script type="module">
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
@@ -259,7 +259,7 @@ auth.languageCode = 'ja';   // パスワード再設定のメールと画面を�
 // 端末の控え（電波なしでも見られる）は1つのタブだけが持つ。2つ目からのタブは、開いている間だけの控えでサーバーと直接やりとりする。
 // 前は全部のタブで控えを分け合っていて、サーバーとやりとりするタブが裏にあると、ほかのタブに最新が届くまで約28秒待っていた（2026-11-05 確認）
 const db = initializeFirestore(app, { localCache: persistentLocalCache({ tabManager: persistentSingleTabManager() }) });
-const APP_VER = 'Ver.20261116-03';
+const APP_VER = 'Ver.20261116-04';
 /* 更新の内容（2026-11-16 ユーザー指示）。新しい Ver に入れ替わったあと最初に開いたとき、まだ見ていない Ver の分を窓で出す。設定の「更新履歴を見る」でも全部見られる。
    載せるもの（2026-11-16 ユーザー決定）：増えた機能／使う人が気づく不具合の直し（困っていた・報告が来たもの。裏の直しは載せない）／押す場所や使い方が変わる見た目の変更（色や大きさだけの変更は載せない）。
    1項目は短い1〜2文、です・ます、日本語と es（スペイン語）。who：all＝全員、mgr＝現場管理者とマスターだけ（この2つだけ）。
@@ -269,6 +269,9 @@ const APP_VER = 'Ver.20261116-03';
    画像（img）：押す場所が変わったもの・新しいボタンができたものだけ、その所に赤い枠を付けた画面の画像を rel/ に置いて付ける（名前・電話番号は見本にする。ユーザー決定 2026-11-16）。
    本番に入れるときは、いちばん上の ver: 'NEXT' を本当の Ver（APP_VER と同じ）に、date をその日に書きかえる */
 const RELEASES = [
+  { ver: 'Ver.20261116-04', date: '2026/11/16', items: [
+    { who: 'all', k: 'fix', ja: 'iPhone・iPad で、写真・PDFの「印刷」が動かない・2回目が反応しないことがあったのを直しました。iPhone・iPad では「印刷」を押すと共有の画面が出るので、「プリント」を選んで印刷します。', es: 'Se corrigió que en iPhone/iPad «Imprimir» a veces no funcionaba. Ahora aparece la pantalla de compartir; elija «Imprimir».' }
+  ] },
   { ver: 'Ver.20261116-03', date: '2026/11/16', items: [
     { who: 'all', k: 'new', ja: '不具合を報告すると、マスターのスマホ・パソコンにすぐ通知が届くようになりました。', es: 'Al reportar un fallo, los responsables (master) reciben un aviso al instante.' },
     { who: 'all', k: 'change', img: 'rel/20261116_folder-view.png', ja: '写真・資料のフォルダの出方が変わりました。スマホは、今いる場所（資料TOP ＞ …）と、中のフォルダの大きな行で出ます。行を押すと中に入ります。パソコンは、全体のフォルダの一覧で出ます（▶で開く・▼で閉じる）。**フォルダ名の下の「資料 0件 フォルダ 1（資料 1件）」は、そのフォルダの資料の数・下にあるフォルダの数（下の階層も全部）・かっこの中は下のフォルダ（下の階層も全部）に入っている資料の数です。写真のフォルダも同じで、「写真 0枚」のように出ます。** フォルダの表示方法を大きく変えました。表示方法で変えてほしい点があれば、画面の右の「不具合修正」から報告してください。', es: 'Cambió la forma de mostrar las carpetas. En el teléfono se ve la ubicación actual (TOP > …) y filas grandes con las carpetas internas; toque una fila para entrar. En PC se ve la lista completa de carpetas (▶ abre, ▼ cierra). **Bajo el nombre, «0 archivo(s) 1 carpeta(s) (1 archivo(s))» indica: archivos de esa carpeta, carpetas debajo (todos los niveles) y, entre paréntesis, archivos dentro de esas carpetas (todos los niveles). En fotos es igual («0 foto(s)»).** Cambiamos mucho la forma de mostrar las carpetas; si quiere que se cambie algo, avísenos con «Reportar fallo» (a la derecha de la pantalla).' },
@@ -1828,12 +1831,32 @@ function printClear() {
   document.body.classList.remove('printing');
 }
 const canvasBlob = c => new Promise(ok => c.toBlob(ok, 'image/jpeg', 0.92));
+// iPhone・iPad か（iPad は「Mac」と名乗ることがあるので、指で触れるかでも見る）
+const isIOS = () => !!window.__forceIOS || /iP(hone|ad|od)/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+// iPhone の共有の画面を出す（その中の「プリント」で印刷）。ボタンを押してから時間がたつと共有の画面を出せないので、準備ができたら確認の窓のボタンでもう一度押してもらう
+async function iosShare(files, it) {
+  if (!navigator.canShare || !navigator.canShare({ files })) {
+    if (it.url) { window.open(it.url, '_blank'); return; }
+    uiAlert('この端末では印刷の画面を出せません。「保存」から開いて印刷してください。'); return;
+  }
+  if (!await uiConfirm('印刷の準備ができました。次に出る画面で「プリント」を選んでください。', '印刷へ進む')) return;
+  try { await navigator.share({ files }); }
+  catch (e) { if (e && e.name === 'AbortError') return; if (it.url) window.open(it.url, '_blank'); else uiAlert('印刷の画面を出せませんでした。「保存」から開いて印刷してください。'); }
+}
 async function viewerPrint() {
   if (!VW) return;
   const it = VW.list[VW.index], btn = $('fvPrint'), label = btn.textContent, cur = VW;
   btn.disabled = true; btn.textContent = '⏳';
   try {
-    const pages = [];
+    const pages = [], ios = isIOS(), base = String(it.name || 'print').replace(/\.[^.]+$/, '');
+    // iPhone：向きを変えていないときは、元のファイルをそのまま共有の画面へ（速い）
+    const noRot = VW.pdf ? !((VW.rot || {}).all || Object.keys((VW.rot || {}).p || {}).length) : !((VW.rot || {}).all);
+    if (ios && noRot && it.url) {
+      const b = await fetch(it.url).then(x => x.ok ? x.blob() : Promise.reject(new Error('ng')));
+      if (VW !== cur) return;
+      await iosShare([new File([b], it.name || (base + (VW.pdf ? '.pdf' : '.jpg')), { type: b.type || (VW.pdf ? 'application/pdf' : 'image/jpeg') })], it);
+      return;
+    }
     if (VW.pdf) {
       const pdf = VW.pdf;
       for (let n = 1; n <= pdf.numPages; n++) {
@@ -1844,8 +1867,8 @@ async function viewerPrint() {
         c.width = Math.round(vp.width); c.height = Math.round(vp.height);
         const x = c.getContext('2d'); x.fillStyle = '#fff'; x.fillRect(0, 0, c.width, c.height);
         await page.render({ canvasContext: x, viewport: vp }).promise;
-        const u = URL.createObjectURL(await canvasBlob(c)); printUrls.push(u);
-        pages.push({ src: u, land: c.width > c.height });
+        const bl = await canvasBlob(c), u = URL.createObjectURL(bl); printUrls.push(u);
+        pages.push({ src: u, land: c.width > c.height, blob: bl });
         c.width = c.height = 0;
       }
     } else {
@@ -1857,12 +1880,14 @@ async function viewerPrint() {
           const b = await fetch(src).then(x => x.ok ? x.blob() : Promise.reject(new Error('ng'))), bm = await createImageBitmap(b), side = r % 180 !== 0, c = document.createElement('canvas');
           c.width = side ? bm.height : bm.width; c.height = side ? bm.width : bm.height;
           const x = c.getContext('2d'); x.translate(c.width / 2, c.height / 2); x.rotate(r * Math.PI / 180); x.drawImage(bm, -bm.width / 2, -bm.height / 2);
-          src = URL.createObjectURL(await canvasBlob(c)); printUrls.push(src); land = c.width > c.height;
+          const bl = await canvasBlob(c); src = URL.createObjectURL(bl); printUrls.push(src); land = c.width > c.height; pages.push({ src, land, blob: bl });
         } catch (e) {}
       }
-      pages.push({ src, land });
+      if (!pages.length) pages.push({ src, land });
     }
     if (VW !== cur) return;
+    // iPhone：回した向きの絵を共有の画面へ
+    if (ios) { const files = pages.filter(p => p.blob).map((p, i, a) => new File([p.blob], base + (a.length > 1 ? '_' + (i + 1) : '') + '.jpg', { type: 'image/jpeg' })); if (files.length || it.url) { await iosShare(files, it); return; } }
     const old = $('printArea'); if (old) old.remove();
     const a = document.createElement('div');
     a.id = 'printArea';

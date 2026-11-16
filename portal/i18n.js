@@ -403,6 +403,8 @@ Object.assign(I18N_ES, {
   'やめる': 'Cancelar', '移動先を選ぶ': 'Elegir destino', '名前を変える': 'Cambiar nombre', '削除する': 'Eliminar',
   '移動するフォルダにチェックを入れて、「移動先を選ぶ」を押してください。': 'Marque las carpetas a mover y pulse «Elegir destino».',
   '名前を変えるフォルダを1つチェックして、「名前を変える」を押してください。': 'Marque una carpeta y pulse «Cambiar nombre».',
+  '印刷の準備ができました。次に出る画面で「プリント」を選んでください。': 'Listo para imprimir. En la siguiente pantalla elija «Imprimir».', '印刷へ進む': 'Ir a imprimir',
+  'この端末では印刷の画面を出せません。「保存」から開いて印刷してください。': 'Este equipo no puede mostrar la impresión. Abra con «Guardar» e imprima desde allí.', '印刷の画面を出せませんでした。「保存」から開いて印刷してください。': 'No se pudo mostrar la impresión. Abra con «Guardar» e imprima desde allí.',
   'または': 'o', 'ファイルを選択する': 'Elegir archivo',
   'ここにファイルをドラッグ＆ドロップしても追加できます': 'También puede arrastrar y soltar un archivo aquí', 'ここに画像をドラッグ＆ドロップしても追加できます': 'También puede arrastrar y soltar una imagen aquí',
   '入れる先：まだ選んでいません（下のフォルダを押して選びます。選ばずに落としたときは、保存先を聞きます）': 'Destino: sin elegir (toque una carpeta abajo; si suelta sin elegir, se le preguntará)',
