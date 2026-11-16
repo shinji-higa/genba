@@ -12,7 +12,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <link rel="preconnect" href="https://firebasestorage.googleapis.com">
 <!-- 見た目は今の現場管理と同じ（app.css は現場管理の style をそのまま写したもの） -->
-<link rel="stylesheet" href="app.css?v=1">
+<link rel="stylesheet" href="app.css?v=2">
 <style>
   .av { display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 30px; border-radius: 50%; color: #111; font-size: 0.8rem; line-height: 1; font-weight: 700; border: 2px solid #fff; box-sizing: border-box; flex: 0 0 auto; overflow: hidden; white-space: nowrap; }
   .av small { font-size: 0.56rem; line-height: 1; font-weight: 700; align-self: flex-end; margin: 0 0 5px 1px; }
@@ -69,7 +69,45 @@
   /* 不具合修正の報告：ボタンはすごく目立つ色で（ユーザー指示 2026-11-02） */
   #bugFab { position: fixed; right: 0; top: 36%; z-index: 9800; display: none; writing-mode: vertical-rl; padding: 14px 7px; background: #e60012; color: #ffffff; font-size: 0.95rem; font-weight: 800; letter-spacing: 0.12em; border: 2px solid #ffffff; border-right: 0; border-radius: 10px 0 0 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.45); cursor: pointer; font-family: inherit; }
   #bugFab.on { display: block; }
-  body.fv-open #bugFab { display: none !important; }   /* 拡大表示の「次へ」に重なるので隠す（2026-11-05 運用テスト No.9・10） */
+  body.fv-open #bugFab { display: none !important; }
+  /* スマホで横に指を動かすと、となりのファイルが指についてくる（2026-11-16 ユーザー指示「パッパではなく滑らかに」） */
+  #fileViewer { overflow: hidden; }
+  .fv-peek { position: absolute; left: 0; width: 100%; background: #111; display: flex; align-items: center; justify-content: center; z-index: 1; pointer-events: none; }
+  .fv-peek img { width: 100%; height: 100%; object-fit: contain; display: block; }
+  .fv-peek-doc { color: #ddd; text-align: center; font-size: 0.9rem; line-height: 1.6; padding: 20px; word-break: break-all; }
+  .fv-peek-doc b { display: block; font-size: 3rem; font-weight: normal; }
+  /* 通知から飛んだ先を、少しの間だけ青い枠で知らせる（2026-11-16 ユーザー指示） */
+  .go-flash { outline: 3px solid #1a73e8 !important; outline-offset: 2px; animation: goFlash 0.8s ease-in-out 3; }
+  @keyframes goFlash { 50% { outline-color: transparent; } }
+  /* 写真・PDFを開いた画面の道具（2026-11-16 ユーザー指示：印刷・回転・ページの目次） */
+  .fv-zoom { flex-direction: column; align-items: flex-end; }
+  .fv-zrow, .fv-rot { display: flex; gap: 8px; }
+  .fv-zoom .fv-rot button { width: auto; padding: 0 12px; font-size: 0.85rem; white-space: nowrap; }
+  .fv-btn:disabled { opacity: 0.6; }
+  @media (max-width: 520px) { .fv-bar { gap: 5px; } .fv-bar .fv-btn { padding: 8px 8px; font-size: 0.8rem; } }   /* スマホは上の帯のボタンを小さくして、ファイル名を残す */
+  .fv-page { position: absolute; left: 50%; transform: translateX(-50%); background: rgba(0,0,0,0.7); color: #fff; padding: 4px 14px; border-radius: 14px; font-size: 0.85rem; font-weight: 700; z-index: 3; display: none; pointer-events: none; }
+  .fv-thumbs { display: none; position: absolute; left: 0; bottom: 0; width: 150px; overflow-y: auto; background: #1e1e1e; z-index: 4; padding: 10px 0; box-sizing: border-box; text-align: center; -webkit-overflow-scrolling: touch; }
+  #fileViewer.thumbs-side .fv-thumbs { display: block; }
+  #fileViewer.thumbs-side .fv-body { margin-left: 150px; }
+  #fileViewer.thumbs-side .fv-prev { left: 156px; }
+  #fileViewer.thumbs-side .fv-info { left: 160px; }
+  #fileViewer.thumbs-open .fv-thumbs { display: block; width: 100%; padding: 12px 6px; }
+  .fv-th { display: inline-block; vertical-align: top; width: 112px; margin: 0 6px 12px; background: none; border: 0; padding: 0; color: #ccc; font-size: 0.78rem; cursor: pointer; font-family: inherit; }
+  .fv-th canvas { display: block; width: 100%; background: #fff; border: 3px solid transparent; box-sizing: border-box; margin-bottom: 2px; }
+  .fv-th.on { color: #fff; font-weight: 700; }
+  .fv-th.on canvas { border-color: #4da3ff; }
+  @media (hover: hover) and (pointer: fine) { .fv-body { cursor: grab; } .fv-body.panning { cursor: grabbing; } }   /* PC：左ボタンを押したまま動かす */
+  .photo-card-img-wrap img.r90 { transform: rotate(90deg); } .photo-card-img-wrap img.r180 { transform: rotate(180deg); } .photo-card-img-wrap img.r270 { transform: rotate(270deg); }
+  .photo-grid.view-large .photo-card-img-wrap img.r90 { transform: rotate(90deg) scale(1.34); } .photo-grid.view-large .photo-card-img-wrap img.r270 { transform: rotate(270deg) scale(1.34); }
+  /* 印刷：写真・PDFのページだけを紙に出す */
+  #printArea { display: none; }
+  @media print {
+    body.printing > *:not(#printArea) { display: none !important; }
+    body.printing #printArea { display: block !important; }
+    #printArea .pp { break-after: page; page-break-after: always; }
+    #printArea .pp:last-child { break-after: auto; page-break-after: auto; }
+    #printArea img { display: block; max-width: 100%; max-height: 98vh; margin: 0 auto; }
+  }   /* 拡大表示の「次へ」に重なるので隠す（2026-11-05 運用テスト No.9・10） */
   #bugFab:disabled { background: #7a0009; }
   #bugOv { position: fixed; inset: 0; z-index: 9900; background: rgba(17,17,17,0.55); display: flex; align-items: center; justify-content: center; padding: 12px; }
   .bug-box { background: #fff; color: #111; width: min(620px, 100%); max-height: 100%; overflow: auto; border-radius: 10px; padding: 14px; box-sizing: border-box; }
@@ -141,7 +179,7 @@
   </div>
 </div>
 
-<script src="i18n.js?v=6"></script>
+<script src="i18n.js?v=7"></script>
 <script>i18nStart();</script>
 <script type="module">
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
@@ -168,7 +206,35 @@ auth.languageCode = 'ja';   // パスワード再設定のメールと画面を�
 // 端末の控え（電波なしでも見られる）は1つのタブだけが持つ。2つ目からのタブは、開いている間だけの控えでサーバーと直接やりとりする。
 // 前は全部のタブで控えを分け合っていて、サーバーとやりとりするタブが裏にあると、ほかのタブに最新が届くまで約28秒待っていた（2026-11-05 確認）
 const db = initializeFirestore(app, { localCache: persistentLocalCache({ tabManager: persistentSingleTabManager() }) });
-const APP_VER = 'Ver.20261115-01';
+const APP_VER = 'Ver.20261116-01';
+/* 更新の内容（2026-11-16 ユーザー指示）。新しい Ver に入れ替わったあと最初に開いたとき、まだ見ていない Ver の分を窓で出す。設定の「更新履歴を見る」でも全部見られる。
+   書くのは増えた機能だけ（見た目の説明は省く。ユーザー指示 2026-11-15）。who：all＝全員、mgr＝現場管理者とマスターだけ。
+   本番に入れるときは、いちばん上の ver: 'NEXT' を本当の Ver（APP_VER と同じ）に、date をその日に書きかえる */
+const RELEASES = [
+  { ver: 'Ver.20261116-01', date: '2026/11/16', items: [
+    { who: 'all', ja: '更新の内容を、この窓でお知らせするようになりました。これまでの更新は「設定」の「更新履歴を見る」で見られます。', es: 'Ahora las novedades de cada actualización se muestran en esta ventana. Puede ver el historial en Configuración → «Ver historial de actualizaciones».' },
+    { who: 'all', ja: 'お知らせの「報告を開く」「写真を開く」「資料を開く」「コメントを開く」などを押すと、知らせのあった報告・写真・資料・コメントへそのまま飛びます。スマホに届いた通知を押したときも同じです。', es: 'Al pulsar «Abrir informe», «Abrir fotos», «Abrir documentos» o «Abrir comentarios» en un aviso, se abre directamente lo avisado. Lo mismo al tocar una notificación del teléfono.' },
+    { who: 'all', ja: '写真・PDFを開いた画面に「印刷」ボタンが付きました（パソコン・スマホとも）。', es: 'Se agregó el botón «Imprimir» al abrir fotos y PDF (PC y teléfono).' },
+    { who: 'all', ja: '写真・PDFの向きを「↻」で変えられます（PDFは「このページ」と「全ページ」）。変えた向きは保存され、だれが開いてもその向きで出ます。', es: 'Puede girar fotos y PDF con «↻» (en PDF: «Esta página» o «Todas»). La orientación se guarda para todos.' },
+    { who: 'all', ja: 'ページが2つ以上のPDFは、ページの一覧から見たいページへ飛べます（パソコンは左に並びます。スマホは「ページ一覧」）。', es: 'En PDF de varias páginas puede saltar a una página desde la lista (en PC a la izquierda; en el teléfono con «Páginas»).' },
+    { who: 'all', ja: 'パソコンでPDFを開くと、1ページ全体が画面に入る大きさで出ます。さらに小さくもできます。拡大したときは、左ボタンを押したまま動かすと見える所が動きます。', es: 'En PC el PDF se abre mostrando la página entera y se puede reducir más. Al ampliar, arrastre con el botón izquierdo para moverse.' },
+    { who: 'all', ja: 'スマホで写真・資料を開いて横にスワイプすると、となりのファイルへ滑らかに移ります。', es: 'En el teléfono, deslice a los lados para pasar suavemente al archivo siguiente.' },
+    { who: 'all', ja: 'ホーム画面のアイコンに、見ていないお知らせの数が出ます（iPhoneは、ホーム画面に置いて通知を受け取る設定にしているとき）。', es: 'El icono de la pantalla de inicio muestra el número de avisos sin leer (en iPhone, si la app está en la pantalla de inicio y recibe notificaciones).' },
+    { who: 'all', ja: 'お知らせの一覧で、下のほうが見られないことがあったのを直しました。', es: 'Se corrigió que a veces no se veía la parte de abajo de la lista de avisos.' }
+  ] },
+  { ver: 'Ver.20261115-01', date: '2026/11/15', items: [
+    { who: 'mgr', ja: '「担当」タブで、担当の人の緊急連絡先を見られるようになりました（現場管理者とマスターだけ）。', es: 'En la pestaña «Encargados» se puede ver el contacto de emergencia de cada persona (solo administradores de obra y master).' },
+    { who: 'all', ja: '写真・資料のフォルダ名を変えられるようになりました（マスター・現場管理者・そのフォルダを作った人）。', es: 'Se puede cambiar el nombre de las carpetas de fotos y documentos (master, administradores de obra y quien creó la carpeta).' },
+    { who: 'all', ja: 'パソコンでは、写真・資料をファイルを引っぱって落とすだけで追加できます。', es: 'En PC se pueden agregar fotos y documentos arrastrando los archivos.' },
+    { who: 'mgr', ja: '現場情報編集の「EXD案件担当者」を、担当のEXD社員から選べます。選ぶと携帯番号が自動で入ります。', es: 'En la edición de la obra, el «Encargado EXD» se elige de los empleados EXD asignados y su móvil se completa solo.' },
+    { who: 'all', ja: '「工事概要」「備考」「その他ルール」のURLと電話番号を押せるようになりました。', es: 'Las URL y teléfonos en «Resumen», «Notas» y «Otras reglas» ahora se pueden pulsar.' }
+  ] },
+  { ver: 'Ver.20261113-02', date: '2026/11/13', items: [
+    { who: 'all', ja: '「注文」タブが使えるようになりました（角ダクト注文は準備中）。', es: 'La pestaña «Pedidos» ya se puede usar (pedido de ductos rectangulares: en preparación).' }
+  ] }
+];
+const relVer = r => r.ver === 'NEXT' ? APP_VER : r.ver;
+const REL_BASE = 'Ver.20261115-01';   // この仕組みを入れる前の最後の Ver。前から使っている端末は、ここまで見たことにする
 
 /* ---------- 電波なしでも使う（今の現場管理と同じ考え方） ----------
    ・保存は押した瞬間に完了の形。電波が戻ったら自動で送る（データは Firestore が端末に貯める）
@@ -468,13 +534,13 @@ const AUTH_MSG = { 'auth/invalid-credential': 'アカウントIDかパスワー�
 
 onAuthStateChanged(auth, async user => {
   stopWatch();
-  if (!user) { me = null; nStop(); document.querySelector('.app-container').classList.remove('has-footer'); $('userBox').style.display = 'none'; showLogin(); return; }
+  if (!user) { me = null; nStop(); appBadge(0); document.querySelector('.app-container').classList.remove('has-footer'); $('userBox').style.display = 'none'; showLogin(); return; }
   $('userBox').style.display = 'flex';
   $('userEmail').textContent = user.uid;
   // 表示を待たせないよう、権限は端末の控えで先に判断して一覧を出す
   const key = 'portalMe:' + user.uid;
-  let c = {};
-  try { c = JSON.parse(localStorage.getItem(key) || '{}'); } catch (e) {}
+  let c = {}, firstHere = false;
+  try { firstHere = !localStorage.getItem(key); c = JSON.parse(localStorage.getItem(key) || '{}'); } catch (e) {}
   me = { uid: user.uid, name: c.name || '', group: c.group || '', isMaster: c.isMaster === true, canAddSite: c.canAddSite === true, canDaily: c.canDaily === true, isSenior: c.isSenior === true, canPayroll: c.canPayroll === true };
   $('admin').style.display = '';
   showList();
@@ -494,6 +560,8 @@ onAuthStateChanged(auth, async user => {
       showList(); nStart();
     }
   } catch (e) {}
+  if (nOpenId) nOpenById(nOpenId);   // 通知を押して開いたときは、その場所へ
+  relCheck(firstHere);   // 新しい Ver なら更新の内容を出す
 });
 
 const LANG_SW = '<span class="lang-switch" data-i18n-skip><button type="button" data-lang-btn="ja">日本語</button><button type="button" data-lang-btn="es">Español</button></span>';
@@ -616,12 +684,12 @@ const imgBox = (s, n) => {
 const opts = (list, cur) => list.map(o => '<option value="' + esc(o) + '"' + (o === cur ? ' selected' : '') + '>' + esc(o) + '</option>').join('');   // 値は日本語のまま（表示だけ訳される）
 let detailTab = '現場詳細', rulesEditing = false;
 
-function showDetail(id, saved) {
+function showDetail(id, saved, tab) {
   stopWatch();
   const t = performance.now();
   let first = true, firstServer = false;
   rulesEditing = false;
-  detailTab = '現場詳細';
+  detailTab = tab || '現場詳細';
   show('panelDetail', '', showList);
   stop = onSnapshot(doc(db, 'sites', id), { includeMetadataChanges: true }, d => {
     if (!d.exists()) { if (!d.metadata.fromCache) $('panelDetail').innerHTML = banner('この現場は見られません。', true); return; }
@@ -702,10 +770,12 @@ function renderDetail(s) {
     $('rEdit').style.display = 'none'; $('rSave').style.display = 'inline-block'; $('rCancel').style.display = 'inline-block';
   };
   $('rCancel').onclick = () => { rulesEditing = false; renderDetail(s); };
+  if (goNext && goNext.t === 'rules' && goNext.site === s.id) { goNext = null; setTimeout(() => goFlash([$('rEdit') && $('rEdit').closest('.info-card')], ['rules']), 80); }   // 付けるときに探し直す（すぐ描き直されるため）
+  goMarkApply();   // 描き直したときも枠を付け直す
   $('rSave').onclick = () => {
     const data = readRules();
     fire(updateDoc(doc(db, 'sites', s.id), data), '注意事項');
-    notify(s, 'site', '施工に関する注意事項を更新');
+    notify(s, 'site', '施工に関する注意事項を更新', { go: { t: 'rules' } });
     rulesEditing = false;
     renderDetail({ ...s, ...data });
   };
@@ -862,7 +932,7 @@ function cmPanel(k, id, root, label, draft) {
     if (text.length > 2000) { uiAlert('コメントは2000文字以内で入力してください。'); return; }
     const mentions = (X.people || []).filter(u => text.includes('@' + u.name)).map(u => u.id);
     fire(setDoc(doc(xSub('comments')), { kind: k, target: id, label, text, by: me.uid, byName: me.name || me.uid, at: Date.now(), mentions, deleted: false }), 'コメント');
-    notify(X.s, k, '「' + clip(label, 30) + '」にコメント：' + clip(text, 80), { mentions });
+    notify(X.s, k, '「' + clip(label, 30) + '」にコメント：' + clip(text, 80), { mentions, go: { t: k, id, cm: 1 } });
     ta.value = ''; grow(); box.style.display = 'none';
     setTimeout(() => { const l = root.querySelector('.cm-list'); if (l) l.scrollTop = l.scrollHeight; }, 50);
   };
@@ -1116,8 +1186,9 @@ function rForm() {
     data.imageFile = await send('rI', 'photo');
     data.docFile = await send('rD', 'doc');
     if ($('rDF').files[0]) data.docName = $('rDF').files[0].name;
-    fire(setDoc(doc(xSub('reports')), data), '報告');
-    notify(X.s, 'report', '【' + data.category + '】を追加：' + clip(content, 80));
+    const rRef = doc(xSub('reports'));
+    fire(setDoc(rRef, data), '報告');
+    notify(X.s, 'report', '【' + data.category + '】を追加：' + clip(content, 80), { go: { t: 'report', id: rRef.id } });
     close();
   };
 }
@@ -1159,6 +1230,7 @@ function rList() {
     };
   });
   $('rBox').querySelectorAll('[data-e]').forEach(b => { b.onclick = () => rEdit(list.find(r => r.id === b.closest('[data-r]').dataset.r), b.closest('[data-r]')); });
+  goTry();
 }
 function rEdit(r, card) {
   X.rEdit = r.id;
@@ -1167,7 +1239,7 @@ function rEdit(r, card) {
   autoGrow(card);
   const end = () => { X.rEdit = ''; rList(); };
   $('rEc').onclick = end;
-  $('rEs').onclick = () => { const t = $('rEt').value.trim(); if (t) { fire(updateDoc(doc(xSub('reports'), r.id), { content: t, editedAt: Date.now() }), '報告'); notify(X.s, 'report', '報告を編集：' + clip(t, 80)); } end(); };
+  $('rEs').onclick = () => { const t = $('rEt').value.trim(); if (t) { fire(updateDoc(doc(xSub('reports'), r.id), { content: t, editedAt: Date.now() }), '報告'); notify(X.s, 'report', '報告を編集：' + clip(t, 80), { go: { t: 'report', id: r.id } }); } end(); };
   $('rEd').onclick = async () => { if (!await uiConfirm('この報告を削除します。よろしいですか？', '削除')) return; fire(updateDoc(doc(xSub('reports'), r.id), { deleted: true, deletedAt: Date.now() }), '報告の削除'); end(); };
 }
 
@@ -1295,6 +1367,7 @@ function xList() {
   if (!items.length) {
     const sub = xKids(X.active[kind]).length;
     box.innerHTML = '<div class="info-card" style="grid-column: 1/-1; width:100%; text-align:center; color:var(--muted);">' + (sub ? 'このフォルダ直下には' + L + 'がありません（サブフォルダを選択してください）。' : L + 'がありません。上から追加してください。') + '</div>';
+    goTry();
     return;
   }
   const state = it => it.failed ? '<span style="color:var(--error-text); font-size:0.74rem;"> 送信できませんでした</span>' : it.uploading ? '<span style="color:var(--muted); font-size:0.74rem;"> 未送信</span>' : '';
@@ -1309,7 +1382,7 @@ function xList() {
       '<div style="display:flex; gap:6px; flex-shrink:0;">' + cmBtn(kind, it.id, 'btn btn-sub cm-btn-row') + acts('class="btn btn-sub" style="padding:2px 6px; font-size:0.78rem;"').replace(/" style="color:var\(--error-text\);"/g, ' color:var(--error-text);"') + '</div></div>';
     return '<div class="photo-card' + (chk ? ' is-selected' : '') + '" data-id="' + id + '">' + cmBtn(kind, it.id, 'cm-badge') +
       (X.selMode ? '<div class="photo-card-check-wrap"><input type="checkbox" class="bulk-checkbox"' + (chk ? ' checked' : '') + '></div>' : '') +
-      '<div class="photo-card-img-wrap" data-a="open"' + (doc_ || !it.thumb ? ' style="background:#f4f4f6;"' : '') + '>' + (it.thumb ? '<img src="' + esc(it.thumb) + '" alt="' + esc(it.name) + '">' : '<span style="font-size:2.4rem;">📄</span>') + '</div>' +
+      '<div class="photo-card-img-wrap" data-a="open"' + (doc_ || !it.thumb ? ' style="background:#f4f4f6;"' : '') + '>' + (it.thumb ? '<img src="' + esc(it.thumb) + '" alt="' + esc(it.name) + '"' + ((it.rot || {}).all ? ' class="r' + it.rot.all + '"' : '') + '>' : '<span style="font-size:2.4rem;">📄</span>') + '</div>' +
       '<div class="photo-card-name" title="' + esc(it.name) + '">' + esc(it.name) + '</div>' +
       '<div style="font-size:0.74rem; color:var(--muted); text-align:center;">' + xDate(it.at) + state(it) + '</div>' +
       (it.byName ? '<div style="font-size:0.74rem; color:var(--muted); text-align:center;">👤 ' + esc(it.byName) + '</div>' : '') +
@@ -1331,6 +1404,7 @@ function xList() {
       };
     });
   });
+  goTry();
 }
 /* ---------- 画面の中で開く（写真・PDF。今の現場管理の表示と同じ作り） ---------- */
 const PDFJS_URL = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js';
@@ -1352,11 +1426,13 @@ function viewerOpen(list, index) {
     v.innerHTML =
       '<div class="fv-bar"><button type="button" class="fv-btn" id="fvClose" aria-label="閉じる">✕</button>' +
       '<div class="fv-title" id="fvTitle"></div><span class="fv-count" id="fvCount"></span>' +
+      '<button type="button" class="fv-btn" id="fvThBtn" style="display:none;">ページ一覧</button><button type="button" class="fv-btn" id="fvPrint">印刷</button>' +
       '<a class="fv-btn" id="fvExt" target="_blank" rel="noopener noreferrer">保存</a></div>' +
-      '<div class="fv-body" id="fvBody"></div>' +
+      '<div class="fv-body" id="fvBody"></div><div class="fv-thumbs" id="fvThumbs"></div><div class="fv-page" id="fvPage"></div>' +
       '<button type="button" class="fv-nav fv-prev" id="fvPrev" aria-label="前へ">‹</button>' +
       '<button type="button" class="fv-nav fv-next" id="fvNext" aria-label="次へ">›</button>' +
-      '<div class="fv-zoom"><button type="button" id="fvOut" aria-label="縮小">－</button><button type="button" id="fvIn" aria-label="拡大">＋</button></div>' +
+      '<div class="fv-zoom"><div class="fv-rot" id="fvRot"><button type="button" id="fvRotP">↻ このページ</button><button type="button" id="fvRotA">↻ 全ページ</button></div>' +
+      '<div class="fv-zrow"><button type="button" id="fvOut" aria-label="縮小">－</button><button type="button" id="fvIn" aria-label="拡大">＋</button></div></div>' +
       '<div class="fv-info" id="fvInfo"></div>';
     document.body.appendChild(v);
     $('fvClose').onclick = () => viewerClose();
@@ -1365,6 +1441,12 @@ function viewerOpen(list, index) {
     $('fvOut').onclick = () => viewerSetScale(VW.scale / 1.5);
     $('fvIn').onclick = () => viewerSetScale(VW.scale * 1.5);
     viewerTouch($('fvBody'));
+    $('fvPrint').onclick = () => viewerPrint();
+    $('fvRotP').onclick = () => viewerRotate(false);
+    $('fvRotA').onclick = () => viewerRotate(true);
+    $('fvThBtn').onclick = () => $('fileViewer').classList.toggle('thumbs-open');
+    viewerMouse($('fvBody'));
+    $('fvBody').addEventListener('scroll', () => { if (VW && VW.pdf) requestAnimationFrame(pdfTrack); }, { passive: true });
   }
   const wasOpen = !!VW;
   VW = { list, index: Math.max(0, index), scale: 1 };
@@ -1376,7 +1458,8 @@ function viewerOpen(list, index) {
 }
 function viewerClose(fromBack) {
   if (!VW) return;
-  $('fileViewer').classList.remove('open'); $('fvBody').innerHTML = '';
+  $('fileViewer').classList.remove('open', 'has-thumbs', 'thumbs-side', 'thumbs-open'); $('fvBody').innerHTML = ''; $('fvThumbs').innerHTML = ''; $('fvBody').style.transform = ''; document.querySelectorAll('.fv-peek').forEach(el => el.remove());
+  printClear();
   document.body.style.overflow = '';
   document.body.classList.remove('fv-open');
   if (VW.pdf) { try { VW.pdf.destroy(); } catch (e) {} }
@@ -1412,7 +1495,18 @@ function viewerShow() {
   if (it.byName) info.push('👤 ' + it.byName);
   $('fvInfo').textContent = info.join('　') + (it.comment ? '\n💬 ' + trMain(it.comment, (it.tr || {}).comment) : '');
   $('fvInfo').style.whiteSpace = 'pre-line';
-  if (/^image\//.test(it.mime || '') || it.kind === 'photo') viewerPhoto(it); else viewerDoc(it);
+  const photo = /^image\//.test(it.mime || '') || it.kind === 'photo', pdf = !photo && !!it.url && (/pdf/i.test(it.mime || '') || /\.pdf$/i.test(it.name || ''));
+  VW.rot = { all: ((it.rot || {}).all || 0), p: { ...((it.rot || {}).p || {}) } }; VW.curPage = 1;
+  $('fileViewer').classList.remove('has-thumbs', 'thumbs-side', 'thumbs-open');
+  $('fvThumbs').innerHTML = ''; $('fvPage').style.display = 'none'; $('fvThBtn').style.display = 'none';
+  // 印刷は写真と PDF（ドライブにしかない資料や、Excel などは「保存」「ドライブで開く」から）
+  $('fvPrint').style.display = (photo && (it.url || it.driveId || it.thumb)) || pdf ? '' : 'none';
+  // 向きを変えて保存できるのは、現場の写真・資料の一覧にあるものだけ（外観の画像などは出さない）
+  const canRot = (photo || pdf) && !!it.id && !!X && (X.files || []).some(f => f.id === it.id);
+  $('fvRot').style.display = canRot ? '' : 'none';
+  $('fvRotP').textContent = photo ? '↻ 回転' : '↻ このページ';
+  $('fvRotA').style.display = photo ? 'none' : '';
+  if (photo) viewerPhoto(it); else viewerDoc(it);
 }
 function viewerPhoto(it) {
   const body = $('fvBody');
@@ -1469,50 +1563,188 @@ function loadPdfJs() {
   pdfjsP.catch(() => { pdfjsP = null; });
   return pdfjsP;
 }
-const pdfFitW = () => Math.max(100, $('fvBody').clientWidth - 16);
-function pdfPaint(page, c) {
-  const cssW = pdfFitW() * VW.scale, vp1 = page.getViewport({ scale: 1 }), dpr = Math.min(window.devicePixelRatio || 1, 2);
-  const vp = page.getViewport({ scale: Math.min(cssW * dpr, 4000) / vp1.width });   // 大きすぎる絵は作らない（スマホのメモリ）
-  c.width = Math.round(vp.width); c.height = Math.round(vp.height);
-  c.style.width = cssW + 'px'; c.style.height = (cssW * vp1.height / vp1.width) + 'px';
-  return page.render({ canvasContext: c.getContext('2d'), viewport: vp }).promise;
+const fvPC = () => !!(window.matchMedia && matchMedia('(hover: hover) and (pointer: fine)').matches) && window.innerWidth >= 700;   // 狭い画面はマウスがあってもスマホと同じ形
+// PC は1ページ全体が画面に入る大きさ、スマホは横幅いっぱい（2026-11-16 ユーザー指示。縦のページ・横のページで変わる）
+const pdfBaseW = ar => { const b = $('fvBody'), w = Math.max(100, b.clientWidth - 16), hh = Math.max(100, b.clientHeight - 16); return fvPC() ? Math.min(w, hh / ar) : w; };
+const pdfRot = n => (((VW.rot || {}).all || 0) + (((VW.rot || {}).p || {})[n] || 0)) % 360;
+// 1つの絵（canvas）には1つずつ描く（同じ絵に2つ同時に描くと pdf.js が止まるため）
+function pdfPaint(page, c, thumb) {
+  const job = () => {
+    if (!VW || !VW.pdf) return;
+    const n = +c.dataset.p, rot = (page.rotate + pdfRot(n)) % 360, vp1 = page.getViewport({ scale: 1, rotation: rot }), ar = vp1.height / vp1.width;
+    const cssW = thumb ? 106 : pdfBaseW(ar) * VW.scale, dpr = Math.min(window.devicePixelRatio || 1, 2);
+    const vp = page.getViewport({ scale: Math.min(cssW * dpr, 4000) / vp1.width, rotation: rot });   // 大きすぎる絵は作らない（スマホのメモリ）
+    if (!thumb) c.dataset.ar = ar;
+    c.width = Math.round(vp.width); c.height = Math.round(vp.height);
+    c.style.width = cssW + 'px'; c.style.height = (cssW * ar) + 'px';
+    return page.render({ canvasContext: c.getContext('2d'), viewport: vp }).promise.catch(() => {});
+  };
+  c._q = (c._q || Promise.resolve()).then(job, job);
+  return c._q;
 }
+const pdfCanvas = n => document.querySelector('#fvPages canvas[data-p="' + n + '"]');
+const pdfThumb = n => document.querySelector('#fvThumbs .fv-th[data-p="' + n + '"] canvas');
 function pdfDraw() {
-  const body = $('fvBody'), wrap = document.createElement('div'), pdf = VW.pdf;
+  const body = $('fvBody'), wrap = document.createElement('div'), pdf = VW.pdf, n = pdf.numPages;
   wrap.className = 'fv-pages'; wrap.id = 'fvPages';
   body.innerHTML = ''; body.appendChild(wrap);
+  body.scrollTop = 0; body.scrollLeft = 0;
+  if (n > 1) {
+    // ページの目次：PC は左に縦に並べる。スマホは「ページ一覧」ボタンで開く
+    const v = $('fileViewer'), th = $('fvThumbs');
+    v.classList.add('has-thumbs'); if (fvPC()) v.classList.add('thumbs-side');
+    th.style.top = body.offsetTop + 'px';
+    th.innerHTML = Array.from({ length: n }, (_, i) => '<button type="button" class="fv-th' + (i ? '' : ' on') + '" data-p="' + (i + 1) + '"><canvas></canvas>' + (i + 1) + '</button>').join('');
+    th.querySelectorAll('.fv-th').forEach(b => { b.querySelector('canvas').dataset.p = b.dataset.p; b.onclick = () => { pdfGo(+b.dataset.p); v.classList.remove('thumbs-open'); }; });
+    $('fvThBtn').style.display = fvPC() ? 'none' : '';
+    $('fvPage').style.top = (body.offsetTop + 8) + 'px'; $('fvPage').style.display = 'block';
+    pdfTrack();
+  }
   let chain = Promise.resolve();
-  for (let p = 1; p <= pdf.numPages; p++) {
+  for (let p = 1; p <= n; p++) {
     chain = chain.then(() => {
       if (!VW || VW.pdf !== pdf) return;
       return pdf.getPage(p).then(page => { const c = document.createElement('canvas'); c.dataset.p = p; wrap.appendChild(c); return pdfPaint(page, c); });
     });
   }
+  // 目次の小さなページは、本体を全部描いてから
+  if (n > 1) for (let p = 1; p <= n; p++) chain = chain.then(() => { if (VW && VW.pdf === pdf && pdfThumb(p)) return pdf.getPage(p).then(page => pdfPaint(page, pdfThumb(p), true)); });
+}
+// 今見ているページ。番号と目次の印を合わせる
+function pdfTrack() {
+  if (!VW || !VW.pdf) return;
+  const body = $('fvBody'), cs = document.querySelectorAll('#fvPages canvas'), n = VW.pdf.numPages;
+  let cur = 1;
+  const mid = body.scrollTop + body.clientHeight / 4;   // 画面の上から4分の1の所のページ（横向きの低いページでも、上に見えているページにする）
+  cs.forEach(c => { if (c.offsetTop <= mid) cur = +c.dataset.p; });
+  if (body.scrollTop > 0 && body.scrollTop + body.clientHeight >= body.scrollHeight - 2 && cs.length === n) cur = n;   // 下まで送ったら最後のページ
+  VW.curPage = cur;
+  if (n > 1) $('fvPage').textContent = cur + ' / ' + n;
+  const th = $('fvThumbs'), on = th.querySelector('.fv-th.on');
+  if (on && +on.dataset.p === cur) return;
+  if (on) on.classList.remove('on');
+  const b = th.querySelector('.fv-th[data-p="' + cur + '"]');
+  if (b) { b.classList.add('on'); if ($('fileViewer').classList.contains('thumbs-side')) { const r = b.offsetTop - th.scrollTop; if (r < 0 || r > th.clientHeight - b.offsetHeight) th.scrollTop = b.offsetTop - th.clientHeight / 2 + b.offsetHeight / 2; } }
+}
+function pdfGo(n) {
+  const c = pdfCanvas(n);
+  if (!c) { uiAlert('そのページはまだ読み込み中です。少し待ってから押してください。'); return; }
+  $('fvBody').scrollTop = c.offsetTop - 8;
+  pdfTrack();
 }
 function viewerApply() {
   if (!VW) return;
   const body = $('fvBody');
   if (VW.pdf) {
-    const cssW = pdfFitW() * VW.scale;
-    document.querySelectorAll('#fvPages canvas').forEach(c => { const r = c.height / c.width; c.style.width = cssW + 'px'; c.style.height = (cssW * r) + 'px'; });
+    document.querySelectorAll('#fvPages canvas').forEach(c => { const ar = +c.dataset.ar || (c.height / c.width), w = pdfBaseW(ar) * VW.scale; c.style.width = w + 'px'; c.style.height = (w * ar) + 'px'; });
     clearTimeout(pdfRepaintTimer);
     pdfRepaintTimer = setTimeout(() => {
       if (!VW || !VW.pdf) return;
-      const pdf = VW.pdf; let chain = Promise.resolve();
-      document.querySelectorAll('#fvPages canvas').forEach(c => { chain = chain.then(() => { if (VW && VW.pdf === pdf) return pdf.getPage(+c.dataset.p).then(pg => pdfPaint(pg, c)); }); });
+      const pdf = VW.pdf;
+      document.querySelectorAll('#fvPages canvas').forEach(c => { pdf.getPage(+c.dataset.p).then(pg => pdfPaint(pg, c)).catch(() => {}); });
     }, 350);
     return;
   }
   const img = $('fvImg'), wrap = $('fvWrap');
   if (!img || !VW.natW) return;
-  const fit = Math.min(body.clientWidth / VW.natW, body.clientHeight / VW.natH), w = VW.natW * fit * VW.scale, h = VW.natH * fit * VW.scale;
-  img.style.width = w + 'px'; img.style.height = h + 'px';
-  wrap.style.width = Math.max(w, body.clientWidth) + 'px'; wrap.style.height = Math.max(h, body.clientHeight) + 'px';
+  // 回した写真は、縦と横を入れかえて画面に合わせる
+  const r = (VW.rot || {}).all || 0, side = r % 180 !== 0, W0 = side ? VW.natH : VW.natW, H0 = side ? VW.natW : VW.natH;
+  const fit = Math.min(body.clientWidth / W0, body.clientHeight / H0), w = W0 * fit * VW.scale, hh = H0 * fit * VW.scale;
+  const ww = Math.max(w, body.clientWidth), wh = Math.max(hh, body.clientHeight), iw = side ? hh : w, ih = side ? w : hh;
+  wrap.style.position = 'relative'; wrap.style.width = ww + 'px'; wrap.style.height = wh + 'px';
+  img.style.position = 'absolute'; img.style.width = iw + 'px'; img.style.height = ih + 'px';
+  img.style.left = ((ww - iw) / 2) + 'px'; img.style.top = ((wh - ih) / 2) + 'px';
+  img.style.transform = r ? 'rotate(' + r + 'deg)' : '';
+}
+// 向きを変える（90度ずつ）。向きはファイルに残し、次からはだれが開いてもその向きで出る（2026-11-16 ユーザー決定）
+function viewerRotate(all) {
+  if (!VW) return;
+  const it = VW.list[VW.index], photo = /^image\//.test(it.mime || '') || it.kind === 'photo';
+  if (!photo && !VW.pdf) return;   // PDF の読み込み中は回さない
+  if (photo || all) VW.rot.all = (VW.rot.all + 90) % 360;
+  else { const n = VW.curPage || 1; VW.rot.p[n] = ((VW.rot.p[n] || 0) + 90) % 360; if (!VW.rot.p[n]) delete VW.rot.p[n]; }
+  const rot = { all: VW.rot.all, p: { ...VW.rot.p } };
+  it.rot = rot;
+  const f = X && (X.files || []).find(x => x.id === it.id);
+  if (f) { f.rot = rot; fire(updateDoc(doc(xSub('files'), it.id), { rot }), '向き'); }
+  if (photo) { viewerApply(); return; }
+  const pdf = VW.pdf, ns = all ? Array.from({ length: pdf.numPages }, (_, i) => i + 1) : [VW.curPage || 1];
+  ns.forEach(n => pdf.getPage(n).then(pg => { const c = pdfCanvas(n), t = pdfThumb(n); if (c) pdfPaint(pg, c); if (t) pdfPaint(pg, t, true); }).catch(() => {}));
+  if (!all) setTimeout(() => { if (VW && VW.pdf) pdfGo(VW.curPage || 1); }, 300);   // 回したページが画面から外れないように
+}
+// PC：左ボタンを押したまま動かすと、拡大した写真・PDFの見える所が動く（2026-11-16 ユーザー指示）
+function viewerMouse(body) {
+  let pan = null;
+  body.addEventListener('mousedown', e => {
+    if (e.button !== 0 || !VW || (e.target.closest && e.target.closest('iframe, a, button'))) return;
+    if (body.scrollWidth <= body.clientWidth + 1 && body.scrollHeight <= body.clientHeight + 1) return;
+    pan = { x: e.clientX, y: e.clientY, l: body.scrollLeft, t: body.scrollTop };
+    body.classList.add('panning'); e.preventDefault();
+  });
+  window.addEventListener('mousemove', e => { if (!pan) return; body.scrollLeft = pan.l - (e.clientX - pan.x); body.scrollTop = pan.t - (e.clientY - pan.y); });
+  window.addEventListener('mouseup', () => { if (pan) { pan = null; body.classList.remove('panning'); } });
+}
+// 印刷：写真・PDFの全ページを、回した向きのまま紙に出す。PC もスマホも端末の印刷の画面を使う（2026-11-16 ユーザー指示）
+let printUrls = [];
+function printClear() {
+  const a = $('printArea'); if (a) a.remove();
+  printUrls.forEach(u => URL.revokeObjectURL(u)); printUrls = [];
+  document.body.classList.remove('printing');
+}
+const canvasBlob = c => new Promise(ok => c.toBlob(ok, 'image/jpeg', 0.92));
+async function viewerPrint() {
+  if (!VW) return;
+  const it = VW.list[VW.index], btn = $('fvPrint'), label = btn.textContent, cur = VW;
+  btn.disabled = true; btn.textContent = '⏳';
+  try {
+    const pages = [];
+    if (VW.pdf) {
+      const pdf = VW.pdf;
+      for (let n = 1; n <= pdf.numPages; n++) {
+        if (VW !== cur) return;
+        btn.textContent = '⏳ ' + n + '/' + pdf.numPages;
+        const page = await pdf.getPage(n), rot = (page.rotate + pdfRot(n)) % 360, vp1 = page.getViewport({ scale: 1, rotation: rot });
+        const vp = page.getViewport({ scale: Math.min(2400 / Math.max(vp1.width, vp1.height), 4), rotation: rot }), c = document.createElement('canvas');
+        c.width = Math.round(vp.width); c.height = Math.round(vp.height);
+        const x = c.getContext('2d'); x.fillStyle = '#fff'; x.fillRect(0, 0, c.width, c.height);
+        await page.render({ canvasContext: x, viewport: vp }).promise;
+        const u = URL.createObjectURL(await canvasBlob(c)); printUrls.push(u);
+        pages.push({ src: u, land: c.width > c.height });
+        c.width = c.height = 0;
+      }
+    } else {
+      const r = (VW.rot || {}).all || 0;
+      let src = it.url || (it.driveId ? 'https://lh3.googleusercontent.com/d/' + it.driveId + '=w2000' : it.thumb), land = VW.natW ? (r % 180 ? VW.natH > VW.natW : VW.natW > VW.natH) : false;
+      if (r) {
+        // 回した写真は、回した絵を作ってから出す（読めないときは元の向きのまま出す）
+        try {
+          const b = await fetch(src).then(x => x.ok ? x.blob() : Promise.reject(new Error('ng'))), bm = await createImageBitmap(b), side = r % 180 !== 0, c = document.createElement('canvas');
+          c.width = side ? bm.height : bm.width; c.height = side ? bm.width : bm.height;
+          const x = c.getContext('2d'); x.translate(c.width / 2, c.height / 2); x.rotate(r * Math.PI / 180); x.drawImage(bm, -bm.width / 2, -bm.height / 2);
+          src = URL.createObjectURL(await canvasBlob(c)); printUrls.push(src); land = c.width > c.height;
+        } catch (e) {}
+      }
+      pages.push({ src, land });
+    }
+    if (VW !== cur) return;
+    const old = $('printArea'); if (old) old.remove();
+    const a = document.createElement('div');
+    a.id = 'printArea';
+    a.innerHTML = '<style>@page { size: ' + (pages.every(p => p.land) ? 'landscape' : 'auto') + '; margin: 8mm; }</style>' + pages.map(p => '<div class="pp"><img src="' + esc(p.src) + '" alt=""></div>').join('');
+    document.body.appendChild(a);
+    await Promise.all([...a.querySelectorAll('img')].map(i => i.decode ? i.decode().catch(() => {}) : null));
+    // 画面を止めている overflow:hidden のままだと1枚しか出ない端末があるので、印刷の間だけ外す
+    document.body.classList.add('printing'); document.body.style.overflow = '';
+    const end = () => { document.body.classList.remove('printing'); if (VW) document.body.style.overflow = 'hidden'; };
+    window.addEventListener('afterprint', end, { once: true });
+    window.print();
+  } catch (e) { uiAlert('印刷の準備ができませんでした。'); }
+  finally { btn.disabled = false; btn.textContent = label; }
 }
 function viewerSetScale(s, cx, cy) {
   if (!VW) return;
   const body = $('fvBody'), old = VW.scale;
-  s = Math.max(1, Math.min(6, s));
+  s = Math.max(VW.pdf ? 0.2 : 1, Math.min(6, s));
   if (cx == null) { cx = body.clientWidth / 2; cy = body.clientHeight / 2; }
   const px = (body.scrollLeft + cx) / old, py = (body.scrollTop + cy) / old;
   VW.scale = s;
@@ -1520,26 +1752,77 @@ function viewerSetScale(s, cx, cy) {
   body.scrollLeft = px * s - cx; body.scrollTop = py * s - cy;
 }
 function viewerTouch(body) {
-  let t0 = null, pinch = null, lastTap = 0;
+  let t0 = null, pinch = null, lastTap = 0, drag = null;
+  const W = () => body.clientWidth || window.innerWidth;
+  // となりのファイルの見本（写真は一覧の見本画像。資料は名前）
+  const peek = (i, side) => {
+    const it = VW.list[i];
+    if (!it) return null;
+    const el = document.createElement('div');
+    el.className = 'fv-peek';
+    el.style.top = body.offsetTop + 'px'; el.style.height = body.offsetHeight + 'px'; el.style.left = body.offsetLeft + 'px'; el.style.width = body.offsetWidth + 'px';
+    el.style.transform = 'translateX(' + (side * W()) + 'px)';
+    const r = ((it.rot || {}).all || 0), sd = r % 180 !== 0, iw = sd ? body.offsetHeight : body.offsetWidth, ih = sd ? body.offsetWidth : body.offsetHeight;
+    el.innerHTML = it.thumb && (/^image\//.test(it.mime || '') || it.kind === 'photo') ? '<img src="' + esc(it.thumb) + '" alt="" style="flex:none; width:' + iw + 'px; height:' + ih + 'px;' + (r ? ' transform:rotate(' + r + 'deg);' : '') + '">' : '<div class="fv-peek-doc"><b>' + (it.kind === 'photo' ? '📷' : '📄') + '</b>' + esc(it.name || '') + '</div>';
+    $('fileViewer').appendChild(el);
+    return el;
+  };
+  const place = (x, anim, d) => {
+    const tr = anim ? 'transform 0.22s ease-out' : 'none';
+    d = d || drag;
+    body.style.transition = tr; body.style.transform = x ? 'translateX(' + x + 'px)' : '';
+    [[d.prev, -1], [d.next, 1]].forEach(([el, side]) => { if (el) { el.style.transition = tr; el.style.transform = 'translateX(' + (x + side * W()) + 'px)'; } });
+  };
+  const clear = d => { if (!d) return; [d.prev, d.next].forEach(el => { if (el) el.remove(); }); };
   body.addEventListener('touchstart', e => {
-    if (!VW) return;
+    if (!VW || drag) return;
     if (e.touches.length === 2) {
       const a = e.touches[0], b = e.touches[1], r = body.getBoundingClientRect();
       pinch = { d: Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY), s: VW.scale, cx: (a.clientX + b.clientX) / 2 - r.left, cy: (a.clientY + b.clientY) / 2 - r.top };
       t0 = null;
-    } else if (e.touches.length === 1) t0 = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+    } else if (e.touches.length === 1) t0 = { x: e.touches[0].clientX, y: e.touches[0].clientY, t: Date.now(), dir: '' };
   }, { passive: true });
   body.addEventListener('touchmove', e => {
-    if (!pinch || e.touches.length !== 2) return;
+    if (pinch && e.touches.length === 2) {
+      e.preventDefault();
+      const a = e.touches[0], b = e.touches[1];
+      viewerSetScale(pinch.s * Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY) / pinch.d, pinch.cx, pinch.cy);
+      return;
+    }
+    if (!t0 || !VW || e.touches.length !== 1) return;
+    const p = e.touches[0], dx = p.clientX - t0.x, dy = p.clientY - t0.y;
+    if (!t0.dir) {
+      if (Math.abs(dx) < 10 && Math.abs(dy) < 10) return;
+      // 横に動かしたときだけ。拡大中（写真を動かして見ているとき）とファイルが1つだけのときは、今までどおり
+      t0.dir = Math.abs(dx) > Math.abs(dy) * 1.2 && VW.scale === 1 && VW.list.length > 1 ? 'x' : 'y';
+      if (t0.dir === 'x') drag = { prev: peek(VW.index - 1, -1), next: peek(VW.index + 1, 1) };
+    }
+    if (t0.dir !== 'x' || !drag) return;
     e.preventDefault();
-    const a = e.touches[0], b = e.touches[1];
-    viewerSetScale(pinch.s * Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY) / pinch.d, pinch.cx, pinch.cy);
+    const edge = (dx > 0 && !drag.prev) || (dx < 0 && !drag.next);   // 端では少しだけ動いて戻る
+    t0.lx = dx; place(edge ? dx * 0.3 : dx);
   }, { passive: false });
   body.addEventListener('touchend', e => {
     if (pinch) { if (e.touches.length < 2) pinch = null; return; }
     if (!t0 || !VW) return;
     const p = e.changedTouches[0], dx = p.clientX - t0.x, dy = p.clientY - t0.y, photo = !VW.pdf;
-    if (photo && VW.scale === 1 && Math.abs(dx) > 60 && Math.abs(dy) < 60) { viewerStep(dx < 0 ? 1 : -1); t0 = null; return; }
+    if (drag) {
+      const d = drag, w = W(), v = dx / Math.max(1, Date.now() - t0.t);   // 速さ（さっと払ったときも送る）
+      const go = dx < 0 && d.next && (dx < -w * 0.22 || (dx < -40 && v < -0.45)) ? 1 : dx > 0 && d.prev && (dx > w * 0.22 || (dx > 40 && v > 0.45)) ? -1 : 0;
+      drag = null; t0 = null;
+      const anim = x => place(x, true, d);
+      if (!go) { anim(0); setTimeout(() => { clear(d); body.style.transition = ''; }, 230); return; }
+      anim(-go * w);
+      setTimeout(() => {
+        if (!VW) { clear(d); return; }
+        const shown = go > 0 ? d.next : d.prev;   // 見本はそのまま出しておき、本物が出てから外す（黒い画面をはさまない）
+        (go > 0 ? d.prev : d.next) && (go > 0 ? d.prev : d.next).remove();
+        viewerStep(go);
+        body.style.transition = 'none'; body.style.transform = '';
+        setTimeout(() => { if (shown) shown.remove(); body.style.transition = ''; }, 260);
+      }, 230);
+      return;
+    }
     if (photo && Math.abs(dx) < 10 && Math.abs(dy) < 10) {
       const now = Date.now();
       if (now - lastTap < 300) { const r = body.getBoundingClientRect(); viewerSetScale(VW.scale > 1 ? 1 : 2.5, p.clientX - r.left, p.clientY - r.top); lastTap = 0; }
@@ -1547,6 +1830,7 @@ function viewerTouch(body) {
     }
     t0 = null;
   });
+  body.addEventListener('touchcancel', () => { if (drag) { const d = drag; drag = null; clear(d); body.style.transition = ''; body.style.transform = ''; } t0 = null; pinch = null; });
 }
 function xBatch(rows, data) {
   for (let i = 0; i < rows.length; i += 400) {
@@ -1653,7 +1937,7 @@ function xPrepare(file, kind) {
 }
 const UP_MAX = 200 * 1024 * 1024;   // 1つ200MBまで（ユーザー決定 2026-11-01。storage.rules も同じ）
 async function xUpload(kind, folder, files, quiet) {
-  let lastId = '', names = [];
+  let lastId = '', names = [], ids = [];
   const over = [...files].filter(f => f.size > UP_MAX);
   if (over.length) uiAlert('1つ200MBを超えるファイルは追加できません：\n' + over.map(f => '・' + f.name + '（' + Math.round(f.size / 1048576) + 'MB）').join('\n'));
   const ng = [];
@@ -1666,10 +1950,10 @@ async function xUpload(kind, folder, files, quiet) {
     await upTx('readwrite', s => s.put({ id: ref.id, siteId, name: p.name.replace(/[\/#?\[\]*]/g, '_'), mime: p.mime, blob, t: Date.now() }));
     fire(setDoc(ref, { kind, folder, name: p.name, mime: p.mime, size: blob.size, thumb: p.thumb, by: me.uid, byName: me.name || me.uid, at: Date.now(), driveId: '', uploading: true, deleted: false, comment: '' }), p.name);
     upPump();
-    lastId = ref.id; names.push(p.name);
+    lastId = ref.id; names.push(p.name); ids.push(ref.id);
   }
   if (ng.length) uiAlert('次のものは追加できませんでした（フォルダは、中のファイルを選んで落としてください）：\n' + ng.map(n => '・' + n).join('\n'));
-  if (!quiet && names.length) { const k = X.kind; X.kind = kind; const f = xNameOf(folder); X.kind = k; notify(X.s, kind, '「' + f + '」に' + xLabel(kind) + 'を追加：' + clip(names.join('、'), 60) + (names.length > 1 ? '（' + names.length + '件）' : '')); }
+  if (!quiet && names.length) { const k = X.kind; X.kind = kind; const f = xNameOf(folder); X.kind = k; notify(X.s, kind, '「' + f + '」に' + xLabel(kind) + 'を追加：' + clip(names.join('、'), 60) + (names.length > 1 ? '（' + names.length + '件）' : ''), { go: { t: kind, ids: ids.slice(0, 100) } }); }
   return lastId;
 }
 window.portalTest = {
@@ -1840,10 +2124,10 @@ function showSiteForm(s) {
    送るときに、ほかの人が先に直していたら上書きせず、別の伝票として残す
    1枚の中身は sites/{id}/orderBody、一覧に出す情報は sites/{id}/orders、記録は sites/{id}/orderLog */
 const O_KIND = {
-  kaku: { host: 'denpyoHost', src: 'denpyo.html?v=19', title: '角ダクト注文', word: '伝票', log: '角ダクト', fn: 'Denpyo' },
-  maru: { host: 'maruHost', src: 'maru.html?v=6', title: '丸ダクト注文', word: '注文書', log: '丸ダクト', fn: 'Maru' },
-  cons: { host: 'consHost', src: 'cons.html?v=22', title: '消耗品注文', word: '注文書', log: '消耗品', fn: 'Cons' },
-  kana: { host: 'kanaHost', src: 'kana.html?v=7', title: '金物注文（添付）', word: '注文書', log: '金物（添付）', fn: 'Kana' },
+  kaku: { host: 'denpyoHost', src: 'denpyo.html?v=20', title: '角ダクト注文', word: '伝票', log: '角ダクト', fn: 'Denpyo' },
+  maru: { host: 'maruHost', src: 'maru.html?v=7', title: '丸ダクト注文', word: '注文書', log: '丸ダクト', fn: 'Maru' },
+  cons: { host: 'consHost', src: 'cons.html?v=23', title: '消耗品注文', word: '注文書', log: '消耗品', fn: 'Cons' },
+  kana: { host: 'kanaHost', src: 'kana.html?v=8', title: '金物注文（添付）', word: '注文書', log: '金物（添付）', fn: 'Kana' },
   hood: { host: 'hoodHost', src: 'hood.html?v=35', title: 'フード注文', word: '注文書', log: 'フード', fn: 'Hood' },   // 厨房フード（箱型・山型・二重。数字入りの図の注文書。2026-11-03）
   kanagu: { host: 'kanaguHost', src: 'kanagu.html?v=13', title: '金物注文', word: '注文書', log: '金物', fn: 'Kanagu' }   // 鋼材テンプレート（三角ブラケット・穴あきアングル。図面と立体図の注文書。2026-11-04）
 };
@@ -2057,7 +2341,7 @@ function oHost(s, k) {
         } catch (e) {}
       }
       log('提出' + (old ? '（前の版のPDFを置き換え）' : ''), no, rev, url);
-      notify(s, 'doc', '「' + folder + '」に資料を追加：' + name);
+      notify(s, 'doc', '「' + folder + '」に資料を追加：' + name, { go: { t: 'doc', ids: [ref.id] } });
       return { message: '「' + name + '」を保存しました。' + (old ? '\n前の版（' + old + '）は削除しました。' : ''), url, pdfId: ref.id, folderId: fid };
     }
   };
@@ -3096,7 +3380,7 @@ async function setOpen() {
   const pf = (pd && pd.exists() && pd.data().prefs) || {}, u = (ud && ud.data()) || {}, t = pf.types || {}, muted = pf.mutedSites || [];
   const types = [['report', '報告の追加・編集'], ['photo', '写真の追加・編集'], ['doc', '資料の追加・編集'], ['site', '現場情報の追加・編集']];
   P.innerHTML =
-    '<div class="info-card"><div class="card-header-row"><span style="font-weight: 700;">📱 アプリの版</span></div><div style="font-size: 0.95rem; margin-bottom: 10px;">今の版：<b>' + APP_VER + '</b></div><button type="button" id="verBtn" class="btn btn-dark">最新の版にする</button><div class="set-note">新しい版が出ているときは、押すと入れ替わります。</div></div>' +
+    '<div class="info-card"><div class="card-header-row"><span style="font-weight: 700;">📱 アプリの版</span></div><div style="font-size: 0.95rem; margin-bottom: 10px;">今の版：<b>' + APP_VER + '</b></div><button type="button" id="verBtn" class="btn btn-dark">最新の版にする</button><div class="set-note">新しい版が出ているときは、押すと入れ替わります。</div><button type="button" id="relBtn" class="btn btn-outline" style="margin-top: 10px;">更新履歴を見る</button></div>' +
     '<div class="info-card"><div class="card-header-row" style="margin-bottom: 0;"><span style="font-weight: 700;">🌐 表示言語</span>' + LANG_SW + '</div></div>' +
     '<div class="info-card"><div class="card-header-row"><span style="font-weight: 700;">🔔 お知らせ通知設定</span></div>' + pushBoxHtml('setPush') +
     '<div class="set-sub-title">通知する内容</div>' + sw('pfAll', 'お知らせを通知する（全体）', pf.enabled !== false) + types.map(a => sw('pf_' + a[0], a[1], t[a[0]] !== false)).join('') +
@@ -3119,6 +3403,7 @@ async function setOpen() {
   pushWire('setPush');
   document.querySelectorAll('input[name="avOrd"]').forEach(r => { r.onchange = () => { try { localStorage.setItem('portalAvOrder', r.value); } catch (e) {} }; });
   updateLangButtons();
+  $('relBtn').onclick = () => relShow(RELEASES.filter(r => relVer(r) <= APP_VER && relItems(r).length), '更新履歴');
   $('verBtn').onclick = async () => {
     $('verBtn').textContent = '入れ替えています…';
     try { await refreshShell(); } catch (e) {}
@@ -3155,7 +3440,118 @@ const nIsRead = it => (it.at || 0) <= (nReads.all || 0) || !!(nReads.ids || {})[
 const nMine = () => nItems.filter(it => it.by !== me.uid);
 const nSiteUnread = id => nMine().filter(it => it.site === id && !nIsRead(it)).length;
 function notify(s, type, text, opt) {
-  fire(setDoc(doc(collection(db, 'notices')), { site: s.id, siteName: s.siteName, type, text, by: me.uid, byName: me.name || me.uid, at: Date.now(), members: s.members || [], mentions: (opt && opt.mentions) || [] }), 'お知らせ');
+  fire(setDoc(doc(collection(db, 'notices')), { site: s.id, siteName: s.siteName, type, text, by: me.uid, byName: me.name || me.uid, at: Date.now(), members: s.members || [], mentions: (opt && opt.mentions) || [], ...(opt && opt.go ? { go: opt.go } : {}) }), 'お知らせ');
+}
+/* 通知から飛ぶ（2026-11-16 ユーザー指示）。報告ならその報告、写真・資料ならそのフォルダを開いてそのファイルを青い枠で知らせる。
+   コメントの通知はコメント欄も開く。15秒たっても見つからなければあきらめる（消されたときなど） */
+let goNext = null, nOpenId = '';
+const GO_TAB = { report: '報告', photo: '写真', doc: '資料' };
+function nGo(it) {
+  const g = it.go || null;
+  goNext = g ? { site: it.site, ...g, until: Date.now() + 15000 } : null;
+  showDetail(it.site, '', (g && GO_TAB[g.t]) || '現場詳細');
+}
+function goFlash(els, ids) {
+  els = els.filter(Boolean);
+  if (!els.length) return;
+  els[0].scrollIntoView({ block: 'center', behavior: 'smooth' });
+  goMark = { ids: ids || [], until: Date.now() + 2600 };
+  els.forEach(el => { el.classList.add('go-flash'); setTimeout(() => el.classList.remove('go-flash'), 2600); });
+}
+// 開いた直後は、届き直したデータで一覧が描き直されて枠が消えるので、描き直すたびに付け直す
+let goMark = null;
+function goMarkApply() {
+  if (!goMark) return;
+  const left = goMark.until - Date.now();
+  if (left <= 0) { goMark = null; return; }
+  goMark.ids.forEach(id => {
+    const el = id === 'rules' ? ($('rEdit') && $('rEdit').closest('.info-card')) : document.querySelector('#rBox [data-r="' + CSS.escape(id) + '"], #xBox [data-id="' + CSS.escape(id) + '"]');
+    if (el && !el.classList.contains('go-flash')) { el.classList.add('go-flash'); setTimeout(() => el.classList.remove('go-flash'), left); }
+  });
+}
+function goTry() {
+  goMarkApply();
+  const g = goNext;
+  if (!g || !X || X.s.id !== g.site) return;
+  if (Date.now() > g.until) { goNext = null; return; }
+  if (g.t === 'report') {
+    if (!$('rBox')) return;
+    const r = (X.reports || []).find(x => x.id === g.id);
+    if (!r) return;   // まだ届いていない
+    goNext = null;
+    if (X.rCat !== '全て表示' && r.category !== X.rCat) { X.rCat = '全て表示'; rList(); }
+    const card = $('rBox').querySelector('[data-r="' + CSS.escape(g.id) + '"]');
+    if (!card) { uiAlert('この報告は削除されています。'); return; }
+    goFlash([card], [g.id]);
+    if (g.cm && !(X.cmOpen || {})['report:' + g.id]) cmInlineOpen('report', g.id);
+  } else if (g.t === 'photo' || g.t === 'doc') {
+    if (X.kind !== g.t || !$('xBox')) return;
+    const fs = (g.ids || [g.id]).map(i => X.files.find(f => f.id === i)).filter(Boolean);
+    if (!fs.length) return;   // まだ届いていない
+    goNext = null;
+    const live = fs.filter(f => !f.deleted);
+    if (!live.length) { uiAlert('この' + xLabel(g.t) + 'は削除されています。'); return; }
+    const folder = live[0].folder || '';
+    if (X.active[X.kind] !== folder) { X.active[X.kind] = folder; X.sel.clear(); xRender(); }
+    goFlash(live.map(f => $('xBox').querySelector('[data-id="' + CSS.escape(f.id) + '"]')), live.map(f => f.id));
+    if (g.cm) cmOverlay(g.t, live[0].id);
+  }
+}
+// お知らせを開く（一覧の「開く」と、スマホに届いた通知を押したとき）
+function nOpenIt(it) {
+  if (it.site) nGo(it); else if (it.type === 'leave') dOpen(); else hOpen();
+}
+async function nOpenById(id) {
+  if (!me) { nOpenId = id; return; }
+  nOpenId = '';
+  let it = nItems.find(x => x.id === id);
+  if (!it) { try { const d = await getDoc(doc(db, 'notices', id)); if (d.exists()) it = { id, ...d.data() }; } catch (e) {} }
+  if (!it) return;
+  nRead(id);
+  nOpenIt(it);
+}
+// スマホに届いた通知を押して開いたとき（?n=お知らせの番号）。アドレスからは消しておく
+nOpenId = new URLSearchParams(location.search).get('n') || '';
+if (nOpenId) { try { history.replaceState(history.state, '', location.pathname); } catch (e) {} }
+if ('serviceWorker' in navigator) navigator.serviceWorker.addEventListener('message', e => { if (e.data && e.data.type === 'portal-notice' && e.data.id) nOpenById(e.data.id); });
+/* ホーム画面のアイコンに未読の数（赤い丸）を出す（2026-11-16 川人さんの要望・ユーザー決定 案1）。
+   iPhone はホーム画面に置いて通知を受け取る設定の人だけ（端末の決まり）。閉じている間は、届いた通知の数だけ保存係（sw.js）が1つずつ足す。
+   数は保存係と同じ控え（Cache の portal-badge）に残し、開いたときに正しい数に直す */
+let badgeLast = -1;
+function appBadge(n) {
+  if (n === badgeLast) return;
+  badgeLast = n;
+  try { if (navigator.setAppBadge) { if (n) navigator.setAppBadge(n).catch(() => {}); else navigator.clearAppBadge().catch(() => {}); } } catch (e) {}
+  try { if (window.caches) caches.open('portal-badge').then(c => c.put(new URL('__badge', location.href).href, new Response(String(n || 0)))).catch(() => {}); } catch (e) {}
+}
+/* 更新の窓（2026-11-16 ユーザー指示） */
+const relMgr = () => !!me && (me.isMaster || (allSites || []).some(s => (s.managers || []).includes(me.uid)));
+const relItems = (r, all) => r.items.filter(i => all || i.who !== 'mgr' || relMgr());
+function relShow(list, title) {
+  const es = portalLang() === 'es', master = me && me.isMaster;
+  const back = document.createElement('div');
+  back.style.cssText = 'position:fixed;inset:0;z-index:10000;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;padding:16px;';
+  back.innerHTML = '<div role="dialog" aria-modal="true" style="background:#fff;color:#111;border:1px solid #333;border-radius:8px;max-width:520px;width:100%;max-height:calc(100dvh - 32px);display:flex;flex-direction:column;box-shadow:0 6px 24px rgba(0,0,0,.35);">' +
+    '<div style="padding:14px 16px 8px;font-weight:800;font-size:1.05rem;border-bottom:1px solid #ccc;">' + esc(title) + '</div>' +
+    '<div data-i18n-skip style="overflow-y:auto;padding:4px 16px 8px;-webkit-overflow-scrolling:touch;">' + list.map(r => '<div style="margin-top:12px;"><div style="font-weight:800;font-size:0.95rem;">' + esc(relVer(r)) + (r.date ? '<span style="font-weight:600;color:#555;font-size:0.85rem;">　' + esc(r.date) + '</span>' : '') + '</div>' +
+      '<ul style="margin:6px 0 0;padding-left:1.3em;font-size:0.9rem;line-height:1.6;">' + relItems(r, master).map(i => '<li style="margin-bottom:4px;">' + esc(es ? i.es : i.ja) + (master && i.who === 'mgr' ? '<span style="font-size:0.75rem;font-weight:700;border:1px solid #555;border-radius:3px;padding:0 4px;margin-left:4px;white-space:nowrap;">' + (es ? 'administradores' : '現場管理者向け') + '</span>' : '') + '</li>').join('') + '</ul></div>').join('') + '</div>' +
+    '<div style="padding:10px 16px 14px;border-top:1px solid #ccc;display:flex;justify-content:flex-end;"><button type="button" class="btn btn-dark" style="width:auto;padding:8px 28px;">閉じる</button></div></div>';
+  document.body.appendChild(back);
+  const close = () => back.remove();
+  back.querySelector('button').onclick = close;
+  back.onclick = e => { if (e.target === back) close(); };
+}
+// 新しい Ver で最初に開いたとき、まだ見ていない Ver の分を出す。初めてこの端末でログインした人には出さない
+async function relCheck(firstHere) {
+  if (!me) return;
+  const key = 'portalSeenVer:' + me.uid;
+  let seen = null;
+  try { seen = localStorage.getItem(key); localStorage.setItem(key, APP_VER); } catch (e) { return; }
+  if (!seen) { if (firstHere) return; seen = REL_BASE; }
+  if (seen >= APP_VER) return;
+  for (let i = 0; i < 16 && !(allSites || []).length; i++) await new Promise(r => setTimeout(r, 500));   // 現場管理者かどうかは現場の一覧で決めるので、届くのを少し待つ
+  const list = RELEASES.filter(r => relVer(r) > seen && relVer(r) <= APP_VER && relItems(r).length);
+  if (list.length) relShow(list, '更新のお知らせ');
 }
 function nStop() { nUnsub.forEach(f => f()); nUnsub = []; nItems = []; }
 function nStart() {
@@ -3169,6 +3565,7 @@ function nStart() {
 function nDraw() {
   const n = nMine().filter(it => !nIsRead(it)).length;
   $('noticeBadge').textContent = n > 99 ? '99+' : String(n);
+  appBadge(n);
   $('btnFooterNotices').classList.toggle('has-unread', n > 0);
   if ($('panelPortal').classList.contains('active')) renderSites();
   if ($('panelNotices').classList.contains('active')) nRender();
@@ -3226,13 +3623,13 @@ function nRender() {
     html += '<div class="notice-card' + (read ? '' : ' unread') + '" data-n="' + esc(it.id) + '"><div class="notice-card-top">' + (read ? '' : '<span class="notice-new">未読</span>') +
       '<span class="notice-type t-' + esc(it.type) + '">' + esc(N_TYPES[it.type] || 'お知らせ') + '</span>' + ((it.mentions || []).includes(me.uid) ? '<span class="notice-mention">@あなた</span>' : '') +
       '<span style="flex:1;"></span><span>' + esc(rWhen(it.at)) + '</span></div>' + (nSort === 'site' ? '' : '<div class="notice-site">' + esc(it.siteName) + '</div>') +
-      '<div class="notice-text">' + trShow(it.text, (it.tr || {}).text) + '</div><div class="notice-foot"><span>👤 ' + esc(it.byName) + '</span><span style="flex:1;"></span><button type="button" class="btn btn-sub" data-open="' + esc(it.site) + '" data-ot="' + esc(it.type) + '" style="padding:2px 8px; font-size:0.75rem;">' + (it.type === 'health' ? '体調を開く' : it.type === 'leave' ? '日報を開く' : '現場を開く') + '</button></div></div>';
+      '<div class="notice-text">' + trShow(it.text, (it.tr || {}).text) + '</div><div class="notice-foot"><span>👤 ' + esc(it.byName) + '</span><span style="flex:1;"></span><button type="button" class="btn btn-sub" data-open="' + esc(it.site) + '" data-ot="' + esc(it.type) + '" style="padding:2px 8px; font-size:0.75rem;">' + (it.type === 'health' ? '体調を開く' : it.type === 'leave' ? '日報を開く' : !it.go ? '現場を開く' : it.go.t === 'rules' ? '注意事項を開く' : it.go.cm ? 'コメントを開く' : (GO_TAB[it.go.t] || '現場') + 'を開く') + '</button></div></div>';
   });
   if (rest > 0) html += '<button type="button" class="btn btn-sub" id="nMore" style="width:100%; margin-top:8px;">▼ 以前のお知らせを表示（残り' + rest + '件）</button>';
   $('nBox').innerHTML = html;
   $('nBox').querySelectorAll('[data-n]').forEach(c => { c.onclick = () => nRead(c.dataset.n); });
   $('nBox').querySelectorAll('[data-open]').forEach(b => {
-    b.onclick = e => { e.stopPropagation(); nRead(b.closest('[data-n]').dataset.n); if (b.dataset.open) showDetail(b.dataset.open); else if (b.dataset.ot === 'leave') dOpen(); else hOpen(); };
+    b.onclick = e => { e.stopPropagation(); const id = b.closest('[data-n]').dataset.n, it = nItems.find(x => x.id === id); nRead(id); if (it) nOpenIt(it); else if (b.dataset.open) showDetail(b.dataset.open); else if (b.dataset.ot === 'leave') dOpen(); else hOpen(); };
   });
   if ($('nMore')) $('nMore').onclick = () => { nLimit += 30; nRender(); };
 }

@@ -719,8 +719,7 @@
     html { -webkit-tap-highlight-color: transparent; }
     /* ダブルタップでの拡大待ちをなくし、押した瞬間に反応させる */
     a, button, input, select, textarea, label, .notice-card, .photo-card-img-wrap, .photo-list-row { touch-action: manipulation; }
-    /* 画面の外にあるカードは描画を後回しにする（一覧が長くてもスクロールが軽い） */
-    .notice-card, #reportListContainer > .info-card { content-visibility: auto; contain-intrinsic-size: auto 120px; }
+    /* 画面の外のカードを後回しに描く設定（content-visibility）は外した。iPhone でお知らせの下のほうのカードが中身なしになり、下まで送れなかった（2026-11-16 川人さんの不具合報告） */
     /* 成功メッセージ（自動で消える） */
     .app-toast { position: fixed; left: 50%; bottom: calc(72px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); z-index: 9000; max-width: min(92vw, 520px); background: rgba(17,17,17,0.92); color: #ffffff; padding: 10px 16px; border-radius: 8px; font-size: 0.86rem; font-weight: 600; line-height: 1.5; white-space: pre-wrap; word-break: break-word; text-align: center; box-shadow: 0 4px 14px rgba(0,0,0,0.3); opacity: 0; pointer-events: none; transition: opacity 0.2s; }
     .app-toast.show { opacity: 1; }
