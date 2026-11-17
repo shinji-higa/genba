@@ -260,7 +260,7 @@ auth.languageCode = 'ja';   // パスワード再設定のメールと画面を�
 // 端末の控え（電波なしでも見られる）は1つのタブだけが持つ。2つ目からのタブは、開いている間だけの控えでサーバーと直接やりとりする。
 // 前は全部のタブで控えを分け合っていて、サーバーとやりとりするタブが裏にあると、ほかのタブに最新が届くまで約28秒待っていた（2026-11-05 確認）
 const db = initializeFirestore(app, { localCache: persistentLocalCache({ tabManager: persistentSingleTabManager() }) });
-const APP_VER = 'Ver.20261116-04（試し 11/17 11:09）';
+const APP_VER = 'Ver.20261116-04（試し 11/17 11:22）';
 /* 更新の内容（2026-11-16 ユーザー指示）。新しい Ver に入れ替わったあと最初に開いたとき、まだ見ていない Ver の分を窓で出す。設定の「更新履歴を見る」でも全部見られる。
    載せるもの（2026-11-16 ユーザー決定）：増えた機能／使う人が気づく不具合の直し（困っていた・報告が来たもの。裏の直しは載せない）／押す場所や使い方が変わる見た目の変更（色や大きさだけの変更は載せない）。
    1項目は短い1〜2文、です・ます、日本語と es（スペイン語）。who：all＝全員、mgr＝現場管理者とマスターだけ（この2つだけ）。
@@ -270,9 +270,6 @@ const APP_VER = 'Ver.20261116-04（試し 11/17 11:09）';
    画像（img）：押す場所が変わったもの・新しいボタンができたものだけ、その所に赤い枠を付けた画面の画像を rel/ に置いて付ける（名前・電話番号は見本にする。ユーザー決定 2026-11-16）。
    本番に入れるときは、いちばん上の ver: 'NEXT' を本当の Ver（APP_VER と同じ）に、date をその日に書きかえる */
 const RELEASES = [
-  { ver: 'NEXT', date: '', items: [
-    { who: 'all', k: 'fix', ja: 'iPhone・iPad で、注文書（角ダクト・丸ダクト・消耗品・金物・フード）の「印刷」が反応しなかったのを直しました。写真・PDFと同じく、共有の画面が出るので「プリント」を選んで印刷します。', es: 'Se corrigió que en iPhone/iPad «Imprimir» de los pedidos no respondía. Igual que en fotos y PDF, aparece la pantalla de compartir; elija «Imprimir».' }
-  ] },
   { ver: 'Ver.20261116-04', date: '2026/11/16', items: [
     { who: 'all', k: 'fix', ja: 'iPhone・iPad で、写真・PDFの「印刷」が動かない・2回目が反応しないことがあったのを直しました。iPhone・iPad では「印刷」を押すと共有の画面が出るので、「プリント」を選んで印刷します。', es: 'Se corrigió que en iPhone/iPad «Imprimir» a veces no funcionaba. Ahora aparece la pantalla de compartir; elija «Imprimir».' }
   ] },
@@ -797,7 +794,7 @@ function renderDetail(s) {
       (isManagerOf(s) ? '<button type="button" id="edit" class="btn btn-dark" style="flex: 1;">✏️ 現場情報編集</button>'
         : '<div style="flex: 1; padding: 10px 12px; background: #f7f7f9; color: #555; font-size: 0.82rem; font-weight: 600; border: 1px dashed var(--border); border-radius: 4px; text-align: center;">※ 編集する場合は現場管理者に連絡</div>') +
     '</div>' +
-    '<div class="info-card">' +
+    '<div class="info-card" id="siteInfoCard">' +
       '<div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:12px; padding-bottom:8px; border-bottom:1px solid var(--border);">' +
         '<div style="font-size:1.15rem; font-weight:800; flex:1; padding-right:8px;">' + esc(s.siteName) + '</div>' +
         '<span class="flow-badge flow-color-' + esc(s.flow) + '">' + esc(s.flow) + '</span></div>' +
@@ -852,7 +849,8 @@ function renderDetail(s) {
     $('rEdit').style.display = 'none'; $('rSave').style.display = 'inline-block'; $('rCancel').style.display = 'inline-block';
   };
   $('rCancel').onclick = () => { rulesEditing = false; renderDetail(s); };
-  if (goNext && goNext.t === 'rules' && goNext.site === s.id) { goNext = null; setTimeout(() => goFlash([$('rEdit') && $('rEdit').closest('.info-card')], ['rules']), 80); }   // 付けるときに探し直す（すぐ描き直されるため）
+  if (goNext && goNext.t === 'rules' && goNext.site === s.id) { goNext = null; setTimeout(() => goFlash([$('rEdit') && $('rEdit').closest('.info-card')], ['rules']), 80); }
+  if (goNext && goNext.t === 'info' && goNext.site === s.id) { goNext = null; setTimeout(() => goFlash([$('siteInfoCard')], ['info']), 80); }   // 現場情報の編集の通知（2026-11-17）   // 付けるときに探し直す（すぐ描き直されるため）
   goMarkApply();   // 描き直したときも枠を付け直す
   $('rSave').onclick = () => {
     const data = readRules();
@@ -2275,7 +2273,7 @@ function showSiteForm(s) {
     } else {
       fire(updateDoc(doc(db, 'sites', s.id), { ...data, ...picData() }), data.siteName);
       picSend(s.id);
-      notify({ ...s, ...data }, 'site', Object.keys(pics).length ? '現場情報を編集（外観画像を変更）' : '現場情報を編集');
+      notify({ ...s, ...data }, 'site', Object.keys(pics).length ? '現場情報を編集（外観画像を変更）' : '現場情報を編集', { go: { t: 'info' } });
       showDetail(s.id);
     }
   };
@@ -3201,12 +3199,12 @@ function hGoTry(where) {
     if (!rec && !(H.people || []).some(p => p.uid === g.uid)) return;   // まだ届いていない
     H.goto = null;
     if (!H.open[g.uid]) { H.open[g.uid] = true; hTeamDraw(); }
-    H.flash = { key: 'p:' + g.uid, until: Date.now() + 2600, scroll: true };
+    H.flash = { key: 'p:' + g.uid, until: Date.now() + GO_MS, scroll: true };
     if (g.cm && rec && !(H.cm[rec.id] && H.cm[rec.id].open)) hCmToggle(rec.id, $('hTeamList'));
   } else if (g && where === 'mine' && g.mine && $('hHist')) {
     if (!H.list.some(r => r.id === g.id)) return;
     H.goto = null;
-    H.flash = { key: 'h:' + g.id, until: Date.now() + 2600, scroll: true };
+    H.flash = { key: 'h:' + g.id, until: Date.now() + GO_MS, scroll: true };
     if (g.cm && !(H.cm[g.id] && H.cm[g.id].open)) hCmToggle(g.id, $('hHist'));
   }
   // 青い枠（描き直しても付け直す）
@@ -3699,12 +3697,13 @@ function nGo(it) {
   goNext = g ? { site: it.site, ...g, until: Date.now() + 15000 } : null;
   showDetail(it.site, '', (g && GO_TAB[g.t]) || '現場詳細');
 }
+const GO_MS = 10000;   // 通知で飛んだ先の青い枠を出しておく時間（2026-11-17 ユーザー指示「10秒にして」）
 function goFlash(els, ids) {
   els = els.filter(Boolean);
   if (!els.length) return;
   els[0].scrollIntoView({ block: 'center', behavior: 'smooth' });
-  goMark = { ids: ids || [], until: Date.now() + 2600 };
-  els.forEach(el => { el.classList.add('go-flash'); setTimeout(() => el.classList.remove('go-flash'), 2600); });
+  goMark = { ids: ids || [], until: Date.now() + GO_MS };
+  els.forEach(el => { el.classList.add('go-flash'); setTimeout(() => el.classList.remove('go-flash'), GO_MS); });
 }
 // 開いた直後は、届き直したデータで一覧が描き直されて枠が消えるので、描き直すたびに付け直す
 let goMark = null;
@@ -3713,7 +3712,7 @@ function goMarkApply() {
   const left = goMark.until - Date.now();
   if (left <= 0) { goMark = null; return; }
   goMark.ids.forEach(id => {
-    const el = id === 'rules' ? ($('rEdit') && $('rEdit').closest('.info-card')) : document.querySelector('#rBox [data-r="' + CSS.escape(id) + '"], #xBox [data-id="' + CSS.escape(id) + '"]');
+    const el = id === 'rules' ? ($('rEdit') && $('rEdit').closest('.info-card')) : id === 'info' ? $('siteInfoCard') : document.querySelector('#rBox [data-r="' + CSS.escape(id) + '"], #xBox [data-id="' + CSS.escape(id) + '"]');
     if (el && !el.classList.contains('go-flash')) { el.classList.add('go-flash'); setTimeout(() => el.classList.remove('go-flash'), left); }
   });
 }
@@ -4045,7 +4044,7 @@ async function showUser(uid, note) {
   })();
 </script>
 <div style="position:fixed;top:0;left:0;right:0;height:3px;background:#c00;z-index:99999;pointer-events:none;"></div>
-<div id="ptestLabel" style="position:fixed;top:calc(env(safe-area-inset-top) + 6px);left:50%;transform:translateX(-50%);z-index:99999;pointer-events:none;background:#c00;color:#fff;font-weight:800;font-size:12px;padding:2px 10px;border-radius:10px;white-space:nowrap;transition:opacity .5s;">試し用（本番ではありません）11/17 11:09</div>
+<div id="ptestLabel" style="position:fixed;top:calc(env(safe-area-inset-top) + 6px);left:50%;transform:translateX(-50%);z-index:99999;pointer-events:none;background:#c00;color:#fff;font-weight:800;font-size:12px;padding:2px 10px;border-radius:10px;white-space:nowrap;transition:opacity .5s;">試し用（本番ではありません）11/17 11:22</div>
 <script>setTimeout(function () { var l = document.getElementById('ptestLabel'); if (l) { l.style.opacity = '0'; setTimeout(function () { l.remove(); }, 600); } }, 4000);</script>
 </body>
 </html>
