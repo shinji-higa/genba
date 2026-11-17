@@ -81,6 +81,7 @@
   /* 通知から飛んだ先を、少しの間だけ青い枠で知らせる（2026-11-16 ユーザー指示） */
   .go-flash { outline: 3px solid #1a73e8 !important; outline-offset: 2px; animation: goFlash 0.8s ease-in-out 3; }
   @keyframes goFlash { 50% { outline-color: transparent; } }
+  #denpyoOverlay { box-sizing: border-box; padding-bottom: env(safe-area-inset-bottom, 0px); }   /* 注文の画面：iPhone の「ホームに戻る線」の上で止める（重なると下のボタンが押せない。2026-11-17 ユーザー） */
   .cm-row { padding: 5px 7px; margin: 0 -7px; }   /* 通知で飛んだときの青い枠と文字の間にすき間を作る（左右は一覧の余白に広げるので、見た目の位置は変わらない。2026-11-17） */
   .cm-row.go-flash { outline-offset: -2px; border-radius: 10px; }   /* コメント欄は画面の端まであるので、枠は内側に描く（外に描くと、はみ出す。2026-11-17） */
   /* 写真・PDFを開いた画面の道具（2026-11-16 ユーザー指示：印刷・回転・ページの目次） */
@@ -262,7 +263,7 @@ auth.languageCode = 'ja';   // パスワード再設定のメールと画面を�
 // 端末の控え（電波なしでも見られる）は1つのタブだけが持つ。2つ目からのタブは、開いている間だけの控えでサーバーと直接やりとりする。
 // 前は全部のタブで控えを分け合っていて、サーバーとやりとりするタブが裏にあると、ほかのタブに最新が届くまで約28秒待っていた（2026-11-05 確認）
 const db = initializeFirestore(app, { localCache: persistentLocalCache({ tabManager: persistentSingleTabManager() }) });
-const APP_VER = 'Ver.20261116-04（試し 11/17 12:24）';
+const APP_VER = 'Ver.20261116-04（試し 11/17 12:38）';
 /* 更新の内容（2026-11-16 ユーザー指示）。新しい Ver に入れ替わったあと最初に開いたとき、まだ見ていない Ver の分を窓で出す。設定の「更新履歴を見る」でも全部見られる。
    載せるもの（2026-11-16 ユーザー決定）：増えた機能／使う人が気づく不具合の直し（困っていた・報告が来たもの。裏の直しは載せない）／押す場所や使い方が変わる見た目の変更（色や大きさだけの変更は載せない）。
    1項目は短い1〜2文、です・ます、日本語と es（スペイン語）。who：all＝全員、mgr＝現場管理者とマスターだけ（この2つだけ）。
@@ -4103,7 +4104,7 @@ document.getElementById('ptestNotify').onclick = async function () {
 };
 </script>
 <div style="position:fixed;top:0;left:0;right:0;height:3px;background:#c00;z-index:99999;pointer-events:none;"></div>
-<div id="ptestLabel" style="position:fixed;top:calc(env(safe-area-inset-top) + 6px);left:50%;transform:translateX(-50%);z-index:99999;pointer-events:none;background:#c00;color:#fff;font-weight:800;font-size:12px;padding:2px 10px;border-radius:10px;white-space:nowrap;transition:opacity .5s;">試し用（本番ではありません）11/17 12:24</div>
+<div id="ptestLabel" style="position:fixed;top:calc(env(safe-area-inset-top) + 6px);left:50%;transform:translateX(-50%);z-index:99999;pointer-events:none;background:#c00;color:#fff;font-weight:800;font-size:12px;padding:2px 10px;border-radius:10px;white-space:nowrap;transition:opacity .5s;">試し用（本番ではありません）11/17 12:38</div>
 <script>setTimeout(function () { var l = document.getElementById('ptestLabel'); if (l) { l.style.opacity = '0'; setTimeout(function () { l.remove(); }, 600); } }, 4000);</script>
 </body>
 </html>
