@@ -260,7 +260,7 @@ auth.languageCode = 'ja';   // パスワード再設定のメールと画面を�
 // 端末の控え（電波なしでも見られる）は1つのタブだけが持つ。2つ目からのタブは、開いている間だけの控えでサーバーと直接やりとりする。
 // 前は全部のタブで控えを分け合っていて、サーバーとやりとりするタブが裏にあると、ほかのタブに最新が届くまで約28秒待っていた（2026-11-05 確認）
 const db = initializeFirestore(app, { localCache: persistentLocalCache({ tabManager: persistentSingleTabManager() }) });
-const APP_VER = 'Ver.20261116-04（試し 11/17 11:22）';
+const APP_VER = 'Ver.20261116-04（試し 11/17 11:36）';
 /* 更新の内容（2026-11-16 ユーザー指示）。新しい Ver に入れ替わったあと最初に開いたとき、まだ見ていない Ver の分を窓で出す。設定の「更新履歴を見る」でも全部見られる。
    載せるもの（2026-11-16 ユーザー決定）：増えた機能／使う人が気づく不具合の直し（困っていた・報告が来たもの。裏の直しは載せない）／押す場所や使い方が変わる見た目の変更（色や大きさだけの変更は載せない）。
    1項目は短い1〜2文、です・ます、日本語と es（スペイン語）。who：all＝全員、mgr＝現場管理者とマスターだけ（この2つだけ）。
@@ -639,7 +639,7 @@ onAuthStateChanged(auth, async user => {
       showList(); nStart();
     }
   } catch (e) {}
-  if (nOpenId) nOpenById(nOpenId);   // 通知を押して開いたときは、その場所へ
+  if (nOpenId) nOpenById(nOpenId); else goMemoCheck();   // 通知を押して開いたときは、その場所へ
   relCheck(firstHere);   // 新しい Ver なら更新の内容を出す
 });
 
@@ -994,6 +994,24 @@ function cmDraw(p) {
     });
     list.querySelectorAll('.cm-row.cm-unread').forEach(r => cmIO.observe(r));
   }
+  cmGoApply();
+}
+// 通知で開いたコメント欄：そのコメントに青い枠（描き直しても付け直す。2026-11-17）
+let cmGo = null;
+function cmGoApply() {
+  const g = cmGo;
+  if (!g) return;
+  const left = g.until - Date.now();
+  if (left <= 0) { cmGo = null; return; }
+  document.querySelectorAll('[data-cmk="' + CSS.escape(g.k + ':' + g.id) + '"] .cm-list').forEach(list => {
+    const rows = [...list.querySelectorAll('.cm-row')];
+    if (!rows.length) return;
+    let row = g.at ? rows.find(r => Number(r.dataset.at) === g.at) : null;
+    if (!row && g.nat) { let best = null, d = 15000; rows.forEach(r => { const x = Math.abs(Number(r.dataset.at) - g.nat); if (x < d) { d = x; best = r; } }); row = best; }
+    if (!row) return;
+    if (!row.classList.contains('go-flash')) { row.classList.add('go-flash'); setTimeout(() => row.classList.remove('go-flash'), left); }
+    if (!g.scrolled) { g.scrolled = true; list.scrollTop += row.getBoundingClientRect().top - list.getBoundingClientRect().top - (list.clientHeight - row.offsetHeight) / 2; }
+  });
 }
 function cmPanel(k, id, root, label, draft) {
   const key = k + ':' + id;
@@ -1022,10 +1040,11 @@ function cmPanel(k, id, root, label, draft) {
     if (!text) return;
     if (text.length > 2000) { uiAlert('コメントは2000文字以内で入力してください。'); return; }
     const mentions = (X.people || []).filter(u => text.includes('@' + u.name)).map(u => u.id);
-    fire(setDoc(doc(xSub('comments')), { kind: k, target: id, label, text, by: me.uid, byName: me.name || me.uid, at: Date.now(), mentions, deleted: false }), 'コメント');
+    const cAt = Date.now();
+    fire(setDoc(doc(xSub('comments')), { kind: k, target: id, label, text, by: me.uid, byName: me.name || me.uid, at: cAt, mentions, deleted: false }), 'コメント');
     const replies = [...new Set(cmList(k, id).map(c => c.by))].filter(u => u && u !== me.uid && !mentions.includes(u));   // 前にここへコメントした人＝この人たちへのレス
     const src = k === 'report' ? (X.reports || []).find(r => r.id === id) : (X.files || []).find(f => f.id === id), owner = src && src.by && src.by !== me.uid ? src.by : '';   // その報告・写真・資料を出した人（必ず届く。2026-11-16 ユーザー決定）
-    notify(X.s, k, '「' + clip(label, 30) + '」にコメント：' + clip(text, 80), { mentions, replies, owner, go: { t: k, id, cm: 1 } });
+    notify(X.s, k, '「' + clip(label, 30) + '」にコメント：' + clip(text, 80), { mentions, replies, owner, go: { t: k, id, cm: 1, at: cAt } });
     ta.value = ''; grow(); box.style.display = 'none';
     setTimeout(() => { const l = root.querySelector('.cm-list'); if (l) l.scrollTop = l.scrollHeight; }, 50);
   };
@@ -3694,7 +3713,7 @@ let goNext = null, nOpenId = '';
 const GO_TAB = { report: '報告', photo: '写真', doc: '資料' };
 function nGo(it) {
   const g = it.go || null;
-  goNext = g ? { site: it.site, ...g, until: Date.now() + 15000 } : null;
+  goNext = g ? { site: it.site, ...g, nat: it.at || 0, until: Date.now() + 15000 } : null;
   showDetail(it.site, '', (g && GO_TAB[g.t]) || '現場詳細');
 }
 const GO_MS = 10000;   // 通知で飛んだ先の青い枠を出しておく時間（2026-11-17 ユーザー指示「10秒にして」）
@@ -3730,7 +3749,7 @@ function goTry() {
     const card = $('rBox').querySelector('[data-r="' + CSS.escape(g.id) + '"]');
     if (!card) { uiAlert('この報告は削除されています。'); return; }
     goFlash([card], [g.id]);
-    if (g.cm && !(X.cmOpen || {})['report:' + g.id]) cmInlineOpen('report', g.id);
+    if (g.cm) { cmGo = { k: 'report', id: g.id, at: g.at || 0, nat: g.nat || 0, until: Date.now() + GO_MS }; if (!(X.cmOpen || {})['report:' + g.id]) cmInlineOpen('report', g.id); else setTimeout(cmGoApply, 100); }
   } else if (g.t === 'photo' || g.t === 'doc') {
     if (X.kind !== g.t || !$('xBox')) return;
     const fs = (g.ids || [g.id]).map(i => X.files.find(f => f.id === i)).filter(Boolean);
@@ -3741,16 +3760,21 @@ function goTry() {
     const folder = live[0].folder || '';
     if (X.active[X.kind] !== folder) { X.active[X.kind] = folder; X.sel.clear(); xRender(); }
     goFlash(live.map(f => $('xBox').querySelector('[data-id="' + CSS.escape(f.id) + '"]')), live.map(f => f.id));
-    if (g.cm) cmOverlay(g.t, live[0].id);
+    if (g.cm) { cmGo = { k: g.t, id: live[0].id, at: g.at || 0, nat: g.nat || 0, until: Date.now() + GO_MS }; cmOverlay(g.t, live[0].id); setTimeout(cmGoApply, 100); }
   }
 }
 // お知らせを開く（一覧の「開く」と、スマホに届いた通知を押したとき）
+window.__ptestNotices = () => nItems;
 function nOpenIt(it) {
   if (it.site) nGo(it); else if (it.type === 'leave') dOpen(); else hGo(it);
 }
+let nOpenLast = { id: '', at: 0 };
 async function nOpenById(id) {
   if (!me) { nOpenId = id; return; }
   nOpenId = '';
+  goMemoClear();
+  if (nOpenLast.id === id && Date.now() - nOpenLast.at < 8000) return;   // 知らせとメモの両方で来たとき、2回は飛ばない
+  nOpenLast = { id, at: Date.now() };
   // 不具合報告の通知（札が portal-bug-番号）はマスターの不具合報告の一覧を開く（2026-11-16 ユーザー指示）
   if (/^bug-/.test(id)) { if (me.isMaster) bugList(); return; }
   let it = nItems.find(x => x.id === id);
@@ -3762,7 +3786,24 @@ async function nOpenById(id) {
 // スマホに届いた通知を押して開いたとき（?n=お知らせの番号）。アドレスからは消しておく
 nOpenId = new URLSearchParams(location.search).get('n') || '';
 if (nOpenId) { try { history.replaceState(history.state, '', location.pathname); } catch (e) {} }
-if ('serviceWorker' in navigator) navigator.serviceWorker.addEventListener('message', e => { if (e.data && e.data.type === 'portal-notice' && e.data.id) nOpenById(e.data.id); });
+if ('serviceWorker' in navigator) { navigator.serviceWorker.addEventListener('message', e => { if (e.data && e.data.type === 'portal-notice' && e.data.id) nOpenById(e.data.id); }); try { navigator.serviceWorker.startMessages(); } catch (e) {} }
+// 通知を押したときの飛び先のメモ（保存係が控えに残す）。iPhone で開いたまま押したとき、知らせが届かなくても、画面が前に出たときにここで飛ぶ（2026-11-17）
+const SW_STORE = 'ptest-badge';
+const goMemoKey = () => new URL('__go', new URL('./', location.href)).href;
+function goMemoClear() { try { if (window.caches) caches.open(SW_STORE).then(c => c.delete(goMemoKey())).catch(() => {}); } catch (e) {} }
+async function goMemoCheck() {
+  if (!me || !window.caches) return;
+  try {
+    const c = await caches.open(SW_STORE), r = await c.match(goMemoKey());
+    if (!r) return;
+    const m = await r.json().catch(() => null);
+    await c.delete(goMemoKey());
+    if (m && m.id && Date.now() - (m.at || 0) < 120000) nOpenById(m.id);   // 2分より古いメモは使わない
+  } catch (e) {}
+}
+document.addEventListener('visibilitychange', () => { if (!document.hidden) setTimeout(goMemoCheck, 300); });
+window.addEventListener('focus', () => setTimeout(goMemoCheck, 300));
+window.addEventListener('pageshow', () => setTimeout(goMemoCheck, 300));
 /* ホーム画面のアイコンに未読の数（赤い丸）を出す（2026-11-16 川人さんの要望・ユーザー決定 案1）。
    iPhone はホーム画面に置いて通知を受け取る設定の人だけ（端末の決まり）。閉じている間は、届いた通知の数だけ保存係（sw.js）が1つずつ足す。
    数は保存係と同じ控え（Cache の portal-badge）に残し、開いたときに正しい数に直す */
@@ -3771,7 +3812,7 @@ function appBadge(n) {
   if (n === badgeLast) return;
   badgeLast = n;
   try { if (navigator.setAppBadge) { if (n) navigator.setAppBadge(n).catch(() => {}); else navigator.clearAppBadge().catch(() => {}); } } catch (e) {}
-  try { if (window.caches) caches.open('ptest-badge').then(c => c.put(new URL('__badge', location.href).href, new Response(String(n || 0)))).catch(() => {}); } catch (e) {}
+  try { if (window.caches) caches.open(SW_STORE).then(c => c.put(new URL('__badge', location.href).href, new Response(String(n || 0)))).catch(() => {}); } catch (e) {}
 }
 /* 更新の窓（2026-11-16 ユーザー指示） */
 const REL_KINDS = [['new', '増えたこと', 'Novedades'], ['change', '変わったこと', 'Cambios'], ['fix', '直したこと', 'Correcciones']];
@@ -4043,8 +4084,24 @@ async function showUser(uid, note) {
     document.addEventListener('compositionend', function (e) { if (fix(e.target)) e.target.dispatchEvent(new Event('input', { bubbles: true })); }, true);
   })();
 </script>
+<button id="ptestNotify" type="button" style="position:fixed;left:6px;bottom:calc(env(safe-area-inset-bottom) + 84px);z-index:99998;background:#c00;color:#fff;border:0;border-radius:8px;font-weight:800;font-size:12px;padding:6px 8px;">試し通知</button>
+<script>
+document.getElementById('ptestNotify').onclick = async function () {
+  try {
+    if (!('Notification' in window) || !navigator.serviceWorker) { alert('この画面では通知を出せません。ホーム画面の「試しポータル」から開いてください。'); return; }
+    var p = await Notification.requestPermission();
+    if (p !== 'granted') { alert('通知が許可されていません。iPhone の 設定 → 通知 → 試しポータル で許可してください。'); return; }
+    var list = (window.__ptestNotices ? window.__ptestNotices() : []).filter(function (n) { return n.go && n.site; });
+    var n = list.filter(function (x) { return x.siteName === 'テスト現場'; })[0] || list[0];
+    if (!n) { alert('飛び先のあるお知らせがありません。'); return; }
+    var reg = await navigator.serviceWorker.ready;
+    await reg.showNotification('【試し】' + (n.siteName || ''), { body: n.text, tag: 'portal-' + n.id });
+    alert('試しの通知を出しました。\n飛び先：' + n.text.slice(0, 50) + '\n\nOK を押したら、ホーム画面に戻るか画面をロックして、通知を押してください。');
+  } catch (e) { alert('通知を出せませんでした：' + ((e && e.message) || '')); }
+};
+</script>
 <div style="position:fixed;top:0;left:0;right:0;height:3px;background:#c00;z-index:99999;pointer-events:none;"></div>
-<div id="ptestLabel" style="position:fixed;top:calc(env(safe-area-inset-top) + 6px);left:50%;transform:translateX(-50%);z-index:99999;pointer-events:none;background:#c00;color:#fff;font-weight:800;font-size:12px;padding:2px 10px;border-radius:10px;white-space:nowrap;transition:opacity .5s;">試し用（本番ではありません）11/17 11:22</div>
+<div id="ptestLabel" style="position:fixed;top:calc(env(safe-area-inset-top) + 6px);left:50%;transform:translateX(-50%);z-index:99999;pointer-events:none;background:#c00;color:#fff;font-weight:800;font-size:12px;padding:2px 10px;border-radius:10px;white-space:nowrap;transition:opacity .5s;">試し用（本番ではありません）11/17 11:36</div>
 <script>setTimeout(function () { var l = document.getElementById('ptestLabel'); if (l) { l.style.opacity = '0'; setTimeout(function () { l.remove(); }, 600); } }, 4000);</script>
 </body>
 </html>
