@@ -939,7 +939,7 @@
     })();
     function printSlip() {
       var pr = document.getElementById('print-root'); pr.innerHTML = buildPages().join(''); slipMovesApply(pr);
-      setTimeout(function () { window.print(); }, 50);
+      setTimeout(function () { if (!iosPrintGo()) window.print(); }, 50);
     }
 
     /* ===== 注文書一覧 ===== */
@@ -1174,11 +1174,23 @@
           '<div class="pdf-msg" id="pdfMsg"></div>';
       }).catch(function (e) { body.innerHTML = '<div class="pdf-msg err">フォルダを読み込めませんでした：' + esc((e && e.message) || '') + '</div>'; });
     }
-    function makePdfBase64() {
+    // iPhone・iPad（ポータルの中）：印刷の画面が出ないので、PDF にしてポータルの共有の画面（プリント）へ渡す（2026-11-17）
+    function iosPrintGo() {
+      var hostP = null; try { if (window.parent !== window && window.parent.portalIosPrint && window.parent.portalIosPrint.ok()) hostP = window.parent.portalIosPrint; } catch (e) { }
+      if (!hostP) return false;
+      if (IOS_PRINT_BUSY) return true;
+      IOS_PRINT_BUSY = true; toast('印刷の準備をしています…');
+      makePdfBase64(true).then(function (b64) { return hostP.share(b64, pdfDefaultName() + '.pdf'); })
+        .catch(function (e) { toast('印刷の準備ができませんでした：' + ((e && e.message) || '')); })
+        .then(function () { IOS_PRINT_BUSY = false; });
+      return true;
+    }
+    var IOS_PRINT_BUSY = false;
+    function makePdfBase64(forPrint) {
       return PDF_LIBS.reduce(function (p, src) { return p.then(function () { return loadScriptOnce(src); }); }, Promise.resolve()).then(function () {
         var tmp = document.createElement('div');
         tmp.style.cssText = 'position:fixed;left:-12000px;top:0;background:#fff;';
-        PDF_NOW = true; try { tmp.innerHTML = buildPages().join(''); } finally { PDF_NOW = false; }
+        PDF_NOW = !forPrint; try { tmp.innerHTML = buildPages().join(''); } finally { PDF_NOW = false; }
         document.body.appendChild(tmp); slipMovesApply(tmp);   // 動かした文字の位置もそのまま
         var pages = [].slice.call(tmp.querySelectorAll('.dp')), pdf = new window.jspdf.jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait', compress: true });
         return pages.reduce(function (p, dp, i) {

@@ -86,9 +86,12 @@ async function badgeUp() {
 self.addEventListener('notificationclick', e => {
   e.notification.close();
   const id = String(e.notification.tag || '').replace(/^portal-/, '');
-  e.waitUntil(self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(list => {
+  // iPhone は開いている画面へ知らせても届かないことがあるので、飛び先を控えにもメモする（画面が前に出たときに読む。2026-11-17）
+  e.waitUntil((async () => {
+    if (id) { try { const c = await caches.open(BADGE); await c.put(new URL('__go', self.registration.scope).href, new Response(JSON.stringify({ id, at: Date.now() }))); } catch (x) {} }
+    const list = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
     const w = list.find(c => c.url.indexOf(self.registration.scope) === 0 && 'focus' in c);
-    if (w) { if (id) w.postMessage({ type: 'portal-notice', id }); return w.focus(); }
-    return self.clients.openWindow(self.registration.scope + (id ? '?n=' + encodeURIComponent(id) : ''));
-  }));
+    if (w) { if (id) w.postMessage({ type: 'portal-notice', id }); try { await w.focus(); } catch (x) {} return; }
+    await self.clients.openWindow(self.registration.scope + (id ? '?n=' + encodeURIComponent(id) : ''));
+  })());
 });

@@ -80,6 +80,10 @@
   /* 通知から飛んだ先を、少しの間だけ青い枠で知らせる（2026-11-16 ユーザー指示） */
   .go-flash { outline: 3px solid #1a73e8 !important; outline-offset: 2px; animation: goFlash 0.8s ease-in-out 3; }
   @keyframes goFlash { 50% { outline-color: transparent; } }
+  .footer-notice-btn { border-width: 2.5px; }   /* 未読が無いときの白いボタン：細い枠と影が重なって見えたので太く（2026-11-17 ユーザー「少し枠の太さ変更」。もとは app.css の 1.5px） */
+  #denpyoOverlay { box-sizing: border-box; padding-bottom: env(safe-area-inset-bottom, 0px); }   /* 注文の画面：iPhone の「ホームに戻る線」の上で止める（重なると下のボタンが押せない。2026-11-17 ユーザー） */
+  .cm-row { padding: 5px 7px; margin: 0 -7px; }   /* 通知で飛んだときの青い枠と文字の間にすき間を作る（左右は一覧の余白に広げるので、見た目の位置は変わらない。2026-11-17） */
+  .cm-row.go-flash { outline-offset: -2px; border-radius: 10px; }   /* コメント欄は画面の端まであるので、枠は内側に描く（外に描くと、はみ出す。2026-11-17） */
   /* 写真・PDFを開いた画面の道具（2026-11-16 ユーザー指示：印刷・回転・ページの目次） */
   .fv-zoom { flex-direction: column; align-items: flex-end; }
   .fv-zrow, .fv-rot { display: flex; gap: 8px; }
@@ -259,7 +263,7 @@ auth.languageCode = 'ja';   // パスワード再設定のメールと画面を�
 // 端末の控え（電波なしでも見られる）は1つのタブだけが持つ。2つ目からのタブは、開いている間だけの控えでサーバーと直接やりとりする。
 // 前は全部のタブで控えを分け合っていて、サーバーとやりとりするタブが裏にあると、ほかのタブに最新が届くまで約28秒待っていた（2026-11-05 確認）
 const db = initializeFirestore(app, { localCache: persistentLocalCache({ tabManager: persistentSingleTabManager() }) });
-const APP_VER = 'Ver.20261116-04';
+const APP_VER = 'Ver.20261117-01';
 /* 更新の内容（2026-11-16 ユーザー指示）。新しい Ver に入れ替わったあと最初に開いたとき、まだ見ていない Ver の分を窓で出す。設定の「更新履歴を見る」でも全部見られる。
    載せるもの（2026-11-16 ユーザー決定）：増えた機能／使う人が気づく不具合の直し（困っていた・報告が来たもの。裏の直しは載せない）／押す場所や使い方が変わる見た目の変更（色や大きさだけの変更は載せない）。
    1項目は短い1〜2文、です・ます、日本語と es（スペイン語）。who：all＝全員、mgr＝現場管理者とマスターだけ（この2つだけ）。
@@ -638,7 +642,7 @@ onAuthStateChanged(auth, async user => {
       showList(); nStart();
     }
   } catch (e) {}
-  if (nOpenId) nOpenById(nOpenId);   // 通知を押して開いたときは、その場所へ
+  if (nOpenId) nOpenById(nOpenId); else goMemoCheck();   // 通知を押して開いたときは、その場所へ
   relCheck(firstHere);   // 新しい Ver なら更新の内容を出す
 });
 
@@ -793,7 +797,7 @@ function renderDetail(s) {
       (isManagerOf(s) ? '<button type="button" id="edit" class="btn btn-dark" style="flex: 1;">✏️ 現場情報編集</button>'
         : '<div style="flex: 1; padding: 10px 12px; background: #f7f7f9; color: #555; font-size: 0.82rem; font-weight: 600; border: 1px dashed var(--border); border-radius: 4px; text-align: center;">※ 編集する場合は現場管理者に連絡</div>') +
     '</div>' +
-    '<div class="info-card">' +
+    '<div class="info-card" id="siteInfoCard">' +
       '<div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:12px; padding-bottom:8px; border-bottom:1px solid var(--border);">' +
         '<div style="font-size:1.15rem; font-weight:800; flex:1; padding-right:8px;">' + esc(s.siteName) + '</div>' +
         '<span class="flow-badge flow-color-' + esc(s.flow) + '">' + esc(s.flow) + '</span></div>' +
@@ -848,7 +852,8 @@ function renderDetail(s) {
     $('rEdit').style.display = 'none'; $('rSave').style.display = 'inline-block'; $('rCancel').style.display = 'inline-block';
   };
   $('rCancel').onclick = () => { rulesEditing = false; renderDetail(s); };
-  if (goNext && goNext.t === 'rules' && goNext.site === s.id) { goNext = null; setTimeout(() => goFlash([$('rEdit') && $('rEdit').closest('.info-card')], ['rules']), 80); }   // 付けるときに探し直す（すぐ描き直されるため）
+  if (goNext && goNext.t === 'rules' && goNext.site === s.id) { goNext = null; setTimeout(() => goFlash([$('rEdit') && $('rEdit').closest('.info-card')], ['rules']), 80); }
+  if (goNext && goNext.t === 'info' && goNext.site === s.id) { goNext = null; setTimeout(() => goFlash([$('siteInfoCard')], ['info']), 80); }   // 現場情報の編集の通知（2026-11-17）   // 付けるときに探し直す（すぐ描き直されるため）
   goMarkApply();   // 描き直したときも枠を付け直す
   $('rSave').onclick = () => {
     const data = readRules();
@@ -992,6 +997,24 @@ function cmDraw(p) {
     });
     list.querySelectorAll('.cm-row.cm-unread').forEach(r => cmIO.observe(r));
   }
+  cmGoApply();
+}
+// 通知で開いたコメント欄：そのコメントに青い枠（描き直しても付け直す。2026-11-17）
+let cmGo = null;
+function cmGoApply() {
+  const g = cmGo;
+  if (!g) return;
+  const left = g.until - Date.now();
+  if (left <= 0) { cmGo = null; return; }
+  document.querySelectorAll('[data-cmk="' + CSS.escape(g.k + ':' + g.id) + '"] .cm-list').forEach(list => {
+    const rows = [...list.querySelectorAll('.cm-row')];
+    if (!rows.length) return;
+    let row = g.at ? rows.find(r => Number(r.dataset.at) === g.at) : null;
+    if (!row && g.nat) { let best = null, d = 15000; rows.forEach(r => { const x = Math.abs(Number(r.dataset.at) - g.nat); if (x < d) { d = x; best = r; } }); row = best; }
+    if (!row) return;
+    if (!row.classList.contains('go-flash')) { row.classList.add('go-flash'); setTimeout(() => row.classList.remove('go-flash'), left); }
+    if (!g.scrolled) { g.scrolled = true; list.scrollTop += row.getBoundingClientRect().top - list.getBoundingClientRect().top - (list.clientHeight - row.offsetHeight) / 2; }
+  });
 }
 function cmPanel(k, id, root, label, draft) {
   const key = k + ':' + id;
@@ -1020,10 +1043,11 @@ function cmPanel(k, id, root, label, draft) {
     if (!text) return;
     if (text.length > 2000) { uiAlert('コメントは2000文字以内で入力してください。'); return; }
     const mentions = (X.people || []).filter(u => text.includes('@' + u.name)).map(u => u.id);
-    fire(setDoc(doc(xSub('comments')), { kind: k, target: id, label, text, by: me.uid, byName: me.name || me.uid, at: Date.now(), mentions, deleted: false }), 'コメント');
+    const cAt = Date.now();
+    fire(setDoc(doc(xSub('comments')), { kind: k, target: id, label, text, by: me.uid, byName: me.name || me.uid, at: cAt, mentions, deleted: false }), 'コメント');
     const replies = [...new Set(cmList(k, id).map(c => c.by))].filter(u => u && u !== me.uid && !mentions.includes(u));   // 前にここへコメントした人＝この人たちへのレス
     const src = k === 'report' ? (X.reports || []).find(r => r.id === id) : (X.files || []).find(f => f.id === id), owner = src && src.by && src.by !== me.uid ? src.by : '';   // その報告・写真・資料を出した人（必ず届く。2026-11-16 ユーザー決定）
-    notify(X.s, k, '「' + clip(label, 30) + '」にコメント：' + clip(text, 80), { mentions, replies, owner, go: { t: k, id, cm: 1 } });
+    notify(X.s, k, '「' + clip(label, 30) + '」にコメント：' + clip(text, 80), { mentions, replies, owner, go: { t: k, id, cm: 1, at: cAt } });
     ta.value = ''; grow(); box.style.display = 'none';
     setTimeout(() => { const l = root.querySelector('.cm-list'); if (l) l.scrollTop = l.scrollHeight; }, 50);
   };
@@ -1843,6 +1867,15 @@ async function iosShare(files, it) {
   try { await navigator.share({ files }); }
   catch (e) { if (e && e.name === 'AbortError') return; if (it.url) window.open(it.url, '_blank'); else uiAlert('印刷の画面を出せませんでした。「保存」から開いて印刷してください。'); }
 }
+// 注文の画面（枠の中）から使う：iPhone・iPad なら PDF（base64）を受け取って共有の画面へ（2026-11-17）
+window.portalIosPrint = {
+  ok: () => isIOS(),
+  share: async (b64, name) => {
+    const bin = atob(b64), u = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i);
+    await iosShare([new File([u], name || '注文書.pdf', { type: 'application/pdf' })], {});
+  }
+};
 async function viewerPrint() {
   if (!VW) return;
   const it = VW.list[VW.index], btn = $('fvPrint'), label = btn.textContent, cur = VW;
@@ -2262,7 +2295,7 @@ function showSiteForm(s) {
     } else {
       fire(updateDoc(doc(db, 'sites', s.id), { ...data, ...picData() }), data.siteName);
       picSend(s.id);
-      notify({ ...s, ...data }, 'site', Object.keys(pics).length ? '現場情報を編集（外観画像を変更）' : '現場情報を編集');
+      notify({ ...s, ...data }, 'site', Object.keys(pics).length ? '現場情報を編集（外観画像を変更）' : '現場情報を編集', { go: { t: 'info' } });
       showDetail(s.id);
     }
   };
@@ -2285,12 +2318,12 @@ function showSiteForm(s) {
    送るときに、ほかの人が先に直していたら上書きせず、別の伝票として残す
    1枚の中身は sites/{id}/orderBody、一覧に出す情報は sites/{id}/orders、記録は sites/{id}/orderLog */
 const O_KIND = {
-  kaku: { host: 'denpyoHost', src: 'denpyo.html?v=20', title: '角ダクト注文', word: '伝票', log: '角ダクト', fn: 'Denpyo' },
-  maru: { host: 'maruHost', src: 'maru.html?v=7', title: '丸ダクト注文', word: '注文書', log: '丸ダクト', fn: 'Maru' },
-  cons: { host: 'consHost', src: 'cons.html?v=23', title: '消耗品注文', word: '注文書', log: '消耗品', fn: 'Cons' },
-  kana: { host: 'kanaHost', src: 'kana.html?v=8', title: '金物注文（添付）', word: '注文書', log: '金物（添付）', fn: 'Kana' },
-  hood: { host: 'hoodHost', src: 'hood.html?v=35', title: 'フード注文', word: '注文書', log: 'フード', fn: 'Hood' },   // 厨房フード（箱型・山型・二重。数字入りの図の注文書。2026-11-03）
-  kanagu: { host: 'kanaguHost', src: 'kanagu.html?v=13', title: '金物注文', word: '注文書', log: '金物', fn: 'Kanagu' }   // 鋼材テンプレート（三角ブラケット・穴あきアングル。図面と立体図の注文書。2026-11-04）
+  kaku: { host: 'denpyoHost', src: 'denpyo.html?v=21', title: '角ダクト注文', word: '伝票', log: '角ダクト', fn: 'Denpyo' },
+  maru: { host: 'maruHost', src: 'maru.html?v=8', title: '丸ダクト注文', word: '注文書', log: '丸ダクト', fn: 'Maru' },
+  cons: { host: 'consHost', src: 'cons.html?v=24', title: '消耗品注文', word: '注文書', log: '消耗品', fn: 'Cons' },
+  kana: { host: 'kanaHost', src: 'kana.html?v=9', title: '金物注文（添付）', word: '注文書', log: '金物（添付）', fn: 'Kana' },
+  hood: { host: 'hoodHost', src: 'hood.html?v=36', title: 'フード注文', word: '注文書', log: 'フード', fn: 'Hood' },   // 厨房フード（箱型・山型・二重。数字入りの図の注文書。2026-11-03）
+  kanagu: { host: 'kanaguHost', src: 'kanagu.html?v=14', title: '金物注文', word: '注文書', log: '金物', fn: 'Kanagu' }   // 鋼材テンプレート（三角ブラケット・穴あきアングル。図面と立体図の注文書。2026-11-04）
 };
 function oOpen(s) {
   const btn = (k, ic, t, sub) => '<button type="button" class="order-btn' + (k ? ' on' : '') + '"' + (k ? ' data-o="' + k + '"' : ' disabled') + '><span class="order-ic">' + ic + '</span><span class="order-t">' + t + '</span><span class="order-s">' + sub + '</span></button>';
@@ -3188,12 +3221,12 @@ function hGoTry(where) {
     if (!rec && !(H.people || []).some(p => p.uid === g.uid)) return;   // まだ届いていない
     H.goto = null;
     if (!H.open[g.uid]) { H.open[g.uid] = true; hTeamDraw(); }
-    H.flash = { key: 'p:' + g.uid, until: Date.now() + 2600, scroll: true };
+    H.flash = { key: 'p:' + g.uid, until: Date.now() + GO_MS, scroll: true };
     if (g.cm && rec && !(H.cm[rec.id] && H.cm[rec.id].open)) hCmToggle(rec.id, $('hTeamList'));
   } else if (g && where === 'mine' && g.mine && $('hHist')) {
     if (!H.list.some(r => r.id === g.id)) return;
     H.goto = null;
-    H.flash = { key: 'h:' + g.id, until: Date.now() + 2600, scroll: true };
+    H.flash = { key: 'h:' + g.id, until: Date.now() + GO_MS, scroll: true };
     if (g.cm && !(H.cm[g.id] && H.cm[g.id].open)) hCmToggle(g.id, $('hHist'));
   }
   // 青い枠（描き直しても付け直す）
@@ -3683,15 +3716,16 @@ let goNext = null, nOpenId = '';
 const GO_TAB = { report: '報告', photo: '写真', doc: '資料' };
 function nGo(it) {
   const g = it.go || null;
-  goNext = g ? { site: it.site, ...g, until: Date.now() + 15000 } : null;
+  goNext = g ? { site: it.site, ...g, nat: it.at || 0, until: Date.now() + 15000 } : null;
   showDetail(it.site, '', (g && GO_TAB[g.t]) || '現場詳細');
 }
+const GO_MS = 10000;   // 通知で飛んだ先の青い枠を出しておく時間（2026-11-17 ユーザー指示「10秒にして」）
 function goFlash(els, ids) {
   els = els.filter(Boolean);
   if (!els.length) return;
   els[0].scrollIntoView({ block: 'center', behavior: 'smooth' });
-  goMark = { ids: ids || [], until: Date.now() + 2600 };
-  els.forEach(el => { el.classList.add('go-flash'); setTimeout(() => el.classList.remove('go-flash'), 2600); });
+  goMark = { ids: ids || [], until: Date.now() + GO_MS };
+  els.forEach(el => { el.classList.add('go-flash'); setTimeout(() => el.classList.remove('go-flash'), GO_MS); });
 }
 // 開いた直後は、届き直したデータで一覧が描き直されて枠が消えるので、描き直すたびに付け直す
 let goMark = null;
@@ -3700,7 +3734,7 @@ function goMarkApply() {
   const left = goMark.until - Date.now();
   if (left <= 0) { goMark = null; return; }
   goMark.ids.forEach(id => {
-    const el = id === 'rules' ? ($('rEdit') && $('rEdit').closest('.info-card')) : document.querySelector('#rBox [data-r="' + CSS.escape(id) + '"], #xBox [data-id="' + CSS.escape(id) + '"]');
+    const el = id === 'rules' ? ($('rEdit') && $('rEdit').closest('.info-card')) : id === 'info' ? $('siteInfoCard') : document.querySelector('#rBox [data-r="' + CSS.escape(id) + '"], #xBox [data-id="' + CSS.escape(id) + '"]');
     if (el && !el.classList.contains('go-flash')) { el.classList.add('go-flash'); setTimeout(() => el.classList.remove('go-flash'), left); }
   });
 }
@@ -3718,7 +3752,7 @@ function goTry() {
     const card = $('rBox').querySelector('[data-r="' + CSS.escape(g.id) + '"]');
     if (!card) { uiAlert('この報告は削除されています。'); return; }
     goFlash([card], [g.id]);
-    if (g.cm && !(X.cmOpen || {})['report:' + g.id]) cmInlineOpen('report', g.id);
+    if (g.cm) { cmGo = { k: 'report', id: g.id, at: g.at || 0, nat: g.nat || 0, until: Date.now() + GO_MS }; if (!(X.cmOpen || {})['report:' + g.id]) cmInlineOpen('report', g.id); else setTimeout(cmGoApply, 100); }
   } else if (g.t === 'photo' || g.t === 'doc') {
     if (X.kind !== g.t || !$('xBox')) return;
     const fs = (g.ids || [g.id]).map(i => X.files.find(f => f.id === i)).filter(Boolean);
@@ -3729,16 +3763,20 @@ function goTry() {
     const folder = live[0].folder || '';
     if (X.active[X.kind] !== folder) { X.active[X.kind] = folder; X.sel.clear(); xRender(); }
     goFlash(live.map(f => $('xBox').querySelector('[data-id="' + CSS.escape(f.id) + '"]')), live.map(f => f.id));
-    if (g.cm) cmOverlay(g.t, live[0].id);
+    if (g.cm) { cmGo = { k: g.t, id: live[0].id, at: g.at || 0, nat: g.nat || 0, until: Date.now() + GO_MS }; cmOverlay(g.t, live[0].id); setTimeout(cmGoApply, 100); }
   }
 }
 // お知らせを開く（一覧の「開く」と、スマホに届いた通知を押したとき）
 function nOpenIt(it) {
   if (it.site) nGo(it); else if (it.type === 'leave') dOpen(); else hGo(it);
 }
+let nOpenLast = { id: '', at: 0 };
 async function nOpenById(id) {
   if (!me) { nOpenId = id; return; }
   nOpenId = '';
+  goMemoClear();
+  if (nOpenLast.id === id && Date.now() - nOpenLast.at < 8000) return;   // 知らせとメモの両方で来たとき、2回は飛ばない
+  nOpenLast = { id, at: Date.now() };
   // 不具合報告の通知（札が portal-bug-番号）はマスターの不具合報告の一覧を開く（2026-11-16 ユーザー指示）
   if (/^bug-/.test(id)) { if (me.isMaster) bugList(); return; }
   let it = nItems.find(x => x.id === id);
@@ -3750,7 +3788,24 @@ async function nOpenById(id) {
 // スマホに届いた通知を押して開いたとき（?n=お知らせの番号）。アドレスからは消しておく
 nOpenId = new URLSearchParams(location.search).get('n') || '';
 if (nOpenId) { try { history.replaceState(history.state, '', location.pathname); } catch (e) {} }
-if ('serviceWorker' in navigator) navigator.serviceWorker.addEventListener('message', e => { if (e.data && e.data.type === 'portal-notice' && e.data.id) nOpenById(e.data.id); });
+if ('serviceWorker' in navigator) { navigator.serviceWorker.addEventListener('message', e => { if (e.data && e.data.type === 'portal-notice' && e.data.id) nOpenById(e.data.id); }); try { navigator.serviceWorker.startMessages(); } catch (e) {} }
+// 通知を押したときの飛び先のメモ（保存係が控えに残す）。iPhone で開いたまま押したとき、知らせが届かなくても、画面が前に出たときにここで飛ぶ（2026-11-17）
+const SW_STORE = 'portal-badge';
+const goMemoKey = () => new URL('__go', new URL('./', location.href)).href;
+function goMemoClear() { try { if (window.caches) caches.open(SW_STORE).then(c => c.delete(goMemoKey())).catch(() => {}); } catch (e) {} }
+async function goMemoCheck() {
+  if (!me || !window.caches) return;
+  try {
+    const c = await caches.open(SW_STORE), r = await c.match(goMemoKey());
+    if (!r) return;
+    const m = await r.json().catch(() => null);
+    await c.delete(goMemoKey());
+    if (m && m.id && Date.now() - (m.at || 0) < 120000) nOpenById(m.id);   // 2分より古いメモは使わない
+  } catch (e) {}
+}
+document.addEventListener('visibilitychange', () => { if (!document.hidden) setTimeout(goMemoCheck, 300); });
+window.addEventListener('focus', () => setTimeout(goMemoCheck, 300));
+window.addEventListener('pageshow', () => setTimeout(goMemoCheck, 300));
 /* ホーム画面のアイコンに未読の数（赤い丸）を出す（2026-11-16 川人さんの要望・ユーザー決定 案1）。
    iPhone はホーム画面に置いて通知を受け取る設定の人だけ（端末の決まり）。閉じている間は、届いた通知の数だけ保存係（sw.js）が1つずつ足す。
    数は保存係と同じ控え（Cache の portal-badge）に残し、開いたときに正しい数に直す */
@@ -3759,7 +3814,7 @@ function appBadge(n) {
   if (n === badgeLast) return;
   badgeLast = n;
   try { if (navigator.setAppBadge) { if (n) navigator.setAppBadge(n).catch(() => {}); else navigator.clearAppBadge().catch(() => {}); } } catch (e) {}
-  try { if (window.caches) caches.open('portal-badge').then(c => c.put(new URL('__badge', location.href).href, new Response(String(n || 0)))).catch(() => {}); } catch (e) {}
+  try { if (window.caches) caches.open(SW_STORE).then(c => c.put(new URL('__badge', location.href).href, new Response(String(n || 0)))).catch(() => {}); } catch (e) {}
 }
 /* 更新の窓（2026-11-16 ユーザー指示） */
 const REL_KINDS = [['new', '増えたこと', 'Novedades'], ['change', '変わったこと', 'Cambios'], ['fix', '直したこと', 'Correcciones']];
