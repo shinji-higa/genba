@@ -260,7 +260,7 @@ auth.languageCode = 'ja';   // パスワード再設定のメールと画面を�
 // 端末の控え（電波なしでも見られる）は1つのタブだけが持つ。2つ目からのタブは、開いている間だけの控えでサーバーと直接やりとりする。
 // 前は全部のタブで控えを分け合っていて、サーバーとやりとりするタブが裏にあると、ほかのタブに最新が届くまで約28秒待っていた（2026-11-05 確認）
 const db = initializeFirestore(app, { localCache: persistentLocalCache({ tabManager: persistentSingleTabManager() }) });
-const APP_VER = 'Ver.20261116-04（試し 11/16 17:40）';
+const APP_VER = 'Ver.20261116-04（試し 11/17 11:08）';
 /* 更新の内容（2026-11-16 ユーザー指示）。新しい Ver に入れ替わったあと最初に開いたとき、まだ見ていない Ver の分を窓で出す。設定の「更新履歴を見る」でも全部見られる。
    載せるもの（2026-11-16 ユーザー決定）：増えた機能／使う人が気づく不具合の直し（困っていた・報告が来たもの。裏の直しは載せない）／押す場所や使い方が変わる見た目の変更（色や大きさだけの変更は載せない）。
    1項目は短い1〜2文、です・ます、日本語と es（スペイン語）。who：all＝全員、mgr＝現場管理者とマスターだけ（この2つだけ）。
@@ -1844,6 +1844,15 @@ async function iosShare(files, it) {
   try { await navigator.share({ files }); }
   catch (e) { if (e && e.name === 'AbortError') return; if (it.url) window.open(it.url, '_blank'); else uiAlert('印刷の画面を出せませんでした。「保存」から開いて印刷してください。'); }
 }
+// 注文の画面（枠の中）から使う：iPhone・iPad なら PDF（base64）を受け取って共有の画面へ（2026-11-17）
+window.portalIosPrint = {
+  ok: () => isIOS(),
+  share: async (b64, name) => {
+    const bin = atob(b64), u = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i);
+    await iosShare([new File([u], name || '注文書.pdf', { type: 'application/pdf' })], {});
+  }
+};
 async function viewerPrint() {
   if (!VW) return;
   const it = VW.list[VW.index], btn = $('fvPrint'), label = btn.textContent, cur = VW;
@@ -2286,12 +2295,12 @@ function showSiteForm(s) {
    送るときに、ほかの人が先に直していたら上書きせず、別の伝票として残す
    1枚の中身は sites/{id}/orderBody、一覧に出す情報は sites/{id}/orders、記録は sites/{id}/orderLog */
 const O_KIND = {
-  kaku: { host: 'denpyoHost', src: 'denpyo.html?v=20', title: '角ダクト注文', word: '伝票', log: '角ダクト', fn: 'Denpyo' },
-  maru: { host: 'maruHost', src: 'maru.html?v=7', title: '丸ダクト注文', word: '注文書', log: '丸ダクト', fn: 'Maru' },
-  cons: { host: 'consHost', src: 'cons.html?v=23', title: '消耗品注文', word: '注文書', log: '消耗品', fn: 'Cons' },
-  kana: { host: 'kanaHost', src: 'kana.html?v=8', title: '金物注文（添付）', word: '注文書', log: '金物（添付）', fn: 'Kana' },
-  hood: { host: 'hoodHost', src: 'hood.html?v=35', title: 'フード注文', word: '注文書', log: 'フード', fn: 'Hood' },   // 厨房フード（箱型・山型・二重。数字入りの図の注文書。2026-11-03）
-  kanagu: { host: 'kanaguHost', src: 'kanagu.html?v=13', title: '金物注文', word: '注文書', log: '金物', fn: 'Kanagu' }   // 鋼材テンプレート（三角ブラケット・穴あきアングル。図面と立体図の注文書。2026-11-04）
+  kaku: { host: 'denpyoHost', src: 'denpyo.html?v=21', title: '角ダクト注文', word: '伝票', log: '角ダクト', fn: 'Denpyo' },
+  maru: { host: 'maruHost', src: 'maru.html?v=8', title: '丸ダクト注文', word: '注文書', log: '丸ダクト', fn: 'Maru' },
+  cons: { host: 'consHost', src: 'cons.html?v=24', title: '消耗品注文', word: '注文書', log: '消耗品', fn: 'Cons' },
+  kana: { host: 'kanaHost', src: 'kana.html?v=9', title: '金物注文（添付）', word: '注文書', log: '金物（添付）', fn: 'Kana' },
+  hood: { host: 'hoodHost', src: 'hood.html?v=36', title: 'フード注文', word: '注文書', log: 'フード', fn: 'Hood' },   // 厨房フード（箱型・山型・二重。数字入りの図の注文書。2026-11-03）
+  kanagu: { host: 'kanaguHost', src: 'kanagu.html?v=14', title: '金物注文', word: '注文書', log: '金物', fn: 'Kanagu' }   // 鋼材テンプレート（三角ブラケット・穴あきアングル。図面と立体図の注文書。2026-11-04）
 };
 function oOpen(s) {
   const btn = (k, ic, t, sub) => '<button type="button" class="order-btn' + (k ? ' on' : '') + '"' + (k ? ' data-o="' + k + '"' : ' disabled') + '><span class="order-ic">' + ic + '</span><span class="order-t">' + t + '</span><span class="order-s">' + sub + '</span></button>';
@@ -4033,7 +4042,7 @@ async function showUser(uid, note) {
   })();
 </script>
 <div style="position:fixed;top:0;left:0;right:0;height:3px;background:#c00;z-index:99999;pointer-events:none;"></div>
-<div id="ptestLabel" style="position:fixed;top:calc(env(safe-area-inset-top) + 6px);left:50%;transform:translateX(-50%);z-index:99999;pointer-events:none;background:#c00;color:#fff;font-weight:800;font-size:12px;padding:2px 10px;border-radius:10px;white-space:nowrap;transition:opacity .5s;">試し用（本番ではありません）11/16 17:40</div>
+<div id="ptestLabel" style="position:fixed;top:calc(env(safe-area-inset-top) + 6px);left:50%;transform:translateX(-50%);z-index:99999;pointer-events:none;background:#c00;color:#fff;font-weight:800;font-size:12px;padding:2px 10px;border-radius:10px;white-space:nowrap;transition:opacity .5s;">試し用（本番ではありません）11/17 11:08</div>
 <script>setTimeout(function () { var l = document.getElementById('ptestLabel'); if (l) { l.style.opacity = '0'; setTimeout(function () { l.remove(); }, 600); } }, 4000);</script>
 </body>
 </html>
