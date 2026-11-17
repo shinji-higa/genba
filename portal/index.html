@@ -236,7 +236,7 @@
   </div>
 </div>
 
-<script src="i18n.js?v=10"></script>
+<script src="i18n.js?v=11"></script>
 <script>i18nStart();</script>
 <script type="module">
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
@@ -263,7 +263,7 @@ auth.languageCode = 'ja';   // パスワード再設定のメールと画面を�
 // 端末の控え（電波なしでも見られる）は1つのタブだけが持つ。2つ目からのタブは、開いている間だけの控えでサーバーと直接やりとりする。
 // 前は全部のタブで控えを分け合っていて、サーバーとやりとりするタブが裏にあると、ほかのタブに最新が届くまで約28秒待っていた（2026-11-05 確認）
 const db = initializeFirestore(app, { localCache: persistentLocalCache({ tabManager: persistentSingleTabManager() }) });
-const APP_VER = 'Ver.20261117-01';
+const APP_VER = 'Ver.20261117-02';
 /* 更新の内容（2026-11-16 ユーザー指示）。新しい Ver に入れ替わったあと最初に開いたとき、まだ見ていない Ver の分を窓で出す。設定の「更新履歴を見る」でも全部見られる。
    載せるもの（2026-11-16 ユーザー決定）：増えた機能／使う人が気づく不具合の直し（困っていた・報告が来たもの。裏の直しは載せない）／押す場所や使い方が変わる見た目の変更（色や大きさだけの変更は載せない）。
    1項目は短い1〜2文、です・ます、日本語と es（スペイン語）。who：all＝全員、mgr＝現場管理者とマスターだけ（この2つだけ）。
@@ -604,6 +604,90 @@ const dailyPush = (p, uid) => p.then(async () => {
   const idToken = await auth.currentUser.getIdToken();
   await fetch(PORTAL_API, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ fn: 'daily', idToken, data: { uid: uid || me.uid } }) });
 }).catch(e => { window.portalLastError = e && e.code; });
+/* ---------- 会社情報（Other の人が自分の会社を登録する。2026-11-17 ユーザー指示） ----------
+   会社が未登録の Other の人がログインすると出す（登録するまで毎回。「あとで」はその間だけ）。中身は DBEXD の会社情報から読み込む。
+   「登録する」でサーバーが DBEXD 会社情報の行を直し（無ければ足す）、会社名から「株式会社」などを省いたグループへ移す。EXD・NAFA・マルトクの人には出さない */
+const G_FIXED = ['エクスケア社員', 'エクスケア', 'マルトク', 'NAFA', 'Other'];
+const AV_CO = ['#e9e1f6', '#4b2a7f'];   // 会社名のグループの丸の色
+const coGroup = g => !!g && !G_FIXED.includes(g);
+async function companyApi(action, data) {
+  const idToken = await auth.currentUser.getIdToken();
+  const d = await fetch(PORTAL_API, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ fn: 'company', idToken, action, data }) }).then(r => r.json());
+  if (!d || !d.ok) throw new Error((d && d.m) || 'サーバーでエラーが発生しました。');
+  return d.v;
+}
+function coGroupsAdd(keys) { keys.forEach(k => { if (coGroup(k) && !G_LIST.includes(k)) G_LIST.splice(G_LIST.indexOf('Other'), 0, k); }); }
+function coGroupsLoad() { getDocs(collection(db, 'companies')).then(s => coGroupsAdd(s.docs.map(d => d.id))).catch(() => {}); }
+function coCheck() {
+  if (!me || me.group !== 'Other') return;
+  try { if (sessionStorage.getItem('portalCoLater')) return; } catch (e) {}
+  setTimeout(() => { if (!document.getElementById('coBox')) coOpen(); }, 1500);   // 更新のお知らせの窓のあとに出す
+}
+// ロゴ：横 600・縦 240 までに縮める（PNG は透けたまま。大きすぎるときは JPEG にする）
+function coLogoShrink(file) {
+  return new Promise((ok, ng) => {
+    const im = new Image(), u = URL.createObjectURL(file);
+    im.onload = () => {
+      const k = Math.min(1, 600 / im.width, 240 / im.height), c = document.createElement('canvas');
+      c.width = Math.max(1, Math.round(im.width * k)); c.height = Math.max(1, Math.round(im.height * k));
+      const g = c.getContext('2d'), png = /png/i.test(file.type);
+      if (!png) { g.fillStyle = '#fff'; g.fillRect(0, 0, c.width, c.height); }
+      g.drawImage(im, 0, 0, c.width, c.height); URL.revokeObjectURL(u);
+      let s = c.toDataURL(png ? 'image/png' : 'image/jpeg', 0.9);
+      if (s.length > 280000) { g.globalCompositeOperation = 'destination-over'; g.fillStyle = '#fff'; g.fillRect(0, 0, c.width, c.height); s = c.toDataURL('image/jpeg', 0.85); }
+      s.length > 290000 ? ng(new Error('ロゴの画像が大きすぎます。小さい画像にしてください。')) : ok(s);
+    };
+    im.onerror = () => { URL.revokeObjectURL(u); ng(new Error('この画像は読めませんでした（PNG か JPEG にしてください）。')); };
+    im.src = u;
+  });
+}
+async function coOpen(uid) {
+  if (document.getElementById('coBox')) return;
+  const self = !uid;
+  const back = document.createElement('div');
+  back.id = 'coBox';
+  back.style.cssText = 'position:fixed;inset:0;z-index:9900;background:rgba(17,17,17,0.5);display:flex;align-items:center;justify-content:center;padding:12px;';
+  back.innerHTML = '<div style="background:#fff;border-radius:10px;width:100%;max-width:480px;max-height:92vh;overflow-y:auto;padding:16px 16px 14px;-webkit-overflow-scrolling:touch;"><div style="font-weight:800;font-size:1.05rem;margin-bottom:8px;">🏢 会社情報の登録</div><div id="coBody">読み込んでいます…</div></div>';
+  document.body.appendChild(back);
+  const close = () => back.remove();
+  let r;
+  try { r = await companyApi('lookup', uid ? { uid } : {}); }
+  catch (e) { $('coBody').innerHTML = '<div style="font-weight:700;color:#c62828;">読み込めませんでした：' + esc(e.message) + '</div><button type="button" id="coX" class="btn btn-sub" style="width:100%;margin-top:12px;">閉じる</button>'; $('coX').onclick = close; return; }
+  const c = r.company || {};
+  let logo;   // undefined＝前のまま／'none'＝外す／data:…＝新しいロゴ
+  const f = (id, label, v, type, ph) => '<div class="form-group"><label for="' + id + '">' + label + '</label><input type="' + (type || 'text') + '" id="' + id + '" value="' + esc(v || '') + '"' + (ph ? ' placeholder="' + esc(ph) + '"' : '') + (type === 'tel' ? ' inputmode="tel"' : '') + '></div>';
+  $('coBody').innerHTML =
+    '<div style="font-weight:700;margin-bottom:10px;">注文書の右上に出る会社の情報です。' + (r.registered ? '' : r.fromSheet ? '登録してある内容を読み込みました。違う所があれば直してください。' : '入れて「登録する」を押してください。') + '</div>' +
+    f('coName', '会社名 <span class="req">*</span>', c.name, 'text', '例: 株式会社〇〇') +
+    f('coRepT', '代表者の役職', c.repTitle, 'text', '例: 代表取締役') + f('coRepN', '代表者の名前', c.repName) + f('coAgent', '現場代理人', c.agent) +
+    f('coPostal', '郵便番号', c.postal, 'tel', '例: 661-0953') + f('coAddr', '住所', c.address, 'text', '例: 兵庫県尼崎市〇〇町1-2-3') +
+    f('coTel', 'TEL', c.tel, 'tel', '例: 06-1234-5678') + f('coFax', 'FAX', c.fax, 'tel') +
+    '<div class="form-group"><label>ロゴ（なくてもかまいません）</label><div id="coLogoV" style="margin:4px 0 8px;"></div>' +
+    '<input type="file" id="coLogoF" accept="image/png,image/jpeg" style="display:none;"><div style="display:flex;gap:8px;"><button type="button" id="coLogoB" class="btn btn-sub" style="flex:1;">ロゴの画像を選ぶ</button><button type="button" id="coLogoN" class="btn btn-sub" style="flex:1;">ロゴを外す</button></div>' +
+    '<div style="font-weight:700;font-size:0.85rem;margin-top:6px;">ロゴが無いときは、注文書にロゴを出しません。</div></div>' +
+    (r.registered ? '' : '<div style="font-weight:700;font-size:0.85rem;margin:4px 0 8px;">登録すると、会社名（「株式会社」などを省いた名前）のグループに入ります。</div>') +
+    '<div id="coMsg" style="font-weight:700;color:#c62828;min-height:1em;"></div>' +
+    '<button type="button" id="coSave" class="btn btn-dark" style="width:100%;margin-top:6px;">' + (r.registered ? '会社情報を保存する' : '登録する') + '</button>' +
+    '<button type="button" id="coLater" class="btn btn-sub" style="width:100%;margin-top:8px;">' + (self && !r.registered ? 'あとで' : '閉じる') + '</button>';
+  const showLogo = () => { const v = logo === 'none' ? '' : logo || c.logo || ''; $('coLogoV').innerHTML = v ? '<img src="' + esc(v) + '" alt="ロゴ" style="max-width:100%;max-height:80px;border:1px solid #ccc;border-radius:4px;padding:4px;background:#fff;">' : '<span style="color:#555;">ロゴなし</span>'; $('coLogoN').style.display = v ? '' : 'none'; };
+  showLogo();
+  $('coLogoB').onclick = () => $('coLogoF').click();
+  $('coLogoF').onchange = async e => { const file = e.target.files[0]; e.target.value = ''; if (!file) return; try { logo = await coLogoShrink(file); showLogo(); } catch (x) { $('coMsg').textContent = x.message; } };
+  $('coLogoN').onclick = () => { logo = 'none'; showLogo(); };
+  $('coLater').onclick = () => { if (self && !r.registered) { try { sessionStorage.setItem('portalCoLater', '1'); } catch (e) {} } close(); };
+  $('coSave').onclick = async () => {
+    const v = id => $(id).value.trim();
+    if (!v('coName')) { $('coMsg').textContent = '会社名を入れてください。'; return; }
+    const b = $('coSave'); b.disabled = true; b.textContent = '保存しています…'; $('coMsg').textContent = '';
+    try {
+      const res = await companyApi('save', { ...(uid ? { uid } : {}), company: { name: v('coName'), repTitle: v('coRepT'), repName: v('coRepN'), agent: v('coAgent'), postal: v('coPostal'), address: v('coAddr'), tel: v('coTel'), fax: v('coFax'), ...(logo ? { logo } : {}) } });
+      close();
+      coGroupsAdd([res.key]);
+      await uiAlert(res.moved ? '会社情報を登録しました。グループは「' + res.key + '」になりました。' : '会社情報を保存しました。');
+      if (res.moved && self) location.reload();   // 自分のグループが変わったので開き直す
+    } catch (e) { b.disabled = false; b.textContent = r.registered ? '会社情報を保存する' : '登録する'; $('coMsg').textContent = e.message; }
+  };
+}
 async function admin(action, data) {
   const idToken = await auth.currentUser.getIdToken();
   const d = await fetch(PORTAL_API, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ fn: 'admin', idToken, action, data }) }).then(r => r.json());
@@ -642,6 +726,7 @@ onAuthStateChanged(auth, async user => {
       showList(); nStart();
     }
   } catch (e) {}
+  coGroupsLoad(); coCheck();   // 会社名のグループ・Other の人の会社情報（2026-11-17）
   if (nOpenId) nOpenById(nOpenId); else goMemoCheck();   // 通知を押して開いたときは、その場所へ
   relCheck(firstHere);   // 新しい Ver なら更新の内容を出す
 });
@@ -1156,10 +1241,10 @@ const avOrder = () => { try { return localStorage.getItem('portalAvOrder') === '
 const avList = s => (s.members || []).map(uid => { const i = avInfo(s, uid); return i && String(i.n || '').trim() ? { uid, n: i.n, g: gOf({ group: i.g }), none: false, mgr: (s.roles || {})[uid] === '現場管理者' } : null; }).filter(Boolean)
   .sort((a, b) => avOrder() === 'reg' ? 0 : (b.mgr - a.mgr) || (G_LIST.indexOf(a.g) - G_LIST.indexOf(b.g)) || String(a.n).localeCompare(String(b.n), 'ja'));
 const avHtml = p => { const t = String(p.n || '').trim().split(/[\s\u3000]+/), a = Array.from(t[0] || '')[0] || '?', b = t[1] ? Array.from(t[1])[0] : '';
-  return '<span class="av" data-i18n-skip title="' + esc(p.n || '') + '" style="background:' + (p.none ? AV_NONE : AV_COLOR[p.g])[0] + '; color:' + (p.none ? AV_NONE : AV_COLOR[p.g])[1] + ';">' + esc(a) + (b ? '<small>' + esc(b) + '</small>' : '') + '</span>'; };
+  return '<span class="av" data-i18n-skip title="' + esc(p.n || '') + '" style="background:' + (p.none ? AV_NONE : (AV_COLOR[p.g] || AV_CO))[0] + '; color:' + (p.none ? AV_NONE : (AV_COLOR[p.g] || AV_CO))[1] + ';">' + esc(a) + (b ? '<small>' + esc(b) + '</small>' : '') + '</span>'; };
 const dtAv = s => { const l = avList(s); return l.length ? '<div style="display:flex; flex-wrap:wrap; gap:6px;">' + l.map(avHtml).join('') + '</div>' : '<div style="font-size:0.92rem;">' + (avPeople ? '未設定' : '読み込み中...') + '</div>'; };   // 現場詳細の担当者の丸
 const avRow = (s, max) => { const l = avList(s); return l.length ? '<div class="av-row">' + l.slice(0, max).map(avHtml).join('') + (l.length > max ? '<span class="av-more">+' + (l.length - max) + '</span>' : '') + '</div>' : ''; };
-const homeOf = g => (g === 'マルトク' || g === 'NAFA' || g === 'Other') ? g : 'エクスケア';   // 会社の家（エクスケア社員とエクスケアは同じ。Other はエクスケアとは別。2026-11-15 本番前の見直し）
+const homeOf = g => (!g || g === 'エクスケア社員' || g === 'エクスケア') ? 'エクスケア' : g;   // 会社名のグループ（2026-11-17）も、そのグループが家   // 会社の家（エクスケア社員とエクスケアは同じ。Other はエクスケアとは別。2026-11-15 本番前の見直し）
 const sHome = u => homeOf(u.group);
 function sList() {
   const box = $('sBox');
@@ -2398,7 +2483,7 @@ function oHost(s, k) {
       const u = await oRead(() => getDoc(doc(db, 'users', me.uid)), () => getDocFromCache(doc(db, 'users', me.uid))).catch(() => null);
       const x = (u && u.data()) || {}, home = homeOf(me.group), c = doc(db, 'companies', home);
       const co = await oRead(() => getDoc(c), () => getDocFromCache(c)).catch(() => null);
-      return { orderer: { name: me.name, mobile: x.mobile || '', google: x.google || '', group: home, company: co && co.exists() ? co.data() : { name: '', addr: '', tel: '', fax: '', logo: '', addrs: [] } } };
+      return { orderer: { name: me.name, mobile: x.mobile || '', google: x.google || '', group: home, company: co && co.exists() ? co.data() : home === 'エクスケア' ? { name: '', addr: '', tel: '', fax: '', logo: '', addrs: [] } : { name: '\u3000', addr: '', tel: '', fax: '', logo: '', addrs: [] } } };   // 会社が未登録の Other の人は空ける（2026-11-17）
     },
     async getDuctSpecs() {
       const c = collection(db, 'ductSpecs');
@@ -3280,10 +3365,15 @@ function hTeamLoad() {
   const ds = H.teamDate, c = collection(db, 'health');
   const p = ds.split('/').map(Number);
   $('hTeamDate').textContent = p[0] + '年' + hDate(ds);
-  H.teamOff = onSnapshot(me.isMaster ? query(c, where('date', '==', ds)) : query(c, where('date', '==', ds), where('viewers', 'array-contains', me.uid)), s => {
-    H.team = s.docs.map(d => ({ id: d.id, ...d.data() })).filter(r => r.uid !== me.uid || me.isSenior);
-    hTeamDraw();
+  let others = [], mine = null;
+  const draw = () => { H.team = others.filter(r => r.uid !== me.uid || me.isSenior).concat(mine && !others.some(r => r.uid === me.uid) ? [mine] : []); hTeamDraw(); };
+  const off1 = onSnapshot(me.isMaster ? query(c, where('date', '==', ds)) : query(c, where('date', '==', ds), where('viewers', 'array-contains', me.uid)), s => {
+    others = s.docs.map(d => ({ id: d.id, ...d.data() }));
+    draw();
   }, e => { $('hTeamList').innerHTML = banner('読み込めませんでした：' + e.message, true); });
+  // 自分の記録の「見てよい人」には自分が入っていないので、上の読み込みには来ない。60歳以上の人は自分の記録も別に読んで並べる（入れていても「未入力」と出ていた。2026-11-17 ユーザー「体調は直して」）
+  const off2 = !me.isMaster && me.isSenior ? onSnapshot(doc(db, 'health', hId(ds, me.uid)), d => { mine = d.exists() ? { id: d.id, ...d.data() } : null; draw(); }, () => {}) : null;
+  H.teamOff = () => { off1(); if (off2) off2(); };
 }
 function hTeamMove(diff) {
   const p = H.teamDate.split('/').map(Number), ds = dsOf(new Date(p[0], p[1] - 1, p[2] + diff));
@@ -3651,6 +3741,7 @@ async function setOpen() {
     '<div class="info-card"><div class="card-header-row"><span style="font-weight: 700;">👤 アカウント設定</span></div>' +
     '<div class="form-group"><label>名前</label><div style="font-weight:700;">' + esc(u.name || me.name || '') + '</div></div><div class="form-group"><label>アカウントID</label><div>' + esc(me.uid) + '</div></div>' +
     '<div class="form-group"><label>グループ（マスターが決めます）</label><div style="font-weight:700;">' + esc(gLabel(u.group || 'エクスケア')) + '</div></div>' +
+    (u.group === 'Other' || coGroup(u.group) ? '<button type="button" id="coEdit" class="btn btn-sub" style="width: 100%; margin-bottom: 12px;">🏢 会社情報（注文書の右上に出ます）</button>' : '') +
     '<div class="form-group"><label for="acMb">携帯番号（伝票・注文書の注文者の欄に出ます）</label><input type="tel" id="acMb" value="' + esc(u.mobile) + '" placeholder="例: 090-1234-5678" inputmode="tel"></div>' +
     '<div class="form-group"><label for="acGo">googleアカウント</label><input type="text" id="acGo" value="' + esc(u.google) + '" placeholder="例: taro@gmail.com" autocomplete="off"></div>' +
     '<button type="button" id="acSave" class="btn btn-dark">アカウント設定を保存</button><button type="button" id="acPass" class="btn btn-sub" style="margin-top: 8px; width: 100%;">パスワードを変える（メールでご案内します）</button><div id="acMsg" class="set-note"></div></div>' +
@@ -3689,6 +3780,7 @@ async function setOpen() {
     fire(updateDoc(doc(db, 'users', me.uid), { mobile: $('acMb').value.trim().slice(0, 30), google: $('acGo').value.trim().slice(0, 200) }), 'アカウント設定');
     $('acMsg').textContent = '保存しました。';
   };
+  if ($('coEdit')) $('coEdit').onclick = () => coOpen();
   $('acPass').onclick = async () => {
     try { await resetMail(me.uid); $('acMsg').textContent = me.uid + ' へ、パスワードを変えるメールを送りました。'; }
     catch (e) { $('acMsg').textContent = '送れませんでした：' + ((e && e.message) || ''); }
@@ -3981,7 +4073,7 @@ function showAddUser() {
     '<div class="form-group"><label>アカウントID（ログインIDになります）</label><input type="text" id="e" inputmode="email"></div>' +
     '<div class="form-group"><label>最初のパスワード（6文字以上）</label><input type="text" id="p" autocomplete="off"></div>' +
     // 会社（グループ）は必ず選ぶ。空欄のまま作るとエクスケアの人として扱われ、協力会社の人がエクスケア全員に見えてしまうため（2026-11-05 ユーザー指示 案A）
-    '<div class="form-group"><label>会社（グループ） <span class="req">*</span></label><select id="g">' + ['', 'エクスケア社員', 'エクスケア', 'マルトク', 'NAFA', 'Other'].map(g => '<option value="' + g + '">' + (g ? gLabel(g) : '選んでください') + '</option>').join('') + '</select></div>' +
+    '<div class="form-group"><label>会社（グループ） <span class="req">*</span></label><select id="g">' + ['', ...G_LIST].map(g => '<option value="' + g + '">' + (g ? gLabel(g) : '選んでください') + '</option>').join('') + '</select></div>' +
     '<label class="check-row"><input id="m" type="checkbox">マスターにする</label>' +
     '<button type="button" id="save" class="btn btn-dark" style="margin-top: 14px;">追加する</button><div id="err" style="margin-top: 8px; font-size:0.85rem;"></div></div>';
   $('save').onclick = async () => {
@@ -4017,15 +4109,17 @@ async function showUser(uid, note) {
       '<label class="check-row" style="margin-top: 8px;"><input id="cp" type="checkbox"' + (d.canPayroll ? ' checked' : '') + '>給与管理</label>' +
       '<label class="check-row" style="margin-top: 8px;"><input id="ci" type="checkbox"' + (d.canInvoice ? ' checked' : '') + '>請求管理</label>' +
       '<div class="form-group" style="margin-top: 10px;"><label>携帯番号（伝票・注文書の注文者の欄に出ます）</label><input type="tel" id="mb" value="' + esc(d.mobile) + '" placeholder="例: 090-1234-5678"></div>' +
-      '<div class="form-group" style="margin-top: 10px;"><label>グループ</label><select id="g">' + ['', 'エクスケア社員', 'エクスケア', 'マルトク', 'NAFA', 'Other'].map(g => '<option value="' + g + '"' + ((d.group || '') === g ? ' selected' : '') + '>' + (g ? gLabel(g) : '（空欄：EXDとして扱う）') + '</option>').join('') + '</select></div></div>' +
+      '<div class="form-group" style="margin-top: 10px;"><label>グループ</label><select id="g">' + ['', ...G_LIST].map(g => '<option value="' + g + '"' + ((d.group || '') === g ? ' selected' : '') + '>' + (g ? gLabel(g) : '（空欄：EXDとして扱う）') + '</option>').join('') + '</select></div></div>' +
       '<div class="info-card"><div class="card-header-row"><span style="font-weight: 700;">担当現場</span></div>' + list.map(s => {
         const role = (s.roles || {})[uid], on = (s.members || []).indexOf(uid) !== -1;
         return '<div class="site-row"><label class="check-row"><input type="checkbox" data-s="' + esc(s.id) + '"' + (on ? ' checked' : '') + '>' + esc(s.siteName) + '</label>' +
           '<select data-r="' + esc(s.id) + '">' + opts(ROLES, role) + '</select></div>';
       }).join('') + '<button type="button" id="save" class="btn btn-dark" style="margin-top: 14px;">保存する</button></div>' +
+      (d.group === 'Other' || coGroup(d.group) ? '<button type="button" id="coEditM" class="btn btn-sub" style="width: 100%; margin-top: 10px;">🏢 この人の会社情報を見る・直す</button>' : '') +
       '<div class="info-card"><div class="form-group"><label>新しいパスワード（6文字以上）</label><input type="text" id="p" autocomplete="off"></div>' +
       '<button type="button" id="pass" class="btn btn-outline">パスワードを変える</button>' +
       (uid === me.uid ? '' : '<button type="button" id="del" class="btn btn-sub" style="margin-top: 10px; width: 100%;">この人を削除</button>') + '</div><div id="err" style="font-size:0.85rem;"></div>';
+    if ($('coEditM')) $('coEditM').onclick = () => coOpen(uid);
     $('save').onclick = async () => {
       $('err').textContent = '保存しています…';
       try {
