@@ -30,6 +30,15 @@
   .drop-box-or { margin-top: 10px; font-size: 0.85rem; color: #333; display: flex; justify-content: center; align-items: center; gap: 10px; }
   .drop-box-or .btn { width: auto; min-width: 220px; }
   .drop-box-to { margin-top: 10px; font-size: 0.8rem; color: #333; }
+  .r-att { display: flex; align-items: center; gap: 8px; margin-top: 6px; font-size: 0.88rem; }
+  .r-att img { width: 40px; height: 40px; object-fit: cover; border: 1px solid var(--border); border-radius: 3px; flex: none; }
+  .r-att-k { flex: none; font-weight: 700; font-size: 0.78rem; padding: 1px 7px; border-radius: 4px; }
+  .r-att-k.photo { background: #e0ecff; color: #143c7d; } .r-att-k.doc { background: #f3e6d0; color: #6a4a10; }
+  .r-att-n { flex: 1; min-width: 0; word-break: break-all; }
+  .r-att .btn { flex: none; width: auto; padding: 2px 10px; }
+  .r-thumbs { display: flex; gap: 6px; flex-wrap: wrap; }
+  .r-thumbs img, .r-more { width: 96px; height: 72px; object-fit: cover; border: 1px solid var(--border); border-radius: 4px; cursor: pointer; }
+  .r-more { display: flex; align-items: center; justify-content: center; background: #f0f0f2; font-weight: 800; font-size: 1.1rem; color: #333; }
   .drop-hint { font-size: 0.75rem; color: #444; margin-top: 4px; }
   .pc-only { display: none; }
   @media (hover: hover) and (pointer: fine) { .pc-only { display: block; } .touch-only { display: none !important; } }
@@ -264,7 +273,7 @@ auth.languageCode = 'ja';   // パスワード再設定のメールと画面を�
 // 端末の控え（電波なしでも見られる）は1つのタブだけが持つ。2つ目からのタブは、開いている間だけの控えでサーバーと直接やりとりする。
 // 前は全部のタブで控えを分け合っていて、サーバーとやりとりするタブが裏にあると、ほかのタブに最新が届くまで約28秒待っていた（2026-11-05 確認）
 const db = initializeFirestore(app, { localCache: persistentLocalCache({ tabManager: persistentSingleTabManager() }) });
-const APP_VER = 'Ver.20261117-02（試し 11/17 16:07）';
+const APP_VER = 'Ver.20261117-02（試し 11/17 16:33）';
 /* 更新の内容（2026-11-16 ユーザー指示）。新しい Ver に入れ替わったあと最初に開いたとき、まだ見ていない Ver の分を窓で出す。設定の「更新履歴を見る」でも全部見られる。
    載せるもの（2026-11-16 ユーザー決定）：増えた機能／使う人が気づく不具合の直し（困っていた・報告が来たもの。裏の直しは載せない）／押す場所や使い方が変わる見た目の変更（色や大きさだけの変更は載せない）。
    1項目は短い1〜2文、です・ます、日本語と es（スペイン語）。who：all＝全員、mgr＝現場管理者とマスターだけ（この2つだけ）。
@@ -882,6 +891,7 @@ function renderDetail(s) {
     '<div style="margin-bottom: 14px; display: flex; gap: 8px; align-items: center;">' +
       (isManagerOf(s) ? '<button type="button" id="edit" class="btn btn-dark" style="flex: 1;">✏️ 現場情報編集</button>'
         : '<div style="flex: 1; padding: 10px 12px; background: #f7f7f9; color: #555; font-size: 0.82rem; font-weight: 600; border: 1px dashed var(--border); border-radius: 4px; text-align: center;">※ 編集する場合は現場管理者に連絡</div>') +
+      (me.isMaster || me.canAddSite ? '<button type="button" id="dupSite" class="btn btn-sub" style="flex: 0 0 auto;" title="この現場の現場情報だけを写して、新しい現場を作ります">📄 複製</button>' : '') +   // 現場の複製（新規現場追加者とマスター。2026-11-17）
     '</div>' +
     '<div class="info-card" id="siteInfoCard">' +
       '<div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:12px; padding-bottom:8px; border-bottom:1px solid var(--border);">' +
@@ -930,6 +940,7 @@ function renderDetail(s) {
     img.onclick = () => { const list = [extItem(s, 1), extItem(s, 2)].filter(Boolean); viewerOpen(list, list.findIndex(x => x.name === it.name)); };
   });
   if ($('edit')) $('edit').onclick = () => showSiteForm(s);
+  if ($('dupSite')) $('dupSite').onclick = () => siteDup(s);
   const fields = () => $('panelDetail').querySelectorAll('.rule-field');
   $('rEdit').onclick = () => {
     rulesEditing = true;
@@ -1350,43 +1361,64 @@ function rForm() {
   box.innerHTML = '<div class="info-card" style="border-color: var(--primary);"><div class="card-header-row"><span style="font-weight: 700; font-size: 0.95rem;">📝 新規報告入力</span><button type="button" class="btn btn-sub" id="rClose" style="padding: 2px 8px; font-size: 0.75rem;">✕ 閉じる</button></div>' +
     '<div class="form-group"><label>報告属性 <span class="req">*</span></label><select id="rCat">' + opts(R_CATS, '打合報告') + '</select></div>' +
     '<div class="form-group"><label>報告内容 <span class="req">*</span></label><textarea id="rText" class="auto-expand" placeholder="本日の作業内容や報告事項を入力してください" style="min-height: 90px;"></textarea></div>' +
-    att('rI', '画像添付（写真）', '📷 写真を撮影 / 選択', 'image/*') + att('rD', '資料データ添付（PDF等）', '📄 資料ファイルを選択') +
+    '<div class="form-group"><label>写真・資料の添付</label><input type="file" id="rAF" multiple style="display:none;">' +
+    '<div class="drop-box pc-only" id="rADrop"><div class="drop-box-t">写真や資料（PDF など）をここにドラッグ＆ドロップしてください（いくつでも）</div><div class="drop-box-or"><span>または</span><button type="button" id="rAB2" class="btn btn-dark">📎 ファイルを選択する</button></div><div class="drop-box-to">写真は「写真」タブ、それ以外は「資料」タブに入ります（写真20枚・資料10件まで）</div></div>' +
+    '<button type="button" id="rAB" class="btn btn-sub touch-only" style="width: 100%;">📎 写真・資料を選ぶ</button><div class="touch-only" style="font-size: 0.8rem; color: #333; margin-top: 4px;">写真は「写真」タブ、それ以外は「資料」タブに入ります（写真20枚・資料10件まで）</div>' +
+    '<div id="rAList"></div>' +
+    '<div id="rAWp" style="display:none;"><label style="margin-top: 10px;">写真の保存先フォルダ</label><select id="rASp"></select></div>' +
+    '<div id="rAWd" style="display:none;"><label style="margin-top: 10px;">資料の保存先フォルダ</label><select id="rASd"></select></div></div>' +
     '<div style="display: flex; gap: 8px; margin-top: 14px;"><button type="button" id="rSend" class="btn btn-dark" style="flex: 2;">報告を送信する</button><button type="button" id="rCancel2" class="btn btn-sub" style="flex: 1;">キャンセル</button></div><div id="rErr" style="font-size:0.85rem; margin-top:6px; color:var(--error-text);"></div></div>';
   autoGrow(box);
   const close = () => { box.innerHTML = ''; };
   $('rClose').onclick = close; $('rCancel2').onclick = close;
-  const pick = (id, kind) => {
-    $(id + 'B').onclick = () => $(id + 'F').click();
-    dropOn($(id + 'B').parentNode, files => { if (kind === 'photo') files = onlyImages(files); if (files.length) putFiles($(id + 'F'), [files[0]]); });
-    $(id + 'F').onchange = () => {
-      const f = $(id + 'F').files[0];
-      // 写真は送る前に小さな見本を出す（2026-11-05 運用テスト No.4）
-      $(id + 'N').innerHTML = f ? esc(f.name) + (kind === 'photo' && String(f.type).startsWith('image/') ? '<div><img src="' + URL.createObjectURL(f) + '" alt="" style="max-width:160px; max-height:160px; margin-top:6px; border:1px solid var(--border); border-radius:4px; object-fit:cover; display:block;"></div>' : '') : '';
-      if (!f) { $(id + 'W').style.display = 'none'; return; }
-      const keep = X.kind; X.kind = kind;
-      const rows = []; const walk = (p, d) => xKids(p).forEach(x => { rows.push([x.id, '　'.repeat(d) + x.name]); walk(x.id, d + 1); });
-      walk('', 0); X.kind = keep;
-      $(id + 'S').innerHTML = rows.map(r => '<option value="' + esc(r[0]) + '">' + esc(r[1]) + '</option>').join('') + '<option value="">＋ 新しいフォルダ（「報告添付」を作る）</option>';
-      $(id + 'W').style.display = '';
-    };
+  // 添付：写真も資料も1つの受け口（落とす・選ぶ）。写真は写真タブ、ほかは資料タブへ（2026-11-17 ユーザー決定 案B。写真20枚・資料10件まで）
+  const R_MAXP = 20, R_MAXD = 10, rAtt = [];   // { f, kind, u（写真の見本） }
+  const folderOpts = kind => {
+    const keep = X.kind; X.kind = kind;
+    const rows = []; const walk = (p, d) => xKids(p).forEach(x => { rows.push([x.id, '　'.repeat(d) + x.name]); walk(x.id, d + 1); });
+    walk('', 0); X.kind = keep;
+    return rows.map(r => '<option value="' + esc(r[0]) + '">' + esc(r[1]) + '</option>').join('') + '<option value="">＋ 新しいフォルダ（「報告添付」を作る）</option>';
   };
-  pick('rI', 'photo'); pick('rD', 'doc');
+  const attDraw = () => {
+    $('rAList').innerHTML = rAtt.map((a, i) => '<div class="r-att">' + (a.u ? '<img src="' + a.u + '" alt="">' : '') + '<span class="r-att-k ' + a.kind + '">' + (a.kind === 'photo' ? '写真' : '資料') + '</span><span class="r-att-n">' + esc(a.f.name) + '</span><button type="button" class="btn btn-sub" data-x="' + i + '" title="外す">✕</button></div>').join('');
+    $('rAList').querySelectorAll('[data-x]').forEach(b => { b.onclick = () => { const a = rAtt.splice(+b.dataset.x, 1)[0]; if (a && a.u) URL.revokeObjectURL(a.u); attDraw(); }; });
+    const hp = rAtt.some(a => a.kind === 'photo'), hd = rAtt.some(a => a.kind === 'doc');
+    if (hp && !$('rASp').options.length) $('rASp').innerHTML = folderOpts('photo');
+    if (hd && !$('rASd').options.length) $('rASd').innerHTML = folderOpts('doc');
+    $('rAWp').style.display = hp ? '' : 'none'; $('rAWd').style.display = hd ? '' : 'none';
+  };
+  const attAdd = files => {
+    const over = [];
+    [...files].forEach(f => {
+      const kind = isImg(f) ? 'photo' : 'doc';
+      if (rAtt.filter(a => a.kind === kind).length >= (kind === 'photo' ? R_MAXP : R_MAXD)) { over.push(f.name); return; }
+      rAtt.push({ f, kind, u: kind === 'photo' ? URL.createObjectURL(f) : '' });
+    });
+    if (over.length) uiAlert('1つの報告に付けられるのは、写真20枚・資料10件までです。次のものは付けませんでした：\n' + over.map(n => '・' + n).join('\n'));
+    attDraw();
+  };
+  $('rAB').onclick = $('rAB2').onclick = () => $('rAF').click();
+  $('rAF').onchange = () => { attAdd($('rAF').files); $('rAF').value = ''; };
+  dropOn($('rADrop'), files => attAdd(files));
   $('rText').addEventListener('input', () => { if ($('rText').value.trim()) $('rErr').textContent = ''; });   // 文字を入れたら注意を消す（2026-11-05 運用テスト No.23）
   $('rSend').onclick = async () => {
     const content = $('rText').value.trim();
     if (!content) { $('rErr').textContent = '報告内容を入力してください。'; return; }
     $('rSend').disabled = true;
     const data = { category: $('rCat').value, content, by: me.uid, byName: me.name || me.uid, at: Date.now(), deleted: false, imageFile: '', docFile: '', docName: '' };
-    const send = async (id, kind) => {
-      const f = $(id + 'F').files[0];
-      if (!f) return '';
-      let folder = $(id + 'S').value;
+    const sendAll = async kind => {
+      const list = rAtt.filter(a => a.kind === kind);
+      if (!list.length) return [];
+      let folder = $(kind === 'photo' ? 'rASp' : 'rASd').value;
       if (!folder) { const k = X.kind; X.kind = kind; folder = xNewFolder('報告添付', ''); X.kind = k; }
-      return xUpload(kind, folder, [f], true);
+      const out = [];
+      for (const a of list) { const id = await xUpload(kind, folder, [a.f], true); if (id) out.push({ id, name: a.f.name }); }
+      return out;
     };
-    data.imageFile = await send('rI', 'photo');
-    data.docFile = await send('rD', 'doc');
-    if ($('rDF').files[0]) data.docName = $('rDF').files[0].name;
+    const ps = await sendAll('photo'), ds = await sendAll('doc');
+    data.imageFiles = ps.map(x => x.id); data.docFiles = ds;
+    // 古い Ver の画面は1つ目だけ読むので、1枚目・1つ目は今までの場所にも入れる
+    data.imageFile = ps[0] ? ps[0].id : ''; data.docFile = ds[0] ? ds[0].id : ''; data.docName = ds[0] ? ds[0].name : '';
     const rRef = doc(xSub('reports'));
     fire(setDoc(rRef, data), '報告');
     notify(X.s, 'report', '【' + data.category + '】を追加：' + clip(content, 80), { go: { t: 'report', id: rRef.id } });
@@ -1410,11 +1442,17 @@ function rList() {
   const fileOf = id => X.files.find(f => f.id === id);
   $('rBox').innerHTML = list.map(r => {
     if (r.deleted) return '<div class="info-card" style="margin-bottom:10px; background-color:#fff5f5; border:1px solid #ffcdd2;"><div style="display:flex; justify-content:space-between; align-items:center; font-size:0.82rem; color:#b71c1c; font-weight:700;"><span>🗑️ ' + esc(rWhen(r.deletedAt).slice(0, 10)) + 'に削除しました</span><span style="font-size:0.75rem; color:var(--muted); font-weight:normal;">元報告日: ' + esc(rWhen(r.at).slice(0, 10)) + '</span></div></div>';
-    const img = r.imageFile && fileOf(r.imageFile), docf = r.docFile && fileOf(r.docFile);
-    const imgHtml = !r.imageFile ? '' : X.rMode === 'textonly' || !img || !img.thumb
-      ? '<div style="margin-top:8px;"><a href="javascript:void(0)" data-open="' + esc(r.imageFile) + '" style="color:var(--link-blue); font-size:0.85rem; text-decoration:underline; display:inline-block;">📷 添付写真を開く</a></div>'
-      : '<div style="margin-top:10px;"><div style="font-size:0.75rem; font-weight:700; color:var(--muted); margin-bottom:4px;">📷 添付写真</div><img src="' + esc(img.thumb) + '" data-open="' + esc(r.imageFile) + '" style="max-width:100%; max-height:220px; object-fit:cover; border-radius:4px; border:1px solid var(--border); cursor:pointer; display:block;"></div>';
-    const docHtml = !r.docFile ? '' : '<div style="margin-top:10px;"><div style="font-size:0.75rem; font-weight:700; color:var(--muted); margin-bottom:4px;">📄 添付資料</div><a href="javascript:void(0)" data-open="' + esc(r.docFile) + '" style="color:var(--link-blue); font-size:0.85rem; text-decoration:underline; display:inline-block; word-break:break-all;">📄 ' + esc(r.docName || (docf && docf.name) || '添付ファイル') + 'を開く</a></div>';
+    const pIds = rPhotoIds(r), dList = r.docFiles && r.docFiles.length ? r.docFiles : r.docFile ? [{ id: r.docFile, name: r.docName }] : [];
+    const img = pIds[0] && fileOf(pIds[0]);
+    const thumbs = pIds.length > 1 && X.rMode !== 'textonly'
+      ? '<div style="margin-top:10px;"><div style="font-size:0.75rem; font-weight:700; color:var(--muted); margin-bottom:4px;">📷 添付写真（' + pIds.length + '枚）</div><div class="r-thumbs">' +
+        pIds.slice(0, 4).map((id, i) => { const f = fileOf(id); return f && f.thumb ? '<img src="' + esc(f.thumb) + '" data-openp="' + i + '" alt="">' : '<span class="r-more" data-openp="' + i + '">📷</span>'; }).join('') +
+        (pIds.length > 4 ? '<span class="r-more" data-openp="4">＋' + (pIds.length - 4) + '</span>' : '') + '</div></div>'
+      : '';
+    const imgHtml = !pIds.length ? '' : thumbs ? thumbs : X.rMode === 'textonly' || !img || !img.thumb
+      ? '<div style="margin-top:8px;"><a href="javascript:void(0)" data-openp="0" style="color:var(--link-blue); font-size:0.85rem; text-decoration:underline; display:inline-block;">📷 添付写真を開く' + (pIds.length > 1 ? '（' + pIds.length + '枚）' : '') + '</a></div>'
+      : '<div style="margin-top:10px;"><div style="font-size:0.75rem; font-weight:700; color:var(--muted); margin-bottom:4px;">📷 添付写真</div><img src="' + esc(img.thumb) + '" data-openp="0" style="max-width:100%; max-height:220px; object-fit:cover; border-radius:4px; border:1px solid var(--border); cursor:pointer; display:block;"></div>';
+    const docHtml = !dList.length ? '' : '<div style="margin-top:10px;"><div style="font-size:0.75rem; font-weight:700; color:var(--muted); margin-bottom:4px;">📄 添付資料' + (dList.length > 1 ? '（' + dList.length + '件）' : '') + '</div>' + dList.map(x => { const f = fileOf(x.id); return '<div><a href="javascript:void(0)" data-open="' + esc(x.id) + '" style="color:var(--link-blue); font-size:0.85rem; text-decoration:underline; display:inline-block; word-break:break-all;">📄 ' + esc(x.name || (f && f.name) || '添付資料') + '</a></div>'; }).join('') + '</div>';
     return '<div class="info-card" style="margin-bottom:10px;" data-r="' + esc(r.id) + '">' +
       '<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px; font-size:0.8rem; color:var(--muted); border-bottom:1px solid #f0f0f0; padding-bottom:4px;"><div style="display:flex; align-items:center;"><span style="display:inline-block; font-size:0.78rem; font-weight:700; padding:2px 6px; border-radius:3px; background:#f0f0f2; color:#333; margin-right:6px;">' + esc(r.category) + '</span><span style="font-weight:700; color:var(--text);">' + esc(rWhen(r.at)) + '</span>' +
         // 編集した報告には印と編集した日時を出す（2026-11-05 運用テスト No.21）
@@ -1430,9 +1468,19 @@ function rList() {
       viewerOpen([f], 0);
     };
   });
+  $('rBox').querySelectorAll('[data-openp]').forEach(a => {
+    a.onclick = () => {
+      const r = list.find(x => x.id === a.closest('[data-r]').dataset.r), ids = rPhotoIds(r), want = ids[+a.dataset.openp];
+      const fsl = ids.map(fileOf).filter(Boolean);
+      if (!fsl.length) { uiAlert('添付はまだ届いていません。'); return; }
+      viewerOpen(fsl, Math.max(0, fsl.findIndex(f => f.id === want)));
+    };
+  });
   $('rBox').querySelectorAll('[data-e]').forEach(b => { b.onclick = () => rEdit(list.find(r => r.id === b.closest('[data-r]').dataset.r), b.closest('[data-r]')); });
   goTry();
 }
+// 報告の写真の一覧（いくつでも：imageFiles。前の報告は imageFile の1枚）
+const rPhotoIds = r => r.imageFiles && r.imageFiles.length ? r.imageFiles : r.imageFile ? [r.imageFile] : [];
 function rEdit(r, card) {
   X.rEdit = r.id;
   const v = card.querySelector('.r-view');
@@ -2281,6 +2329,19 @@ const toIso = t => { const m = String(t || '').match(/(\d+)年(\d+)月(\d+)日/)
 const toJp = v => { const m = String(v || '').match(/^(\d+)-(\d+)-(\d+)$/); return m ? m[1] + '年' + Number(m[2]) + '月' + Number(m[3]) + '日' : '未設定'; };
 const TEXTS = ['address', 'exdChargeName', 'exdChargeTel', 'agentCompany', 'agentName', 'agentTel', 'siteStaff1Company', 'siteStaff1Name', 'siteStaff1Tel', 'siteStaff2Company', 'siteStaff2Name', 'siteStaff2Tel'];
 
+// 現場の複製：現場情報だけを写して、現場名に「（コピー）」を付けた新しい現場を作る（2026-11-17 ユーザー指示「複製は現場情報のみ、現場名は（コピー）付きで」）
+// 担当者・写真・資料・報告・注文・外観画像は写さない。作った人が担当（現場管理者）。あとは現場情報編集で直して使う
+async function siteDup(s) {
+  let name = s.siteName + '（コピー）', i = 2;
+  while (allSites.some(o => o.siteName === name)) name = s.siteName + '（コピー' + (i++) + '）';
+  if (!await uiConfirm('「' + s.siteName + '」の現場情報だけを写して、新しい現場「' + name + '」を作ります。\n担当者・写真・資料・報告・注文・外観画像は写しません。作ったあと、現場情報編集で直してください。', '複製する')) return;
+  const keep = ['flow', 'startDate', 'endDate', 'workContent', 'notes', 'ruleOther', ...TEXTS, ...RULES.map(r => r[0])], data = {};
+  keep.forEach(k => { if (s[k] !== undefined) data[k] = s[k]; });
+  const ref = doc(collection(db, 'sites'));
+  const w = fire(setDoc(ref, { ...data, siteName: name, imageUrl1: '', imageUrl2: '', order: Date.now(), members: [me.uid], roles: { [me.uid]: '現場管理者' }, managers: [me.uid] }), name);
+  await Promise.race([w, new Promise(r => setTimeout(r, 6000))]);   // サーバーが受け取る前に開くと、まだ無い現場を読みに行って「権限がありません」になる（2026-11-17）
+  showDetail(ref.id);
+}
 function showSiteForm(s) {
   stopWatch();
   const isNew = !s, v = s || {}, inp = (k, ph, type) => '<input type="' + (type || 'text') + '" id="f_' + k + '" value="' + esc(v[k]) + '"' + (ph ? ' placeholder="' + ph + '"' : '') + (type === 'tel' ? ' inputmode="numeric"' : '') + '>';
@@ -2375,8 +2436,10 @@ function showSiteForm(s) {
     data.workContent = $('f_workContent').value; data.notes = $('f_notes').value;
     if (isNew) {
       const ref = doc(collection(db, 'sites'));
-      fire(setDoc(ref, { ...data, imageUrl1: '', imageUrl2: '', ...picData(), order: Date.now(), members: [me.uid], roles: { [me.uid]: '現場管理者' }, managers: [me.uid] }), data.siteName);
+      const w = fire(setDoc(ref, { ...data, imageUrl1: '', imageUrl2: '', ...picData(), order: Date.now(), members: [me.uid], roles: { [me.uid]: '現場管理者' }, managers: [me.uid] }), data.siteName);
       picSend(ref.id);
+      $('save').disabled = true; $('save').textContent = '保存しています...';
+      await Promise.race([w, new Promise(r => setTimeout(r, 6000))]);   // 受け取る前に開くと「権限がありません」になる（複製と同じ。2026-11-17）
       showDetail(ref.id);
     } else {
       fire(updateDoc(doc(db, 'sites', s.id), { ...data, ...picData() }), data.siteName);
@@ -4199,7 +4262,7 @@ document.getElementById('ptestNotify').onclick = async function () {
 };
 </script>
 <div style="position:fixed;top:0;left:0;right:0;height:3px;background:#c00;z-index:99999;pointer-events:none;"></div>
-<div id="ptestLabel" style="position:fixed;top:calc(env(safe-area-inset-top) + 6px);left:50%;transform:translateX(-50%);z-index:99999;pointer-events:none;background:#c00;color:#fff;font-weight:800;font-size:12px;padding:2px 10px;border-radius:10px;white-space:nowrap;transition:opacity .5s;">試し用（本番ではありません）11/17 16:07</div>
+<div id="ptestLabel" style="position:fixed;top:calc(env(safe-area-inset-top) + 6px);left:50%;transform:translateX(-50%);z-index:99999;pointer-events:none;background:#c00;color:#fff;font-weight:800;font-size:12px;padding:2px 10px;border-radius:10px;white-space:nowrap;transition:opacity .5s;">試し用（本番ではありません）11/17 16:33</div>
 <script>setTimeout(function () { var l = document.getElementById('ptestLabel'); if (l) { l.style.opacity = '0'; setTimeout(function () { l.remove(); }, 600); } }, 4000);</script>
 </body>
 </html>
