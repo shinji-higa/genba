@@ -405,6 +405,9 @@ Object.assign(I18N_ES, {
   '名前を変えるフォルダを1つチェックして、「名前を変える」を押してください。': 'Marque una carpeta y pulse «Cambiar nombre».',
   '印刷の準備ができました。次に出る画面で「プリント」を選んでください。': 'Listo para imprimir. En la siguiente pantalla elija «Imprimir».', '印刷へ進む': 'Ir a imprimir',
   'この端末では印刷の画面を出せません。「保存」から開いて印刷してください。': 'Este equipo no puede mostrar la impresión. Abra con «Guardar» e imprima desde allí.', '印刷の画面を出せませんでした。「保存」から開いて印刷してください。': 'No se pudo mostrar la impresión. Abra con «Guardar» e imprima desde allí.',
+  '📄 複製': '📄 Duplicar', '複製する': 'Duplicar',
+  '写真・資料の添付': 'Adjuntar fotos y documentos', '写真や資料（PDF など）をここにドラッグ＆ドロップしてください（いくつでも）': 'Arrastre y suelte aquí fotos o documentos (PDF, etc.), los que quiera', '📎 ファイルを選択する': '📎 Elegir archivos', '📎 写真・資料を選ぶ': '📎 Elegir fotos o documentos',
+  '写真は「写真」タブ、それ以外は「資料」タブに入ります（写真20枚・資料10件まで）': 'Las fotos van a la pestaña «Fotos» y lo demás a «Documentos» (hasta 20 fotos y 10 documentos)', '写真の保存先フォルダ': 'Carpeta para las fotos', '資料の保存先フォルダ': 'Carpeta para los documentos',
   // 会社情報（Other の人。2026-11-17）
   '🏢 会社情報の登録': '🏢 Registro de la empresa', '🏢 会社情報（注文書の右上に出ます）': '🏢 Datos de la empresa (salen arriba a la derecha del pedido)', '🏢 この人の会社情報を見る・直す': '🏢 Ver o corregir la empresa de esta persona',
   '注文書の右上に出る会社の情報です。登録してある内容を読み込みました。違う所があれば直してください。': 'Son los datos de la empresa que salen arriba a la derecha del pedido. Se cargó lo registrado; corrija lo que no esté bien.',
