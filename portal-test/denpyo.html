@@ -5580,11 +5580,15 @@
     function revLocked() { return !!HOST && S.status === 'submitted'; }
     function fmtMD(t) { var d = new Date(t || Date.now()); return (d.getMonth() + 1) + '/' + d.getDate(); }
     function fmtDT(t) { var d = new Date(t || Date.now()); return fmtMD(t) + ' ' + d.getHours() + ':' + ('0' + d.getMinutes()).slice(-2); }
+    // 修正の名前：2回目の提出から「修正①」「修正②」…（2026-11-18 ユーザー指示：「第○版」は分かりにくいので、NO はそのまま・修正に丸数字）
+    var MARU = '①②③④⑤⑥⑦⑧⑨⑩⑪⑫⑬⑭⑮⑯⑰⑱⑲⑳';
+    function revName(r) { r = Number(r) || 1; return r > 1 ? '修正' + (MARU.charAt(r - 2) || '(' + (r - 1) + ')') : ''; }
+    function revSp(r) { return (Number(r) || 1) > 1 ? ' ' + revName(r) : ''; }
     function revLabel() {
       if (!HOST || (!S.status && !PDF_NOW)) return '';
       var rev = S.status === 'editing' || S.status === 'submitted' ? (S.rev || 1) : 1;
-      if (S.status === 'submitted' && !PDF_NOW) return '第' + rev + '版　' + fmtMD(S.subAt) + ' 提出';
-      return '第' + rev + '版' + (rev > 1 ? '　修正 ' + (PDF_NOW ? fmtMD() : '入力中') : '');
+      if (S.status === 'submitted' && !PDF_NOW) return (rev > 1 ? revName(rev) + '　' : '') + fmtMD(S.subAt) + ' 提出';
+      return rev > 1 ? revName(rev) + '　' + (PDF_NOW ? fmtMD() : '入力中') : '';
     }
     var HEAD_LBL = { orderer: '注文発注者', site: '現場名', room: '室名', orderDate: '発注日', delivDate: '搬入日', dest: '搬入先', specName: '仕様の題名', up: '板厚' };
     var SPEC_LBL = { mat: '材質', use: '用途', press: '圧力', sys: '系統', sysOther: '系統（その他）', joint: '接合', haze: 'ハゼ', hokyo: '補強', paint: '鋼材塗装', seal: 'シール' };
@@ -5635,7 +5639,7 @@
     function chgBlock() {
       var df = SLIP_DIFF; if (!df || !df.lines.length) return '';
       var over = df.lines.length > CHG_MAX;
-      return '<div class="dp-chg"><div class="dp-chg-h">修正内容（' + esc(revLabel()) + '・前の版から変わった所）' + (over ? '　ほか ' + (df.lines.length - CHG_MAX + 1) + ' 件は最後のページ' : '') + '</div>' +
+      return '<div class="dp-chg"><div class="dp-chg-h">修正内容（' + esc(revLabel()) + '・前回から変わった所）' + (over ? '　ほか ' + (df.lines.length - CHG_MAX + 1) + ' 件は最後のページ' : '') + '</div>' +
         chgListHtml(over ? df.lines.slice(0, CHG_MAX - 1) : df.lines) + '</div>';
     }
     function revTag() { var l = revLabel(); return l ? '<span class="dp-rev' + ((S.rev || 1) > 1 ? ' red' : '') + '">' + esc(l) + '</span>' : ''; }
@@ -5648,12 +5652,12 @@
       el.style.display = '';
       el.className = 'rev-bar ' + (lk ? 'done' : 'edit');
       el.innerHTML = lk
-        ? '<div><b>提出済み　第' + (S.rev || 1) + '版</b>（' + fmtDT(S.subAt) + ' 提出）<br>この伝票は見るだけです。直すときは「修正する」を押してください。' + (S.pdfUrl ? '<br><a href="' + esc(S.pdfUrl) + '" target="_blank" rel="noopener">提出したPDFを開く</a>' : '') + '</div><button type="button" class="btn btn-dark" onclick="startRevision()">修正する</button>'
-        : '<div><b>修正中　第' + (S.rev || 1) + '版（まだ提出していません）</b><br>直し終わったら「工場へ提出」を押してください。前の版から変わった所は、伝票で赤くなります。</div>';
+        ? '<div><b>提出済み' + revSp(S.rev || 1) + '</b>（' + fmtDT(S.subAt) + ' 提出）<br>この伝票は見るだけです。直すときは「修正する」を押してください。' + (S.pdfUrl ? '<br><a href="' + esc(S.pdfUrl) + '" target="_blank" rel="noopener">提出したPDFを開く</a>' : '') + '</div><button type="button" class="btn btn-dark" onclick="startRevision()">修正する</button>'
+        : '<div><b>' + revName(S.rev || 2) + ' 入力中（まだ提出していません）</b><br>直し終わったら「工場へ提出」を押してください。前回から変わった所は、伝票で赤くなります。</div>';
     }
     function lockedToast() { toast('提出済みです。直すときは「修正する」を押してください'); }
     function startRevision() {
-      HOST.confirm('この伝票を修正しますか？\n第' + ((S.rev || 1) + 1) + '版として入力し、直し終わったらもう一度「工場へ提出」を押します。').then(function (ok) {
+      HOST.confirm('この伝票を修正しますか？\n「' + revName((S.rev || 1) + 1) + '」として入力し、直し終わったらもう一度「工場へ提出」を押します。').then(function (ok) {
         if (!ok) return;
         S.base = S.subSnap ? clone(S.subSnap) : null; S.rev = (S.rev || 1) + 1; S.status = 'editing';
         changed(); renderAll(); hostSaveNow().catch(noop);
@@ -5853,7 +5857,7 @@
         var h2 = '<div class="dp"><div class="dp-cont-head"><h1>ダクト製作伝票（続き）</h1><div class="site">現場名　' + esc(S.site) + (S.room ? '　／　' + esc(S.room) : '') + '</div>' + revTag() +
           '<div class="no">(NO, <b>' + esc(S.no || '　') + '</b> )　ページ No. ⇒ <b>' + pg + '／' + total + '</b></div></div>';
         if (p.kind === 'chg') {   // 修正内容（全部）
-          h2 += '<div class="dp-body dp-chgpage"><div class="dp-chg"><div class="dp-chg-h">修正内容（' + esc(revLabel()) + '・前の版から変わった所）</div>' + chgListHtml(SLIP_DIFF ? SLIP_DIFF.lines : []) + '</div>';
+          h2 += '<div class="dp-body dp-chgpage"><div class="dp-chg"><div class="dp-chg-h">修正内容（' + esc(revLabel()) + '・前回から変わった所）</div>' + chgListHtml(SLIP_DIFF ? SLIP_DIFF.lines : []) + '</div>';
         } else if (p.kind === 'tbl') {   // 直管リストの続き（表だけ）
           h2 += '<div class="dp-body" style="grid-template-rows:minmax(0, 1fr);">' + tblHtml(rows, PC_TBL.rows, hot);
         } else {
@@ -5948,7 +5952,7 @@
     function nextRev() { return S.status === 'editing' ? (S.rev || 2) : 1; }   // これから提出する版
     function pdfDefaultName() {
       var d = new Date();
-      return 'ダクト製作伝票' + (S.no ? '_NO' + S.no : '') + (S.room ? '_' + S.room : '') + '_第' + nextRev() + '版_' + d.getFullYear() + ('0' + (d.getMonth() + 1)).slice(-2) + ('0' + d.getDate()).slice(-2);
+      return 'ダクト製作伝票' + (S.no ? '_NO' + S.no : '') + (S.room ? '_' + S.room : '') + (nextRev() > 1 ? '_修正' + (nextRev() - 1) : '') + '_' + d.getFullYear() + ('0' + (d.getMonth() + 1)).slice(-2) + ('0' + d.getDate()).slice(-2);
     }
     function openSubmit() {
       if (revLocked()) { lockedToast(); return; }
@@ -6030,7 +6034,7 @@
         S.pdfFolderId = res.folderId; S.pdfId = res.pdfId; S.pdfUrl = res.url;
         S.status = 'submitted'; S.rev = rev; S.subAt = Date.now(); S.subSnap = slipSnap(S);
         changed(); renderAll(); hostSaveNow().catch(noop);
-        msg.className = 'pdf-msg'; msg.innerHTML = '✓ ' + esc(res.message).replace(/\n/g, '<br>') + '<br>資料タブのそのフォルダから見られます。<br>この伝票は「提出済み（第' + rev + '版）」になり、見るだけになりました。';
+        msg.className = 'pdf-msg'; msg.innerHTML = '✓ ' + esc(res.message).replace(/\n/g, '<br>') + '<br>資料タブのそのフォルダから見られます。<br>この伝票は「提出済み' + (rev > 1 ? '（' + revName(rev) + '）' : '') + '」になり、見るだけになりました。';
         go.style.display = 'none';
       }).catch(function (e) { go.disabled = false; msg.className = 'pdf-msg err'; msg.textContent = '保存できませんでした：' + ((e && e.message) || ''); });
     }
