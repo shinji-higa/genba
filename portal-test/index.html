@@ -181,6 +181,7 @@
   .bug-box { background: #fff; color: #111; width: min(620px, 100%); max-height: 100%; overflow: auto; border-radius: 10px; padding: 14px; box-sizing: border-box; }
   .bug-h { display: flex; justify-content: space-between; align-items: center; gap: 8px; font-weight: 800; font-size: 1.05rem; margin-bottom: 10px; }
   .bug-img { display: block; width: 100%; max-height: 36vh; object-fit: contain; background: #e9e9ec; border: 1px solid #666; }
+  .bug-hint { font-size: 0.82rem; color: #333; margin-top: 4px; }
   .bug-box.drag { outline: 3px dashed #1a73e8; outline-offset: -3px; }
   .bug-noimg { padding: 18px 10px; text-align: center; background: #f2f2f4; border: 1px dashed #666; color: #333; font-size: 0.9rem; font-weight: 600; }
   .bug-box textarea { width: 100%; box-sizing: border-box; min-height: 110px; font-size: 16px; padding: 8px; border: 1px solid #555; border-radius: 4px; font-family: inherit; }
@@ -275,7 +276,7 @@ auth.languageCode = 'ja';   // パスワード再設定のメールと画面を�
 // 端末の控え（電波なしでも見られる）は1つのタブだけが持つ。2つ目からのタブは、開いている間だけの控えでサーバーと直接やりとりする。
 // 前は全部のタブで控えを分け合っていて、サーバーとやりとりするタブが裏にあると、ほかのタブに最新が届くまで約28秒待っていた（2026-11-05 確認）
 const db = initializeFirestore(app, { localCache: persistentLocalCache({ tabManager: persistentSingleTabManager() }) });
-const APP_VER = 'Ver.20261118-01（試し 11/18 11:55）';
+const APP_VER = 'Ver.20261118-02（試し 11/18 12:42）';
 /* 更新の内容（2026-11-16 ユーザー指示）。新しい Ver に入れ替わったあと最初に開いたとき、まだ見ていない Ver の分を窓で出す。設定の「更新履歴を見る」でも全部見られる。
    載せるもの（2026-11-16 ユーザー決定）：増えた機能／使う人が気づく不具合の直し（困っていた・報告が来たもの。裏の直しは載せない）／押す場所や使い方が変わる見た目の変更（色や大きさだけの変更は載せない）。
    1項目は短い1〜2文、です・ます、日本語と es（スペイン語）。who：all＝全員、mgr＝現場管理者とマスターだけ（この2つだけ）。
@@ -588,6 +589,8 @@ const isFileDrag = e => [...((e.dataTransfer && e.dataTransfer.types) || [])].in
 function dropOn(el, onFiles) {
   if (!el || el.dataset.drop) return;
   el.dataset.drop = '1';
+  el.__files = onFiles;
+  el.addEventListener('pointerdown', () => { pasteLast = el; }, true);   // 貼り付けの行き先（最後に押した場所）
   let n = 0;
   const on = v => el.classList.toggle('drop-on', v);
   el.addEventListener('dragenter', e => { if (!isFileDrag(e)) return; e.preventDefault(); n++; on(true); });
@@ -598,6 +601,25 @@ function dropOn(el, onFiles) {
 // 落とした先が「落とせる場所」でなかったとき、ブラウザがそのファイルを開いてポータルが消えないようにする
 document.addEventListener('dragover', e => { if (isFileDrag(e)) e.preventDefault(); });
 document.addEventListener('drop', e => { if (isFileDrag(e)) e.preventDefault(); });
+/* パソコン：画面などをコピーして Ctrl＋V で貼り付けても、落としたときと同じに追加（2026-11-18 ユーザー指示「ドロップできる所は貼り付けも」）
+   行き先：最後に押した落とせる場所。見えている落とせる場所が1つだけならそこ。字の欄に字を貼るときは今まで通り（Excel の表のように字と絵が両方あるときも字） */
+let pasteLast = null;
+const pasteSeen = el => !!(el && el.isConnected && el.getClientRects().length);
+function pasteFiles(e) {
+  const d = new Date(), st = d.getFullYear() + pad2(d.getMonth() + 1) + pad2(d.getDate()) + '_' + pad2(d.getHours()) + pad2(d.getMinutes()) + pad2(d.getSeconds());
+  return [...((e.clipboardData && e.clipboardData.items) || [])].filter(i => i.kind === 'file').map(i => i.getAsFile()).filter(Boolean)
+    .map((f, k) => (!f.name || /^image\.\w+$/i.test(f.name)) ? new File([f], '貼り付け_' + st + (k ? '_' + (k + 1) : '') + '.' + (((f.type || '').split('/')[1] || 'png').replace('jpeg', 'jpg')), { type: f.type || 'image/png' }) : f);
+}
+document.addEventListener('paste', e => {
+  if ($('bugOv') || document.querySelector('[aria-modal="true"]')) return;   // 不具合修正の窓は窓の中で受け取る
+  const t = e.target, typing = t && (/^(INPUT|TEXTAREA)$/.test(t.tagName) || t.isContentEditable);
+  if (typing && [...((e.clipboardData && e.clipboardData.types) || [])].includes('text/plain')) return;
+  const files = pasteFiles(e); if (!files.length) return;
+  const all = [...document.querySelectorAll('[data-drop]')].filter(pasteSeen);
+  const el = all.includes(pasteLast) ? pasteLast : all.length === 1 ? all[0] : null;
+  if (!el) { if (all.length) { e.preventDefault(); uiAlert('貼り付ける場所（写真の欄など）を一度押してから、もう一度 Ctrl＋V を押してください。'); } return; }
+  e.preventDefault(); el.__files(files, { target: el });
+});
 // 隠してある「ファイルを選ぶ」に、落としたファイルを入れる（選んだときと同じ動きになる）
 const putFiles = (input, files) => { const d = new DataTransfer(); files.forEach(f => d.items.add(f)); input.files = d.files; input.dispatchEvent(new Event('change')); };
 const isImg = f => String(f.type).startsWith('image/') || /\.(jpe?g|png|gif|webp|heic|heif)$/i.test(f.name || '');
@@ -1364,7 +1386,7 @@ function rForm() {
     '<div class="form-group"><label>報告属性 <span class="req">*</span></label><select id="rCat">' + opts(R_CATS, '打合報告') + '</select></div>' +
     '<div class="form-group"><label>報告内容 <span class="req">*</span></label><textarea id="rText" class="auto-expand" placeholder="本日の作業内容や報告事項を入力してください" style="min-height: 90px;"></textarea></div>' +
     '<div class="form-group"><label>写真・資料の添付</label><input type="file" id="rAF" multiple style="display:none;">' +
-    '<div class="drop-box pc-only" id="rADrop"><div class="drop-box-t">写真や資料（PDF など）をここにドラッグ＆ドロップしてください（いくつでも）</div><div class="drop-box-or"><span>または</span><button type="button" id="rAB2" class="btn btn-dark">📎 ファイルを選択する</button></div><div class="drop-box-to">写真は「写真」タブ、それ以外は「資料」タブに入ります（写真20枚・資料10件まで）</div></div>' +
+    '<div class="drop-box pc-only" id="rADrop"><div class="drop-box-t">写真や資料（PDF など）をここにドラッグ＆ドロップしてください（いくつでも）。コピーした画面は Ctrl＋V で貼り付けられます</div><div class="drop-box-or"><span>または</span><button type="button" id="rAB2" class="btn btn-dark">📎 ファイルを選択する</button></div><div class="drop-box-to">写真は「写真」タブ、それ以外は「資料」タブに入ります（写真20枚・資料10件まで）</div></div>' +
     '<button type="button" id="rAB" class="btn btn-sub touch-only" style="width: 100%;">📎 写真・資料を選ぶ</button><div class="touch-only" style="font-size: 0.8rem; color: #333; margin-top: 4px;">写真は「写真」タブ、それ以外は「資料」タブに入ります（写真20枚・資料10件まで）</div>' +
     '<div id="rAList"></div>' +
     '<div id="rAWp" style="display:none;"><label style="margin-top: 10px;">写真の保存先フォルダ</label><select id="rASp"></select></div>' +
@@ -1504,7 +1526,7 @@ function xShell() {
   const k = X.kind, L = xLabel(k);
   $('xRoot').innerHTML =
     '<div class="touch-only" style="margin-bottom: 12px; display: flex; gap: 8px; align-items: center;"><button type="button" id="xAdd" class="btn btn-dark" style="flex: 1;">＋ ' + L + 'を追加</button></div>' +
-    '<div class="drop-box pc-only"><div class="drop-box-t">' + L + 'をここにドラッグ＆ドロップしてください</div>' +
+    '<div class="drop-box pc-only"><div class="drop-box-t">' + L + 'をここにドラッグ＆ドロップしてください（コピーした画面は Ctrl＋V で貼り付け）</div>' +
       '<div class="drop-box-or"><span>または</span><button type="button" id="xAdd2" class="btn btn-dark">ファイルを選択する</button></div>' +
       '<div class="drop-box-to" id="xTo"></div></div>' +
     '<input type="file" id="xFile" multiple style="display:none;"' + (k === 'photo' ? ' accept="image/*"' : '') + '>' +
@@ -2352,7 +2374,7 @@ function showSiteForm(s) {
   const date = (id, val, label) => '<div class="form-group"><label>' + label + '</label><div class="date-pick"><input type="date" id="' + id + '" class="date-input" value="' + val + '"><button type="button" class="btn btn-sub" data-clear="' + id + '">未定</button></div></div>';
   const exist = n => { const u = v['imageUrl' + n]; return u ? '登録済: <a href="' + esc(u) + '" target="_blank" rel="noopener noreferrer">画像を確認</a>' : v['imageThumb' + n] ? '登録済（送信待ち）' : ''; };
   const pic = n => '<div class="form-group"><label>外観画像' + n + '</label><input type="file" id="fImg' + n + '" accept="image/*" style="display:none;">' +
-    '<button type="button" class="btn btn-sub" id="fImgB' + n + '" style="width: 100%;">📷 写真を撮影 / 端末から選択</button><div class="drop-hint pc-only">ここに画像をドラッグ＆ドロップしても追加できます</div>' +
+    '<button type="button" class="btn btn-sub" id="fImgB' + n + '" style="width: 100%;">📷 写真を撮影 / 端末から選択</button><div class="drop-hint pc-only">ここに画像をドラッグ＆ドロップ、またはこの欄を押して Ctrl＋V で貼り付けても追加できます</div>' +
     '<div id="fImgW' + n + '" style="display:none; margin-top:8px; text-align:center;"><img id="fImgP' + n + '" alt="" style="max-height:160px; border-radius:4px;"><br><button type="button" class="btn btn-sub" id="fImgC' + n + '" style="margin-top:4px;">✕ 選択解除</button></div>' +
     '<div id="fImgI' + n + '" style="font-size:0.75rem; color:var(--muted); margin-top:4px;">' + exist(n) + '</div></div>';
   show('panelNewSite', isNew ? '現場新規追加' : '現場情報編集', isNew ? showList : () => showDetail(s.id), isNew ? '← 現場選択へ' : '← 戻る');
@@ -3622,12 +3644,12 @@ async function bugOpen(shot) {
   }
   const ov = document.createElement('div'); ov.id = 'bugOv';
   ov.innerHTML = '<div class="bug-box"><div class="bug-h"><span>不具合修正の報告</span><button type="button" class="btn btn-sub" id="bugClose">閉じる</button></div>' +
-    '<div id="bugPic"></div><input type="file" id="bugIn" accept="image/*" style="display:none;"><button type="button" class="btn btn-sub" id="bugPick" style="width:100%;margin-top:6px;">写真を選ぶ</button>' +
+    '<div id="bugPic"></div><input type="file" id="bugIn" accept="image/*" style="display:none;"><button type="button" class="btn btn-sub" id="bugPick" style="width:100%;margin-top:6px;">写真を選ぶ</button><div class="pc-only bug-hint">パソコンは、写真をこの窓に落とすか、画面をコピーして Ctrl＋V で貼り付けても入ります。</div>' +
     '<div class="form-group" style="margin-top:10px;"><label for="bugText">どこが、どうおかしいか</label><textarea id="bugText" maxlength="4000" placeholder="例：注文書の数が1つ少なく出ます"></textarea></div>' +
     '<div class="bug-meta">報告者：<span data-i18n-skip>' + esc(me.name || me.uid) + '</span><br>日時：' + bugTime(at) + '<br>画面：<span data-i18n-skip>' + esc(where) + '</span></div>' +
     '<button type="button" class="btn btn-dark" id="bugSend" style="width:100%;">送る</button><div class="bug-msg" id="bugMsg"></div></div>';
   document.body.appendChild(ov);
-  const pic = () => { if ($('bugPic')) $('bugPic').innerHTML = blob ? '<img class="bug-img" src="' + URL.createObjectURL(blob) + '" alt="">' : '<div class="bug-noimg">' + (shot ? '画面を写せませんでした。' : '') + 'スマホやパソコンで撮った画面の写真を選べます。<span class="pc-only">パソコンは、写真をこの窓に落としても入ります。</span></div>'; };
+  const pic = () => { if ($('bugPic')) $('bugPic').innerHTML = blob ? '<img class="bug-img" src="' + URL.createObjectURL(blob) + '" alt="">' : '<div class="bug-noimg">' + (shot ? '画面を写せませんでした。' : '') + 'スマホやパソコンで撮った画面の写真を選べます。</div>'; };
   pic();
   $('bugClose').onclick = () => ov.remove();
   $('bugPick').onclick = () => $('bugIn').click();
@@ -3637,6 +3659,14 @@ async function bugOpen(shot) {
   const box = ov.querySelector('.bug-box');
   ov.addEventListener('dragover', e => { e.preventDefault(); box.classList.add('drag'); });
   ov.addEventListener('dragleave', e => { if (e.target === ov) box.classList.remove('drag'); });
+  // パソコン：画面をコピー（Win＋Shift＋S など）して Ctrl＋V で貼り付けても入る（2026-11-18 ユーザー指示）。字の貼り付けはそのまま
+  const onPaste = e => {
+    if (!ov.isConnected) { document.removeEventListener('paste', onPaste); return; }
+    const it = [...((e.clipboardData && e.clipboardData.items) || [])].find(i => i.kind === 'file' && /^image\//.test(i.type || ''));
+    if (!it || (e.target === $('bugText') && [...e.clipboardData.types].includes('text/plain'))) return;   // 説明の欄に字を貼るときは字
+    e.preventDefault(); take(pasteFiles(e).find(f => /^image\//.test(f.type || '')) || it.getAsFile());
+  };
+  document.addEventListener('paste', onPaste);
   ov.addEventListener('drop', e => { e.preventDefault(); box.classList.remove('drag'); take([...((e.dataTransfer && e.dataTransfer.files) || [])].find(f => /^image\//.test(f.type || '')) || (e.dataTransfer && e.dataTransfer.files[0])); });
   $('bugSend').onclick = async () => {
     const text = $('bugText').value.trim();
@@ -4273,7 +4303,7 @@ document.getElementById('ptestNotify').onclick = async function () {
 };
 </script>
 <div style="position:fixed;top:0;left:0;right:0;height:3px;background:#c00;z-index:99999;pointer-events:none;"></div>
-<div id="ptestLabel" style="position:fixed;top:calc(env(safe-area-inset-top) + 6px);left:50%;transform:translateX(-50%);z-index:99999;pointer-events:none;background:#c00;color:#fff;font-weight:800;font-size:12px;padding:2px 10px;border-radius:10px;white-space:nowrap;transition:opacity .5s;">試し用（本番ではありません）11/18 11:55</div>
+<div id="ptestLabel" style="position:fixed;top:calc(env(safe-area-inset-top) + 6px);left:50%;transform:translateX(-50%);z-index:99999;pointer-events:none;background:#c00;color:#fff;font-weight:800;font-size:12px;padding:2px 10px;border-radius:10px;white-space:nowrap;transition:opacity .5s;">試し用（本番ではありません）11/18 12:42</div>
 <script>setTimeout(function () { var l = document.getElementById('ptestLabel'); if (l) { l.style.opacity = '0'; setTimeout(function () { l.remove(); }, 600); } }, 4000);</script>
 </body>
 </html>
