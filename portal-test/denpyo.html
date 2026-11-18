@@ -6154,6 +6154,7 @@
     function hostMe() {
       return HOST.call('getOrdererInfo', []).then(function (r) {
         ME = r.orderer || null;
+        if (r.logos) for (var lk in r.logos) LOGOS[lk] = r.logos[lk];   // ほかの会社の注文書を開いてもロゴを出す（2026-11-18）
         if (ME && ME.company && ME.company.logo) LOGOS[ME.company.name] = ME.company.logo;
         if (ME && !SRV.fileId && !S.oi && !(S.items || []).length) { S.oi = meSnap(); S.orderer = ME.name; }
         renderAll();
