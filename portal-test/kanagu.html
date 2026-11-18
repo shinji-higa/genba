@@ -165,7 +165,7 @@
     .dp-line { display: flex; border-bottom: 1px solid #000; height: 6.4mm; align-items: flex-end; padding-bottom: 0.6mm; gap: 3mm; white-space: nowrap; overflow: hidden; }
     .dp-line .k { width: 15mm; text-decoration: underline; flex-shrink: 0; }
     .dp-line .v { flex: 1; overflow: hidden; text-overflow: ellipsis; }
-    .dp-co { width: 50%; text-align: right; padding-top: 0; font-size: 7.2pt; line-height: 1.32; }
+    .dp-co { width: 50%; text-align: right; padding-top: 0; font-size: 7.2pt; line-height: 1.32; display: flex; flex-direction: column; justify-content: flex-end; }   /* 会社の情報は下詰め（Memo の枠のほう）。ロゴの無い会社が上に寄らないように（2026-11-18 ユーザー指示） */
     .dp-co .co-who { font-weight: 700; }
     .dp-co img { height: 6mm; vertical-align: middle; }
     .dp-co .nm { display: block; margin: 0.5mm 0 0; font-size: 9.5pt; font-weight: 700; }
