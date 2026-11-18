@@ -79,7 +79,8 @@
   /* 不具合修正の報告：ボタンはすごく目立つ色で（ユーザー指示 2026-11-02） */
   #bugFab { position: fixed; right: 0; top: 36%; z-index: 9800; display: none; writing-mode: vertical-rl; padding: 14px 7px; background: #e60012; color: #ffffff; font-size: 0.95rem; font-weight: 800; letter-spacing: 0.12em; border: 2px solid #ffffff; border-right: 0; border-radius: 10px 0 0 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.45); cursor: pointer; font-family: inherit; }
   #bugFab.on { display: block; }
-  body.fv-open #bugFab { display: none !important; }
+  /* 拡大表示の中では「次へ」（右のまん中）に重ならないよう、その上に出す（11/5 は隠していたが、PDFを見ながら報告できなかった。2026-11-18 不具合報告） */
+  body.fv-open #bugFab.on { top: auto; bottom: calc(50% + 40px); padding: 10px 6px; font-size: 0.85rem; }
   /* スマホで横に指を動かすと、となりのファイルが指についてくる（2026-11-16 ユーザー指示「パッパではなく滑らかに」） */
   #fileViewer { overflow: hidden; }
   .fv-peek { position: absolute; left: 0; width: 100%; background: #111; display: flex; align-items: center; justify-content: center; z-index: 1; pointer-events: none; }
@@ -173,12 +174,14 @@
     #printArea .pp { break-after: page; page-break-after: always; }
     #printArea .pp:last-child { break-after: auto; page-break-after: auto; }
     #printArea img { display: block; max-width: 100%; max-height: 98vh; margin: 0 auto; }
-  }   /* 拡大表示の「次へ」に重なるので隠す（2026-11-05 運用テスト No.9・10） */
+  }
   #bugFab:disabled { background: #7a0009; }
   #bugOv { position: fixed; inset: 0; z-index: 9900; background: rgba(17,17,17,0.55); display: flex; align-items: center; justify-content: center; padding: 12px; }
   .bug-box { background: #fff; color: #111; width: min(620px, 100%); max-height: 100%; overflow: auto; border-radius: 10px; padding: 14px; box-sizing: border-box; }
   .bug-h { display: flex; justify-content: space-between; align-items: center; gap: 8px; font-weight: 800; font-size: 1.05rem; margin-bottom: 10px; }
   .bug-img { display: block; width: 100%; max-height: 36vh; object-fit: contain; background: #e9e9ec; border: 1px solid #666; }
+  .bug-hint { font-size: 0.82rem; color: #333; margin-top: 4px; }
+  .bug-box.drag { outline: 3px dashed #1a73e8; outline-offset: -3px; }
   .bug-noimg { padding: 18px 10px; text-align: center; background: #f2f2f4; border: 1px dashed #666; color: #333; font-size: 0.9rem; font-weight: 600; }
   .bug-box textarea { width: 100%; box-sizing: border-box; min-height: 110px; font-size: 16px; padding: 8px; border: 1px solid #555; border-radius: 4px; font-family: inherit; }
   .bug-meta { font-size: 0.84rem; color: #333; line-height: 1.6; margin: 8px 0; }
@@ -272,7 +275,7 @@ auth.languageCode = 'ja';   // パスワード再設定のメールと画面を�
 // 端末の控え（電波なしでも見られる）は1つのタブだけが持つ。2つ目からのタブは、開いている間だけの控えでサーバーと直接やりとりする。
 // 前は全部のタブで控えを分け合っていて、サーバーとやりとりするタブが裏にあると、ほかのタブに最新が届くまで約28秒待っていた（2026-11-05 確認）
 const db = initializeFirestore(app, { localCache: persistentLocalCache({ tabManager: persistentSingleTabManager() }) });
-const APP_VER = 'Ver.20261117-03';
+const APP_VER = 'Ver.20261118-05';
 /* 更新の内容（2026-11-16 ユーザー指示）。新しい Ver に入れ替わったあと最初に開いたとき、まだ見ていない Ver の分を窓で出す。設定の「更新履歴を見る」でも全部見られる。
    載せるもの（2026-11-16 ユーザー決定）：増えた機能／使う人が気づく不具合の直し（困っていた・報告が来たもの。裏の直しは載せない）／押す場所や使い方が変わる見た目の変更（色や大きさだけの変更は載せない）。
    1項目は短い1〜2文、です・ます、日本語と es（スペイン語）。who：all＝全員、mgr＝現場管理者とマスターだけ（この2つだけ）。
@@ -282,6 +285,9 @@ const APP_VER = 'Ver.20261117-03';
    画像（img）：押す場所が変わったもの・新しいボタンができたものだけ、その所に赤い枠を付けた画面の画像を rel/ に置いて付ける（名前・電話番号は見本にする。ユーザー決定 2026-11-16）。
    本番に入れるときは、いちばん上の ver: 'NEXT' を本当の Ver（APP_VER と同じ）に、date をその日に書きかえる */
 const RELEASES = [
+  { ver: 'Ver.20261118-05', date: '2026/11/18', items: [
+    { who: 'all', k: 'change', ja: '注文書の「第1版」「第2版」の表示をやめました。最初に「工場へ提出」した注文書はNOだけになり、「修正する」で直してもう一度提出すると「修正①」「修正②」…と付きます（PDFの名前は「_NO3_修正1_」のようになります）。', es: 'Las hojas de pedido ya no muestran «Versión 1», «Versión 2». El primer envío con «Enviar a fábrica» muestra solo el NO; si corrige con «Corregir» y vuelve a enviar, se añade «Corrección ①», «②»… (el nombre del PDF queda como «_NO3_修正1_»).' }
+  ] },
   { ver: 'Ver.20261116-04', date: '2026/11/16', items: [
     { who: 'all', k: 'fix', ja: 'iPhone・iPad で、写真・PDFの「印刷」が動かない・2回目が反応しないことがあったのを直しました。iPhone・iPad では「印刷」を押すと共有の画面が出るので、「プリント」を選んで印刷します。', es: 'Se corrigió que en iPhone/iPad «Imprimir» a veces no funcionaba. Ahora aparece la pantalla de compartir; elija «Imprimir».' }
   ] },
@@ -1674,7 +1680,7 @@ function xList() {
       '<div style="overflow:hidden; text-overflow:ellipsis; flex:1; padding-right:8px;"><a href="javascript:void(0)" data-a="open" style="color:var(--link-blue); text-decoration:underline;">' + (doc_ ? '📄 ' : '📷 ') + esc(it.name) + '</a>' +
       '<span style="font-size:0.78rem; color:var(--muted); margin-left:8px;">' + xDate(it.at) + '</span>' + (it.byName ? '<span style="font-size:0.78rem; color:var(--muted); margin-left:6px;">👤 ' + esc(it.byName) + '</span>' : '') + state(it) +
       (it.comment ? '<div style="font-size:0.75rem; color:var(--muted); margin-top:2px;" data-i18n-skip>💬 ' + esc(trMain(it.comment, (it.tr || {}).comment)) + '</div>' : '') + '</div>' +
-      '<div style="display:flex; gap:6px; flex-shrink:0;">' + cmBtn(kind, it.id, 'btn btn-sub cm-btn-row') + acts('class="btn btn-sub" style="padding:2px 6px; font-size:0.78rem;"').replace(/" style="color:var\(--error-text\);"/g, ' color:var(--error-text);"') + '</div></div>';
+      '<div style="display:flex; gap:6px; flex-shrink:0;">' + cmBtn(kind, it.id, 'btn btn-sub cm-btn-row') + acts('class="btn btn-sub" style="padding:2px 6px; font-size:0.78rem;"').replace(/;" data-a="del" style="color:var\(--error-text\);"/g, '; color:var(--error-text);" data-a="del"') + '</div></div>';   // 削除の合図（data-a）を壊さずに赤字にする（「文字のみ」の削除が反応しなかった。2026-11-18 不具合報告）
     return '<div class="photo-card' + (chk ? ' is-selected' : '') + '" data-id="' + id + '">' + cmBtn(kind, it.id, 'cm-badge') +
       (X.selMode ? '<div class="photo-card-check-wrap"><input type="checkbox" class="bulk-checkbox"' + (chk ? ' checked' : '') + '></div>' : '') +
       '<div class="photo-card-img-wrap" data-a="open"' + (doc_ || !it.thumb ? ' style="background:#f4f4f6;"' : '') + '>' + (it.thumb ? '<img src="' + esc(it.thumb) + '" alt="' + esc(it.name) + '"' + ((it.rot || {}).all ? ' class="r' + it.rot.all + '"' : '') + '>' : '<span style="font-size:2.4rem;">📄</span>') + '</div>' +
@@ -2466,12 +2472,12 @@ function showSiteForm(s) {
    送るときに、ほかの人が先に直していたら上書きせず、別の伝票として残す
    1枚の中身は sites/{id}/orderBody、一覧に出す情報は sites/{id}/orders、記録は sites/{id}/orderLog */
 const O_KIND = {
-  kaku: { host: 'denpyoHost', src: 'denpyo.html?v=21', title: '角ダクト注文', word: '伝票', log: '角ダクト', fn: 'Denpyo' },
-  maru: { host: 'maruHost', src: 'maru.html?v=8', title: '丸ダクト注文', word: '注文書', log: '丸ダクト', fn: 'Maru' },
-  cons: { host: 'consHost', src: 'cons.html?v=24', title: '消耗品注文', word: '注文書', log: '消耗品', fn: 'Cons' },
-  kana: { host: 'kanaHost', src: 'kana.html?v=9', title: '金物注文（添付）', word: '注文書', log: '金物（添付）', fn: 'Kana' },
-  hood: { host: 'hoodHost', src: 'hood.html?v=36', title: 'フード注文', word: '注文書', log: 'フード', fn: 'Hood' },   // 厨房フード（箱型・山型・二重。数字入りの図の注文書。2026-11-03）
-  kanagu: { host: 'kanaguHost', src: 'kanagu.html?v=14', title: '金物注文', word: '注文書', log: '金物', fn: 'Kanagu' }   // 鋼材テンプレート（三角ブラケット・穴あきアングル。図面と立体図の注文書。2026-11-04）
+  kaku: { host: 'denpyoHost', src: 'denpyo.html?v=24', title: '角ダクト注文', word: '伝票', log: '角ダクト', fn: 'Denpyo' },
+  maru: { host: 'maruHost', src: 'maru.html?v=11', title: '丸ダクト注文', word: '注文書', log: '丸ダクト', fn: 'Maru' },
+  cons: { host: 'consHost', src: 'cons.html?v=27', title: '消耗品注文', word: '注文書', log: '消耗品', fn: 'Cons' },
+  kana: { host: 'kanaHost', src: 'kana.html?v=12', title: '金物注文（添付）', word: '注文書', log: '金物（添付）', fn: 'Kana' },
+  hood: { host: 'hoodHost', src: 'hood.html?v=39', title: 'フード注文', word: '注文書', log: 'フード', fn: 'Hood' },   // 厨房フード（箱型・山型・二重。数字入りの図の注文書。2026-11-03）
+  kanagu: { host: 'kanaguHost', src: 'kanagu.html?v=17', title: '金物注文', word: '注文書', log: '金物', fn: 'Kanagu' }   // 鋼材テンプレート（三角ブラケット・穴あきアングル。図面と立体図の注文書。2026-11-04）
 };
 function oOpen(s) {
   const btn = (k, ic, t, sub) => '<button type="button" class="order-btn' + (k ? ' on' : '') + '"' + (k ? ' data-o="' + k + '"' : ' disabled') + '><span class="order-ic">' + ic + '</span><span class="order-t">' + t + '</span><span class="order-s">' + sub + '</span></button>';
@@ -2546,7 +2552,10 @@ function oHost(s, k) {
       const u = await oRead(() => getDoc(doc(db, 'users', me.uid)), () => getDocFromCache(doc(db, 'users', me.uid))).catch(() => null);
       const x = (u && u.data()) || {}, home = homeOf(me.group), c = doc(db, 'companies', home);
       const co = await oRead(() => getDoc(c), () => getDocFromCache(c)).catch(() => null);
-      return { orderer: { name: me.name, mobile: x.mobile || '', google: x.google || '', group: home, company: co && co.exists() ? co.data() : home === 'エクスケア' ? { name: '', addr: '', tel: '', fax: '', logo: '', addrs: [] } : { name: '\u3000', addr: '', tel: '', fax: '', logo: '', addrs: [] } } };   // 会社が未登録の Other の人は空ける（2026-11-17）
+      // ほかの会社の人の注文書を開いたときも、その会社のロゴを出す（マスターが NAFA の注文書を開くとロゴが無かった。2026-11-18 不具合報告）
+      const cs = await oRead(() => getDocs(collection(db, 'companies')), () => getDocsFromCache(collection(db, 'companies'))).catch(() => null), logos = {};
+      if (cs) cs.docs.forEach(d => { const y = d.data(); if (y.name && y.logo) logos[y.name] = y.logo; });
+      return { logos, orderer: { name: me.name, mobile: x.mobile || '', google: x.google || '', group: home, company: co && co.exists() ? co.data() : home === 'エクスケア' ? { name: '', addr: '', tel: '', fax: '', logo: '', addrs: [] } : { name: '\u3000', addr: '', tel: '', fax: '', logo: '', addrs: [] } } };   // 会社が未登録の Other の人は空ける（2026-11-17）
     },
     async getDuctSpecs() {
       const c = collection(db, 'ductSpecs');
@@ -2682,9 +2691,9 @@ function oHost(s, k) {
           if (d.exists() && !d.data().deleted) { await updateDoc(o, { deleted: true }); old = d.data().name; }
         } catch (e) {}
       }
-      log('提出' + (old ? '（前の版のPDFを置き換え）' : ''), no, rev, url);
+      log('提出' + (old ? '（前回のPDFを置き換え）' : ''), no, rev, url);
       notify(s, 'doc', '「' + folder + '」に資料を追加：' + name, { go: { t: 'doc', ids: [ref.id] } });
-      return { message: '「' + name + '」を保存しました。' + (old ? '\n前の版（' + old + '）は削除しました。' : ''), url, pdfId: ref.id, folderId: fid };
+      return { message: '「' + name + '」を保存しました。' + (old ? '\n前回のPDF（' + old + '）は削除しました。' : ''), url, pdfId: ref.id, folderId: fid };
     }
   };
   return {
@@ -3579,7 +3588,7 @@ onAuthStateChanged(auth, u => {
   bugShow = false; bugFab().classList.remove('on');
   if (u) bugUnsub = onSnapshot(bugRef(), s => { bugShow = !!(s.exists() && s.data().on); bugFab().classList.toggle('on', bugShow); }, e => { window.portalLastError = e && e.code; });
 });
-const bugWhere = () => { const f = bugFrame(), t = $('title').textContent; return f ? f.title + '（' + t + '）' : t; };
+const bugWhere = () => { const f = bugFrame(), t = $('title').textContent, v = VW && VW.list[VW.index]; return f ? f.title + '（' + t + '）' : v ? t + '（拡大表示：' + (v.name || '') + '）' : t; };
 const bugDevice = () => { const u = navigator.userAgent, n = /iPhone/.test(u) ? 'iPhone' : /iPad|Macintosh.*Mobile/.test(u) ? 'iPad' : /Android/.test(u) ? 'Android' : /Windows/.test(u) ? 'Windows' : /Mac/.test(u) ? 'Mac' : 'その他'; return n + ' ' + innerWidth + '×' + innerHeight; };
 const bugTime = t => { const d = new Date(t); return d.getFullYear() + '/' + pad2(d.getMonth() + 1) + '/' + pad2(d.getDate()) + ' ' + pad2(d.getHours()) + ':' + pad2(d.getMinutes()); };
 function bugBlob(cv) {
@@ -3616,7 +3625,7 @@ async function bugOpen(shot) {
   }
   const ov = document.createElement('div'); ov.id = 'bugOv';
   ov.innerHTML = '<div class="bug-box"><div class="bug-h"><span>不具合修正の報告</span><button type="button" class="btn btn-sub" id="bugClose">閉じる</button></div>' +
-    '<div id="bugPic"></div><input type="file" id="bugIn" accept="image/*" style="display:none;"><button type="button" class="btn btn-sub" id="bugPick" style="width:100%;margin-top:6px;">写真を選ぶ</button>' +
+    '<div id="bugPic"></div><input type="file" id="bugIn" accept="image/*" style="display:none;"><button type="button" class="btn btn-sub" id="bugPick" style="width:100%;margin-top:6px;">写真を選ぶ</button><div class="pc-only bug-hint">パソコンは、写真をこの窓に落としても入ります。</div>' +
     '<div class="form-group" style="margin-top:10px;"><label for="bugText">どこが、どうおかしいか</label><textarea id="bugText" maxlength="4000" placeholder="例：注文書の数が1つ少なく出ます"></textarea></div>' +
     '<div class="bug-meta">報告者：<span data-i18n-skip>' + esc(me.name || me.uid) + '</span><br>日時：' + bugTime(at) + '<br>画面：<span data-i18n-skip>' + esc(where) + '</span></div>' +
     '<button type="button" class="btn btn-dark" id="bugSend" style="width:100%;">送る</button><div class="bug-msg" id="bugMsg"></div></div>';
@@ -3625,7 +3634,13 @@ async function bugOpen(shot) {
   pic();
   $('bugClose').onclick = () => ov.remove();
   $('bugPick').onclick = () => $('bugIn').click();
-  $('bugIn').onchange = async e => { const f = e.target.files[0]; if (!f) return; try { blob = await bugFile(f); pic(); } catch (x) { $('bugMsg').textContent = 'この写真は読み込めませんでした。'; } };
+  const take = async f => { if (!f) return; if (!/^image\//.test(f.type || '')) { $('bugMsg').textContent = '写真（画像）を入れてください。'; return; } try { blob = await bugFile(f); pic(); $('bugMsg').textContent = ''; } catch (x) { $('bugMsg').textContent = 'この写真は読み込めませんでした。'; } };
+  $('bugIn').onchange = e => take(e.target.files[0]);
+  // パソコン：写真を窓の上に落としても入る（2026-11-18 不具合報告「写真をドロップできない」）
+  const box = ov.querySelector('.bug-box');
+  ov.addEventListener('dragover', e => { e.preventDefault(); box.classList.add('drag'); });
+  ov.addEventListener('dragleave', e => { if (e.target === ov) box.classList.remove('drag'); });
+  ov.addEventListener('drop', e => { e.preventDefault(); box.classList.remove('drag'); take([...((e.dataTransfer && e.dataTransfer.files) || [])].find(f => /^image\//.test(f.type || '')) || (e.dataTransfer && e.dataTransfer.files[0])); });
   $('bugSend').onclick = async () => {
     const text = $('bugText').value.trim();
     if (!text) { $('bugMsg').textContent = '説明を書いてください。'; return; }
