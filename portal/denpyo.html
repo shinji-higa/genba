@@ -78,6 +78,10 @@
     .spec-row + .spec-row, .note + .spec-row { border-top: 1.5px solid #b9bdc3; padding-top: 8px; }
     .spec-row .lbl { margin: 0; }
     .spec-note { font-size: 0.75rem; color: var(--muted); background: #eceef0; border-radius: 4px; padding: 8px 10px; line-height: 1.6; }
+    /* パソコン：写真を落とせる点線の四角（2026-11-20） */
+    .sk-drop { display: none; border: 2px dashed #777; background: #f7f7f7; border-radius: 6px; padding: 12px 10px; margin-top: 8px; text-align: center; font-weight: 700; font-size: 0.85rem; color: #222; }
+    @media (hover: hover) and (pointer: fine) { .sk-drop { display: block; } }
+    .drop-on { outline: 3px dashed #1a73e8 !important; outline-offset: 2px; background-color: #eef4ff !important; }
     .spec-note b { color: #333; }
     .err { color: var(--error-text); font-weight: 700; }
     .errbox { background: var(--error-bg); color: var(--error-text); border-radius: 4px; padding: 8px 10px; font-size: 0.8rem; font-weight: 600; line-height: 1.5; margin-top: 6px; }
@@ -2488,14 +2492,16 @@
        写真は紙に収まるように縮めて置き、その上に線を描く。指・タッチペン・マウスは Pointer Events でまとめて扱う */
     var SK_W = 3;   // 線の太さ（3＝太い、1.5＝細い）
     function skPad() {
-      return '<div class="sec">手書き・写真　<span style="font-weight:400;">指・タッチペン・マウスで描く</span></div>' +
+      return '<div id="edSkWrap"><div class="sec">手書き・写真　<span style="font-weight:400;">指・タッチペン・マウスで描く</span></div>' +
         '<canvas id="edSketch" width="600" height="450" style="width:100%; aspect-ratio:4/3; touch-action:none; background:#fff; border:1px solid #a3a7ad; border-radius:6px; display:block;"></canvas>' +
         '<div style="display:flex; flex-wrap:wrap; gap:6px; margin-top:8px; align-items:center;">' +
         '<div class="chips" id="edSkW">' + [[3, '太い線'], [1.5, '細い線']].map(function (o) { return '<span class="chip' + (SK_W === o[0] ? ' on' : '') + '" data-v="' + o[0] + '">' + o[1] + '</span>'; }).join('') + '</div>' +
         '<button type="button" class="btn btn-sub" onclick="skUndo()">1つ戻す</button><button type="button" class="btn btn-sub" onclick="skClear()">線を全部消す</button>' +
         '<label class="btn btn-sub" style="margin:0;">写真を入れる<input type="file" accept="image/*" style="display:none;" onchange="skPhoto(this)"></label>' +
         (ED.photo ? '<button type="button" class="btn btn-sub" onclick="skPhotoDel()">写真を外す</button>' : '') + '</div>' +
-        '<div class="spec-note" style="margin-top:6px;">接続・寸法などの仕様も、図に手書きで書き込んでください。写真の上にも書けます。</div>';
+        // パソコン：ポータルのほかの場所と同じ点線の四角（2026-11-20 ユーザー「全部に適応したい」）。図の上に落としても入る
+        '<div class="sk-drop" id="edSkDrop">写真をここ（または上の図）にドラッグ＆ドロップしても入ります（1枚）</div>' +
+        '<div class="spec-note" style="margin-top:6px;">接続・寸法などの仕様も、図に手書きで書き込んでください。写真の上にも書けます。</div></div>';
     }
     var SK_IMG = null;
     function skFit(w, h) { var k = Math.min(600 / w, 450 / h); return { x: (600 - w * k) / 2, y: (450 - h * k) / 2, w: w * k, h: h * k }; }   // 写真を紙に収める
@@ -2523,14 +2529,25 @@
       });
       var end = function () { if (!cur) return; if (cur.p.length === 1) cur.p.push([cur.p[0][0] + 0.5, cur.p[0][1] + 0.5]); cur = null; refreshEd(); };
       cv.addEventListener('pointerup', end); cv.addEventListener('pointercancel', end); cv.addEventListener('pointerleave', end);
+      // パソコン：写真を落とすと「写真を入れる」と同じ（2026-11-20）
+      var wrap = document.getElementById('edSkWrap'), dn = 0, isF = function (e) { return [].slice.call((e.dataTransfer && e.dataTransfer.types) || []).indexOf('Files') >= 0; };
+      var dOn = function (v) { var b = document.getElementById('edSkDrop'); if (b) b.classList.toggle('drop-on', v); cv.classList.toggle('drop-on', v); };
+      wrap.addEventListener('dragenter', function (e) { if (!isF(e)) return; e.preventDefault(); dn++; dOn(true); });
+      wrap.addEventListener('dragover', function (e) { if (!isF(e)) return; e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; });
+      wrap.addEventListener('dragleave', function (e) { if (!isF(e)) return; if (--dn <= 0) { dn = 0; dOn(false); } });
+      wrap.addEventListener('drop', function (e) {
+        if (!isF(e)) return; e.preventDefault(); e.stopPropagation(); dn = 0; dOn(false);
+        var f = [].slice.call(e.dataTransfer.files).filter(function (x) { return /^image\//.test(x.type) || /\.(jpe?g|png|gif|webp|heic|heif)$/i.test(x.name || ''); })[0];
+        if (f) skPhotoFile(f); else toast('写真（画像）を落としてください');
+      });
       document.getElementById('edSkW').onclick = function (e) { var c = e.target.closest('.chip'); if (!c) return; SK_W = +c.getAttribute('data-v'); this.querySelectorAll('.chip').forEach(function (x) { x.classList.toggle('on', x === c); }); };
       skRedraw();
     }
     function skUndo() { (ED.sketch || []).pop(); skRedraw(); refreshEd(); }
     function skClear() { var go = function () { ED.sketch = []; skRedraw(); refreshEd(); }; if (!(ED.sketch || []).length) { go(); return; } askYes('手書きの線を全部消しますか？（写真は残ります）').then(function (ok) { if (ok) go(); }); }
     function skPhotoDel() { ED.photo = ''; ED.photoId = ''; SK_IMG = null; openEditor(); }
-    function skPhoto(inp) {   // 写真は長い辺 1000 に縮めて JPEG に（保存を軽くする）
-      var file = inp.files && inp.files[0]; if (!file) return;
+    function skPhoto(inp) { var file = inp.files && inp.files[0]; if (file) skPhotoFile(file); }
+    function skPhotoFile(file) {   // 写真は長い辺 1000 に縮めて JPEG に（保存を軽くする）
       var rd = new FileReader();
       rd.onload = function () { var im = new Image(); im.onload = function () { var k = Math.min(1, 1000 / Math.max(im.width, im.height)), c = document.createElement('canvas'); c.width = Math.round(im.width * k); c.height = Math.round(im.height * k); c.getContext('2d').drawImage(im, 0, 0, c.width, c.height); ED.photo = c.toDataURL('image/jpeg', 0.7); ED.photoId = ''; SK_IMG = null; openEditor(); }; im.src = rd.result; };
       rd.readAsDataURL(file);
@@ -5558,6 +5575,9 @@
     function openSheet(id) { document.getElementById(id).classList.add('open'); document.body.style.overflow = 'hidden'; }
     function closeSheet(id) { if (id === 'editorBg' && document.getElementById('tapKp')) { FOCUSK = ''; document.getElementById('tapKp').classList.remove('on'); document.body.classList.remove('kpon'); } document.getElementById(id).classList.remove('open'); if (!document.querySelector('.sheet-bg.open')) document.body.style.overflow = ''; }
     function toast(m) { var t = document.getElementById('toast'); t.textContent = m; t.classList.add('show'); clearTimeout(t._h); t._h = setTimeout(function () { t.classList.remove('show'); }, 1600); }
+    // 落とせない所にファイルを落としても、ブラウザがそのファイルを開いて注文画面が消えないようにする（2026-11-20）
+    document.addEventListener('dragover', function (e) { if ([].slice.call((e.dataTransfer && e.dataTransfer.types) || []).indexOf('Files') >= 0) e.preventDefault(); });
+    document.addEventListener('drop', function (e) { if ([].slice.call((e.dataTransfer && e.dataTransfer.types) || []).indexOf('Files') >= 0) e.preventDefault(); });
 
     /* ===== 伝票（A4）の組み立て =====
        開口のない直管は表（直管リスト）に並べ、それ以外は図の枠に1つずつ入れる。直管リストの用紙と図の用紙は分ける（ユーザー指示 2026-10-27 案A）。

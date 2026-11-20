@@ -275,7 +275,7 @@ auth.languageCode = 'ja';   // パスワード再設定のメールと画面を�
 // 端末の控え（電波なしでも見られる）は1つのタブだけが持つ。2つ目からのタブは、開いている間だけの控えでサーバーと直接やりとりする。
 // 前は全部のタブで控えを分け合っていて、サーバーとやりとりするタブが裏にあると、ほかのタブに最新が届くまで約28秒待っていた（2026-11-05 確認）
 const db = initializeFirestore(app, { localCache: persistentLocalCache({ tabManager: persistentSingleTabManager() }) });
-const APP_VER = 'Ver.20261118-05';
+const APP_VER = 'Ver.20261120-01';
 /* 更新の内容（2026-11-16 ユーザー指示）。新しい Ver に入れ替わったあと最初に開いたとき、まだ見ていない Ver の分を窓で出す。設定の「更新履歴を見る」でも全部見られる。
    載せるもの（2026-11-16 ユーザー決定）：増えた機能／使う人が気づく不具合の直し（困っていた・報告が来たもの。裏の直しは載せない）／押す場所や使い方が変わる見た目の変更（色や大きさだけの変更は載せない）。
    1項目は短い1〜2文、です・ます、日本語と es（スペイン語）。who：all＝全員、mgr＝現場管理者とマスターだけ（この2つだけ）。
@@ -285,6 +285,9 @@ const APP_VER = 'Ver.20261118-05';
    画像（img）：押す場所が変わったもの・新しいボタンができたものだけ、その所に赤い枠を付けた画面の画像を rel/ に置いて付ける（名前・電話番号は見本にする。ユーザー決定 2026-11-16）。
    本番に入れるときは、いちばん上の ver: 'NEXT' を本当の Ver（APP_VER と同じ）に、date をその日に書きかえる */
 const RELEASES = [
+  { ver: 'Ver.20261120-01', date: '2026/11/20', items: [
+    { who: 'all', k: 'change', ja: 'パソコンでは、外観画像・会社のロゴ・金物注文（添付）・角ダクト注文の手書きの写真も、報告や写真と同じ点線の四角にドラッグ＆ドロップで入れられます。', es: 'En la computadora, las imágenes de la obra, el logo de la empresa, los adjuntos del pedido de herrajes y la foto del dibujo a mano del pedido de ductos rectangulares también se pueden arrastrar y soltar en el recuadro punteado, igual que en informes y fotos.' }
+  ] },
   { ver: 'Ver.20261118-05', date: '2026/11/18', items: [
     { who: 'all', k: 'change', ja: '注文書の「第1版」「第2版」の表示をやめました。最初に「工場へ提出」した注文書はNOだけになり、「修正する」で直してもう一度提出すると「修正①」「修正②」…と付きます（PDFの名前は「_NO3_修正1_」のようになります）。', es: 'Las hojas de pedido ya no muestran «Versión 1», «Versión 2». El primer envío con «Enviar a fábrica» muestra solo el NO; si corrige con «Corregir» y vuelve a enviar, se añade «Corrección ①», «②»… (el nombre del PDF queda como «_NO3_修正1_»).' }
   ] },
@@ -678,7 +681,10 @@ async function coOpen(uid) {
     f('coPostal', '郵便番号', c.postal, 'tel', '例: 661-0953') + f('coAddr', '住所', c.address, 'text', '例: 兵庫県尼崎市〇〇町1-2-3') +
     f('coTel', 'TEL', c.tel, 'tel', '例: 06-1234-5678') + f('coFax', 'FAX', c.fax, 'tel') +
     '<div class="form-group"><label>ロゴ（なくてもかまいません）</label><div id="coLogoV" style="margin:4px 0 8px;"></div>' +
-    '<input type="file" id="coLogoF" accept="image/png,image/jpeg" style="display:none;"><div style="display:flex;gap:8px;"><button type="button" id="coLogoB" class="btn btn-sub" style="flex:1;">ロゴの画像を選ぶ</button><button type="button" id="coLogoN" class="btn btn-sub" style="flex:1;">ロゴを外す</button></div>' +
+    '<input type="file" id="coLogoF" accept="image/png,image/jpeg" style="display:none;">' +
+    // パソコン：ほかと同じ点線の四角に落としても入る（2026-11-20 ユーザー「全部に適応したい」）
+    '<div class="drop-box pc-only" id="coLogoD" style="margin-bottom:8px;"><div class="drop-box-t">ロゴの画像（PNG・JPEG）をここにドラッグ＆ドロップしてください</div><div class="drop-box-or"><span>または</span><button type="button" id="coLogoB2" class="btn btn-dark">ロゴの画像を選ぶ</button></div></div>' +
+    '<div style="display:flex;gap:8px;"><button type="button" id="coLogoB" class="btn btn-sub touch-only" style="flex:1;">ロゴの画像を選ぶ</button><button type="button" id="coLogoN" class="btn btn-sub" style="flex:1;">ロゴを外す</button></div>' +
     '<div style="font-weight:700;font-size:0.85rem;margin-top:6px;">ロゴが無いときは、注文書にロゴを出しません。</div></div>' +
     (r.registered ? '' : '<div style="font-weight:700;font-size:0.85rem;margin:4px 0 8px;">登録すると、会社名（「株式会社」などを省いた名前）のグループに入ります。</div>') +
     '<div id="coMsg" style="font-weight:700;color:#c62828;min-height:1em;"></div>' +
@@ -686,8 +692,10 @@ async function coOpen(uid) {
     '<button type="button" id="coLater" class="btn btn-sub" style="width:100%;margin-top:8px;">' + (self && !r.registered ? 'あとで' : '閉じる') + '</button>';
   const showLogo = () => { const v = logo === 'none' ? '' : logo || c.logo || ''; $('coLogoV').innerHTML = v ? '<img src="' + esc(v) + '" alt="ロゴ" style="max-width:100%;max-height:80px;border:1px solid #ccc;border-radius:4px;padding:4px;background:#fff;">' : '<span style="color:#555;">ロゴなし</span>'; $('coLogoN').style.display = v ? '' : 'none'; };
   showLogo();
-  $('coLogoB').onclick = () => $('coLogoF').click();
-  $('coLogoF').onchange = async e => { const file = e.target.files[0]; e.target.value = ''; if (!file) return; try { logo = await coLogoShrink(file); showLogo(); } catch (x) { $('coMsg').textContent = x.message; } };
+  $('coLogoB').onclick = $('coLogoB2').onclick = () => $('coLogoF').click();
+  const takeLogo = async file => { if (!file) return; try { logo = await coLogoShrink(file); showLogo(); } catch (x) { $('coMsg').textContent = x.message; } };
+  $('coLogoF').onchange = e => { const file = e.target.files[0]; e.target.value = ''; takeLogo(file); };
+  dropOn($('coLogoD'), files => { files = onlyImages(files); if (files.length) takeLogo(files[0]); });
   $('coLogoN').onclick = () => { logo = 'none'; showLogo(); };
   $('coLater').onclick = () => { if (self && !r.registered) { try { sessionStorage.setItem('portalCoLater', '1'); } catch (e) {} } close(); };
   $('coSave').onclick = async () => {
@@ -2355,7 +2363,9 @@ function showSiteForm(s) {
   const date = (id, val, label) => '<div class="form-group"><label>' + label + '</label><div class="date-pick"><input type="date" id="' + id + '" class="date-input" value="' + val + '"><button type="button" class="btn btn-sub" data-clear="' + id + '">未定</button></div></div>';
   const exist = n => { const u = v['imageUrl' + n]; return u ? '登録済: <a href="' + esc(u) + '" target="_blank" rel="noopener noreferrer">画像を確認</a>' : v['imageThumb' + n] ? '登録済（送信待ち）' : ''; };
   const pic = n => '<div class="form-group"><label>外観画像' + n + '</label><input type="file" id="fImg' + n + '" accept="image/*" style="display:none;">' +
-    '<button type="button" class="btn btn-sub" id="fImgB' + n + '" style="width: 100%;">📷 写真を撮影 / 端末から選択</button><div class="drop-hint pc-only">ここに画像をドラッグ＆ドロップしても追加できます</div>' +
+    '<button type="button" class="btn btn-sub touch-only" id="fImgB' + n + '" style="width: 100%;">📷 写真を撮影 / 端末から選択</button>' +
+    // パソコン：報告・写真・資料と同じ点線の四角にする（2026-11-20 ユーザー「フォームの見た目が他と違うからわかりにくい」）
+    '<div class="drop-box pc-only" style="margin-bottom:0;"><div class="drop-box-t">外観画像' + n + 'をここにドラッグ＆ドロップしてください（1枚）</div><div class="drop-box-or"><span>または</span><button type="button" id="fImgD' + n + '" class="btn btn-dark">📷 写真を選択する</button></div></div>' +
     '<div id="fImgW' + n + '" style="display:none; margin-top:8px; text-align:center;"><img id="fImgP' + n + '" alt="" style="max-height:160px; border-radius:4px;"><br><button type="button" class="btn btn-sub" id="fImgC' + n + '" style="margin-top:4px;">✕ 選択解除</button></div>' +
     '<div id="fImgI' + n + '" style="font-size:0.75rem; color:var(--muted); margin-top:4px;">' + exist(n) + '</div></div>';
   show('panelNewSite', isNew ? '現場新規追加' : '現場情報編集', isNew ? showList : () => showDetail(s.id), isNew ? '← 現場選択へ' : '← 戻る');
@@ -2399,7 +2409,7 @@ function showSiteForm(s) {
   let shrinking = 0;
   [1, 2].forEach(n => {
     const clear = () => { $('fImg' + n).value = ''; $('fImgP' + n).src = ''; $('fImgW' + n).style.display = 'none'; $('fImgI' + n).innerHTML = exist(n); delete pics[n]; };
-    $('fImgB' + n).onclick = () => $('fImg' + n).click();
+    $('fImgB' + n).onclick = $('fImgD' + n).onclick = () => $('fImg' + n).click();
     dropOn($('fImgB' + n).parentNode, files => { files = onlyImages(files); if (files.length) putFiles($('fImg' + n), [files[0]]); });
     $('fImgC' + n).onclick = clear;
     $('fImg' + n).onchange = async () => {
@@ -2472,10 +2482,10 @@ function showSiteForm(s) {
    送るときに、ほかの人が先に直していたら上書きせず、別の伝票として残す
    1枚の中身は sites/{id}/orderBody、一覧に出す情報は sites/{id}/orders、記録は sites/{id}/orderLog */
 const O_KIND = {
-  kaku: { host: 'denpyoHost', src: 'denpyo.html?v=24', title: '角ダクト注文', word: '伝票', log: '角ダクト', fn: 'Denpyo' },
+  kaku: { host: 'denpyoHost', src: 'denpyo.html?v=25', title: '角ダクト注文', word: '伝票', log: '角ダクト', fn: 'Denpyo' },
   maru: { host: 'maruHost', src: 'maru.html?v=11', title: '丸ダクト注文', word: '注文書', log: '丸ダクト', fn: 'Maru' },
   cons: { host: 'consHost', src: 'cons.html?v=27', title: '消耗品注文', word: '注文書', log: '消耗品', fn: 'Cons' },
-  kana: { host: 'kanaHost', src: 'kana.html?v=12', title: '金物注文（添付）', word: '注文書', log: '金物（添付）', fn: 'Kana' },
+  kana: { host: 'kanaHost', src: 'kana.html?v=13', title: '金物注文（添付）', word: '注文書', log: '金物（添付）', fn: 'Kana' },
   hood: { host: 'hoodHost', src: 'hood.html?v=39', title: 'フード注文', word: '注文書', log: 'フード', fn: 'Hood' },   // 厨房フード（箱型・山型・二重。数字入りの図の注文書。2026-11-03）
   kanagu: { host: 'kanaguHost', src: 'kanagu.html?v=17', title: '金物注文', word: '注文書', log: '金物', fn: 'Kanagu' }   // 鋼材テンプレート（三角ブラケット・穴あきアングル。図面と立体図の注文書。2026-11-04）
 };
