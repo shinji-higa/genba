@@ -33,6 +33,12 @@
     }
     @media (max-width: 1099px) { .only-desk { display: none !important; } }
     .card { border: 1.5px solid #a3a7ad; border-radius: 8px; background: #eceef1; padding: 12px; margin-bottom: 12px; }
+    /* パソコン：ポータルの報告・写真・資料と同じ点線の四角に落としても添付できる（2026-11-20 ユーザー「全部に適応したい」） */
+    .drop-box { display: none; border: 2px dashed #777; background: #f7f7f7; border-radius: 6px; padding: 14px 10px; text-align: center; margin-bottom: 10px; }
+    .drop-box-t { font-weight: 700; font-size: 0.9rem; color: #222; }
+    .drop-box-or { margin-top: 8px; font-size: 0.85rem; color: #333; display: flex; justify-content: center; align-items: center; gap: 10px; }
+    @media (hover: hover) and (pointer: fine) { .drop-box { display: block; } }
+    .drop-on { outline: 3px dashed #1a73e8 !important; outline-offset: 2px; background-color: #eef4ff !important; }
     .card-h { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 10px; padding-bottom: 8px; border-bottom: 1.5px solid #a3a7ad; font-weight: 700; font-size: 0.95rem; }
     .fg { margin-bottom: 10px; }
     label, .lbl { display: block; font-size: 0.8rem; font-weight: 700; margin-bottom: 4px; color: #222; }
@@ -241,6 +247,7 @@
           <div class="card-h"><span>添付（<span id="itemCount">0</span>件）</span>
             <span><button type="button" class="btn btn-dark" onclick="pickFile()">＋ PDF・写真を添付</button></span></div>
           <input type="file" id="fileIn" accept="application/pdf,image/*" multiple style="display:none;" onchange="addFiles(this.files); this.value='';">
+          <div class="drop-box" id="dropBox"><div class="drop-box-t">PDF・写真をここにドラッグ＆ドロップしてください（いくつでも）</div><div class="drop-box-or"><span>または</span><button type="button" class="btn btn-dark" onclick="pickFile()">ファイルを選択する</button></div></div>
           <div class="items" id="items"></div>
         </div>
       </section>
@@ -387,6 +394,18 @@
     }
     function loadAll() { return Promise.all((S.items || []).map(loadFile)); }
     function pickFile() { if (revLocked()) { lockedToast(); return; } document.getElementById('fileIn').click(); }
+    // パソコン：添付の欄（カード全体）にファイルを落とすと添付。落とせない所に落としてもブラウザがファイルを開かないようにする（2026-11-20）
+    (function () {
+      var isF = function (e) { return [].slice.call((e.dataTransfer && e.dataTransfer.types) || []).indexOf('Files') >= 0; };
+      var card = document.getElementById('dropBox').parentNode, n = 0;
+      var on = function (v) { document.getElementById('dropBox').classList.toggle('drop-on', v); };
+      card.addEventListener('dragenter', function (e) { if (!isF(e)) return; e.preventDefault(); n++; on(true); });
+      card.addEventListener('dragover', function (e) { if (!isF(e)) return; e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; });
+      card.addEventListener('dragleave', function (e) { if (!isF(e)) return; if (--n <= 0) { n = 0; on(false); } });
+      card.addEventListener('drop', function (e) { if (!isF(e)) return; e.preventDefault(); e.stopPropagation(); n = 0; on(false); if (e.dataTransfer.files.length) addFiles(e.dataTransfer.files); });
+      document.addEventListener('dragover', function (e) { if (isF(e)) e.preventDefault(); });
+      document.addEventListener('drop', function (e) { if (isF(e)) e.preventDefault(); });
+    })();
     function addFiles(files) {
       if (revLocked()) { lockedToast(); return; }
       var list = [].slice.call(files), chain = Promise.resolve();
